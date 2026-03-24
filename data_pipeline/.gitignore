@@ -1,0 +1,17 @@
+# 파이썬 가상환경
+venv/
+
+# 보안 (API 키 숨김)
+.env
+
+# 데이터 파일 (깃허브 용량 초과 방지)
+data/raw/
+data/processed/
+
+# AI 모델 저장 파일 (깃허브 용량 초과 방지)
+src/models/saved_nlp_model/
+*.pkl
+
+# 파이썬 임시 캐시 파일들
+__pycache__/
+*.pyc
