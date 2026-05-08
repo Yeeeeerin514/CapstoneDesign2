@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://albasave-db.c5csm4aeqbg6.ap-northeast-2.rds.amazonaws.com:5432/albasave
+    username: postgres
+    password: []
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+cloud:
+  aws:
+    s3:
+      bucket: albasave-storage-new
+    credentials:
+      access-key: []
+      secret-key: []
+    region:
+      static: ap-northeast-2
+    stack:
+      auto: false
