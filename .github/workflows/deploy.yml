@@ -1,8 +1,8 @@
-name: Deploy Spring Boot to EC2
+﻿name: Deploy Spring Boot to EC2
 
 on:
   push:
-    branches: [ "main" ] # main 브랜치에 푸시될 때 실행
+    branches: [ "main" ]
 
 jobs:
   build-and-deploy:
@@ -17,39 +17,47 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 1. 프로젝트 빌드 (테스트는 제외하고 빌드 속도를 높임)
       - name: Build with Gradle
         run: |
-          cd back/albasave-server
+          cd Back/albasave-server
           chmod +x gradlew
           ./gradlew build -x test
 
-      # 2. 빌드된 JAR 파일을 EC2로 전송 (SCP 사용)
       - name: Copy JAR to EC2
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "back/albasave-server/build/libs/*.jar"
-          target: "~/app/back"
-          strip_components: 3 # 폴더 구조를 무시하고 jar 파일만 쏙 넣기
+          source: "Back/albasave-server/build/libs/albasave-server-0.0.1-SNAPSHOT.jar"
+          target: "~/app/back/libs"
+          strip_components: 4
 
-      # 3. EC2 서버에서 기존 서버 끄고 새 서버 실행하기
-      - name: Execute Remote SSH commands
+      - name: Restart Spring Boot on EC2
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 기존 8080 포트 프로세스 종료
+            set -e
             sudo fuser -k 8080/tcp || true
-            
-            # 이동 및 실행
+            mkdir -p ~/app/back/libs
+            cat > ~/app/back/.env <<EOF
+            DB_URL=jdbc:postgresql://albasave-db.c5csm4aeqbg6.ap-northeast-2.rds.amazonaws.com:5432/albasave
+            DB_USERNAME=postgres
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            AWS_S3_BUCKET=albasave-storage-new
+            AWS_REGION=ap-northeast-2
+            AWS_ACCESS_KEY=${{ secrets.AWS_ACCESS_KEY }}
+            AWS_SECRET_KEY=${{ secrets.AWS_SECRET_KEY }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            OPENAI_MODEL=gpt-4o-mini
+            LOCALDATA_CSV_DIR=/home/ubuntu/albasave-data
+            EOF
+            chmod 600 ~/app/back/.env
             cd ~/app/back
-            # 보안 키들을 환경 변수로 주입하며 실행 (중요!)
-            nohup java -jar *.jar \
-              --AWS_ACCESS_KEY=${{ secrets.AWS_ACCESS_KEY }} \
-              --AWS_SECRET_KEY=${{ secrets.AWS_SECRET_KEY }} \
-              > app.log 2>&1 &
+            set -a
+            . ~/app/back/.env
+            set +a
+            nohup java -jar libs/albasave-server-0.0.1-SNAPSHOT.jar > app.log 2>&1 &

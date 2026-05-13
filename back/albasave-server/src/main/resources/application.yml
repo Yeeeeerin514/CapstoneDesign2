@@ -1,8 +1,13 @@
 spring:
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
   datasource:
-    url: jdbc:postgresql://albasave-db.c5csm4aeqbg6.ap-northeast-2.rds.amazonaws.com:5432/albasave
-    username: postgres
-    password: []
+    url: ${DB_URL:jdbc:postgresql://albasave-db.c5csm4aeqbg6.ap-northeast-2.rds.amazonaws.com:5432/albasave}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -16,11 +21,20 @@ spring:
 cloud:
   aws:
     s3:
-      bucket: albasave-storage-new
+      bucket: ${AWS_S3_BUCKET:albasave-storage-new}
     credentials:
-      access-key: []
-      secret-key: []
+      access-key: ${AWS_ACCESS_KEY:}
+      secret-key: ${AWS_SECRET_KEY:}
     region:
-      static: ap-northeast-2
+      static: ${AWS_REGION:ap-northeast-2}
     stack:
       auto: false
+
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  model: ${OPENAI_MODEL:gpt-4o-mini}
+  base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+
+albasave:
+  local-data:
+    csv-directory: ${LOCALDATA_CSV_DIR:C:/Users/82103/Desktop/캡디 데이터}

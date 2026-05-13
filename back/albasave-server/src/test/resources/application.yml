@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:albasave-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+openai:
+  api-key:
+  model: gpt-4o-mini
+  base-url: https://api.openai.com/v1
+
+albasave:
+  local-data:
+    csv-directory: C:/Users/82103/Desktop/캡디 데이터
