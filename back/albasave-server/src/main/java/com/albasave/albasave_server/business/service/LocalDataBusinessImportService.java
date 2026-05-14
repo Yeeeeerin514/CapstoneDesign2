@@ -7,13 +7,16 @@ import com.albasave.albasave_server.jobposting.config.LocalDataProperties;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.Reader;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -21,6 +24,25 @@ import java.util.stream.Stream;
 
 @Service
 public class LocalDataBusinessImportService {
+    private static final Logger log = LoggerFactory.getLogger(LocalDataBusinessImportService.class);
+
+    private static final Charset LOCALDATA_CHARSET = Charset.forName("MS949");
+    private static final int BATCH_SIZE = 1000;
+
+    private static final String H_BUSINESS_NAME = "\uC0AC\uC5C5\uC7A5\uBA85";
+    private static final String H_MANAGEMENT_NUMBER = "\uAD00\uB9AC\uBC88\uD638";
+    private static final String H_LOCAL_ADDRESS = "\uC18C\uC7AC\uC9C0\uC804\uCCB4\uC8FC\uC18C";
+    private static final String H_ROAD_ADDRESS = "\uB3C4\uB85C\uBA85\uC804\uCCB4\uC8FC\uC18C";
+    private static final String H_INDUSTRY = "\uC5C5\uD0DC\uAD6C\uBD84\uBA85";
+    private static final String H_HYGIENE_INDUSTRY = "\uC704\uC0DD\uC5C5\uD0DC\uBA85";
+    private static final String H_BUSINESS_STATUS = "\uC601\uC5C5\uC0C1\uD0DC\uBA85";
+    private static final String H_DETAIL_STATUS = "\uC0C1\uC138\uC601\uC5C5\uC0C1\uD0DC\uBA85";
+    private static final String H_LICENSE_DATE = "\uC778\uD5C8\uAC00\uC77C\uC790";
+    private static final String H_CLOSURE_DATE = "\uD3D0\uC5C5\uC77C\uC790";
+    private static final String H_PHONE = "\uC18C\uC7AC\uC9C0\uC804\uD654";
+    private static final String H_SERVICE_NAME = "\uAC1C\uBC29\uC11C\uBE44\uC2A4\uBA85";
+    private static final String H_SERVICE_ID = "\uAC1C\uBC29\uC11C\uBE44\uC2A4\uC544\uC774\uB514";
+
     private final LocalDataProperties properties;
     private final BusinessRepository businessRepository;
 
@@ -64,18 +86,20 @@ public class LocalDataBusinessImportService {
     }
 
     private void importOneFile(Path csvFile, AtomicLong importedRows, AtomicLong skippedRows) {
-        try (Reader reader = Files.newBufferedReader(csvFile, StandardCharsets.UTF_8);
+        try (Reader reader = Files.newBufferedReader(csvFile, LOCALDATA_CHARSET);
              CSVParser parser = CSVFormat.DEFAULT.builder()
                      .setHeader()
                      .setSkipHeaderRecord(true)
+                     .setAllowMissingColumnNames(true)
                      .setTrim(true)
                      .build()
                      .parse(reader)) {
 
             String sourceFile = csvFile.getFileName().toString();
+            List<Business> batch = new ArrayList<>(BATCH_SIZE);
             for (CSVRecord record : parser) {
-                String name = get(record, "사업장명");
-                String managementNumber = get(record, "관리번호");
+                String name = get(record, H_BUSINESS_NAME);
+                String managementNumber = get(record, H_MANAGEMENT_NUMBER);
                 if (name.isBlank() || managementNumber.isBlank()) {
                     skippedRows.incrementAndGet();
                     continue;
@@ -87,24 +111,32 @@ public class LocalDataBusinessImportService {
 
                 Business business = new Business(
                         name,
-                        get(record, "소재지전체주소"),
-                        get(record, "도로명전체주소"),
-                        firstNonBlank(get(record, "업태구분명"), industryFromFileName(csvFile)),
-                        get(record, "위생업태명"),
-                        get(record, "영업상태명"),
-                        get(record, "상세영업상태명"),
-                        get(record, "인허가일자"),
-                        get(record, "폐업일자"),
-                        get(record, "소재지전화"),
-                        get(record, "개방서비스명"),
-                        get(record, "개방서비스아이디"),
+                        get(record, H_LOCAL_ADDRESS),
+                        get(record, H_ROAD_ADDRESS),
+                        firstNonBlank(get(record, H_INDUSTRY), industryFromFileName(csvFile)),
+                        get(record, H_HYGIENE_INDUSTRY),
+                        get(record, H_BUSINESS_STATUS),
+                        get(record, H_DETAIL_STATUS),
+                        get(record, H_LICENSE_DATE),
+                        get(record, H_CLOSURE_DATE),
+                        get(record, H_PHONE),
+                        get(record, H_SERVICE_NAME),
+                        get(record, H_SERVICE_ID),
                         managementNumber,
                         sourceFile
                 );
-                businessRepository.save(business);
+                batch.add(business);
                 importedRows.incrementAndGet();
+                if (batch.size() >= BATCH_SIZE) {
+                    businessRepository.saveAll(batch);
+                    batch.clear();
+                }
+            }
+            if (!batch.isEmpty()) {
+                businessRepository.saveAll(batch);
             }
         } catch (Exception exception) {
+            log.warn("Failed to import LocalData CSV file: {}", csvFile, exception);
             skippedRows.incrementAndGet();
         }
     }
