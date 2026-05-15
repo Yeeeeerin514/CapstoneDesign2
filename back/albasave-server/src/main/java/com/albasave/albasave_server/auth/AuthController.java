@@ -35,4 +35,9 @@ public class AuthController {
         authService.updateFcmToken(userId, req.getFcmToken());
         return ResponseEntity.ok().build();
     }
+
+    @GetMapping("/me")
+    public ResponseEntity<AuthResponse> getMe(@AuthenticationPrincipal Long userId) {
+        return ResponseEntity.ok(authService.getMe(userId));
+    }
 }

@@ -12,6 +12,8 @@ import java.time.LocalTime;
 public class PartTimeJobResponse {
     private Long id;
     private Long businessId;
+    private String businessName;
+    private Integer hourlyWage;
     private String day;
     private LocalTime startTime;
     private LocalTime endTime;
@@ -25,6 +27,8 @@ public class PartTimeJobResponse {
         return PartTimeJobResponse.builder()
                 .id(job.getId())
                 .businessId(job.getBusinessId())
+                .businessName(job.getBusinessName())
+                .hourlyWage(job.getHourlyWage())
                 .day(job.getDay())
                 .startTime(job.getStartTime())
                 .endTime(job.getEndTime())

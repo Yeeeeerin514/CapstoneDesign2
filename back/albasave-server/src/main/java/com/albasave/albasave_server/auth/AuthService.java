@@ -51,4 +51,11 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
         user.setFcmToken(fcmToken);
     }
+
+    @Transactional(readOnly = true)
+    public AuthResponse getMe(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+        return new AuthResponse(null, user.getId(), user.getName(), user.getEmail());
+    }
 }

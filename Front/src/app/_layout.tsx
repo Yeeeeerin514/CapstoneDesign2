@@ -1,16 +1,34 @@
 import "../global.css";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
+import { useEffect } from "react";
+import { useAuthStore } from "@/entities/user/model/auth-store";
 
-/**
- * 루트 레이아웃
- * - NativeWind 글로벌 CSS 임포트
- * - Expo Router Stack 최상위 셸
- */
+function AuthGuard() {
+  const token = useAuthStore((s) => s.token);
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    const inAuth = segments[0] === "login";
+    if (!token && !inAuth) {
+      router.replace("/login");
+    } else if (token && inAuth) {
+      router.replace("/(tabs)");
+    }
+  }, [token, segments]);
+
+  return null;
+}
+
 export default function RootLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="work-record/[id]" />
-    </Stack>
+    <>
+      <AuthGuard />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="work-record/[id]" />
+        <Stack.Screen name="login" />
+      </Stack>
+    </>
   );
 }

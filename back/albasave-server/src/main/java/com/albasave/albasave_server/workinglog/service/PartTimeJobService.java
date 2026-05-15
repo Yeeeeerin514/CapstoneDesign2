@@ -21,6 +21,8 @@ public class PartTimeJobService {
         PartTimeJob job = PartTimeJob.builder()
                 .userId(userId)
                 .businessId(req.getBusinessId())
+                .businessName(req.getBusinessName())
+                .hourlyWage(req.getHourlyWage())
                 .day(req.getDay())
                 .startTime(req.getStartTime())
                 .endTime(req.getEndTime())
