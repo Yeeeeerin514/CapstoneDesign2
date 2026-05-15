@@ -50,7 +50,7 @@ public class WorkNotificationScheduler {
 
         for (PartTimeJob job : activeJobs) {
             // 1. 오늘 근무 요일인지 확인
-            if (!isWorkingDay(job.getDday(), today)) {
+            if (!isWorkingDay(job.getDay(), today)) {
                 continue;
             }
 
