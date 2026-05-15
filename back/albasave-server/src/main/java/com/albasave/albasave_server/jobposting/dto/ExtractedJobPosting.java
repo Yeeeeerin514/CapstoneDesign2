@@ -5,6 +5,8 @@ import java.util.List;
 public record ExtractedJobPosting(
         String businessName,
         String brandName,
+        String businessRegistrationNumber,
+        String phone,
         String address,
         String jobTitle,
         String industryHint,
@@ -21,6 +23,8 @@ public record ExtractedJobPosting(
 ) {
     public static ExtractedJobPosting empty() {
         return new ExtractedJobPosting(
+                null,
+                null,
                 null,
                 null,
                 null,

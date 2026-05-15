@@ -24,12 +24,12 @@ public class DatabaseBusinessMatcher {
     public List<BusinessCandidate> findCandidates(ExtractedJobPosting posting) {
         String name = firstNonBlank(posting.businessName(), posting.brandName());
         String address = posting.address();
-        if (isBlank(name) && isBlank(address)) {
+        String phone = normalizePhone(posting.phone());
+        if (isBlank(name) && isBlank(address) && isBlank(phone)) {
             return List.of();
         }
 
-        List<Business> businesses = businessRepository.searchCandidates(blankToNull(name), blankToNull(address));
-        return businesses.stream()
+        return businessRepository.searchCandidates(blankToNull(name), blankToNull(address), blankToNull(phone)).stream()
                 .map(business -> toCandidate(business, posting))
                 .filter(candidate -> candidate.matchScore() >= MIN_MATCH_SCORE)
                 .sorted(Comparator.comparingInt(BusinessCandidate::matchScore).reversed())
@@ -41,22 +41,26 @@ public class DatabaseBusinessMatcher {
         String queryName = normalize(firstNonBlank(posting.businessName(), posting.brandName()));
         String queryAddress = normalize(posting.address());
         String queryIndustry = normalize(posting.industryHint());
+        String queryPhone = normalizePhone(posting.phone());
         String rowName = normalize(business.getName());
         String rowAddress = normalize(firstNonBlank(business.getRoadAddress(), business.getLocalAddress()));
-        String rowIndustry = normalize(firstNonBlank(business.getIndustry(), business.getHygieneIndustry()));
+        String rowIndustry = normalize(firstNonBlank(business.getIndustry(), business.getHygieneIndustry(), business.getServiceName()));
+        String rowPhone = normalizePhone(business.getPhone());
 
-        int score = score(queryName, queryAddress, queryIndustry, rowName, rowAddress, rowIndustry);
+        int score = score(queryName, queryAddress, queryIndustry, queryPhone, rowName, rowAddress, rowIndustry, rowPhone);
 
         return new BusinessCandidate(
                 business.getName(),
                 business.getLocalAddress(),
                 business.getRoadAddress(),
-                firstNonBlank(business.getIndustry(), business.getHygieneIndustry()),
+                firstNonBlank(business.getIndustry(), business.getHygieneIndustry(), business.getServiceName()),
                 business.getBusinessStatus(),
                 business.getDetailStatus(),
                 business.getLicenseDate(),
                 business.getClosureDate(),
                 business.getPhone(),
+                business.getServiceId(),
+                business.getServiceName(),
                 business.getSourceFile(),
                 score
         );
@@ -66,9 +70,11 @@ public class DatabaseBusinessMatcher {
             String queryName,
             String queryAddress,
             String queryIndustry,
+            String queryPhone,
             String rowName,
             String rowAddress,
-            String rowIndustry
+            String rowIndustry,
+            String rowPhone
     ) {
         int score = 0;
 
@@ -95,6 +101,10 @@ public class DatabaseBusinessMatcher {
             score += 10;
         }
 
+        if (!queryPhone.isBlank() && !rowPhone.isBlank() && sameLastDigits(queryPhone, rowPhone, 4)) {
+            score += 15;
+        }
+
         return Math.min(score, 100);
     }
 
@@ -117,6 +127,12 @@ public class DatabaseBusinessMatcher {
         return (int) Math.round(maxScore * (hits / (double) considered));
     }
 
+    private boolean sameLastDigits(String left, String right, int length) {
+        return left.length() >= length
+                && right.length() >= length
+                && left.substring(left.length() - length).equals(right.substring(right.length() - length));
+    }
+
     private String normalize(String value) {
         if (value == null) {
             return "";
@@ -125,6 +141,13 @@ public class DatabaseBusinessMatcher {
                 .replaceAll("[^0-9a-z가-힣\\s]", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
+    }
+
+    private String normalizePhone(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replaceAll("[^0-9]", "");
     }
 
     private String firstNonBlank(String... values) {

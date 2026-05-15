@@ -36,5 +36,19 @@ openai:
   base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
 
 albasave:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173}
   local-data:
-    csv-directory: ${LOCALDATA_CSV_DIR:C:/Users/82103/Desktop/캡디 데이터}
+    csv-directory: ${LOCALDATA_CSV_DIR:C:/Users/82103/Desktop/capstone-data}
+  public-api:
+    work24:
+      auth-key: ${WORK24_AUTH_KEY:}
+      wage-arrears-url: ${WORK24_WAGE_ARREARS_URL:https://www.work24.go.kr/cm/openapi/app-form/sa-cvpl-list.do}
+    nts:
+      service-key: ${NTS_SERVICE_KEY:}
+      status-url: ${NTS_STATUS_URL:https://api.odcloud.kr/api/nts-businessman/v1/status}
+    sbiz:
+      service-key: ${SBIZ_SERVICE_KEY:}
+
+fcm:
+  server-key: ${FCM_SERVER_KEY:}

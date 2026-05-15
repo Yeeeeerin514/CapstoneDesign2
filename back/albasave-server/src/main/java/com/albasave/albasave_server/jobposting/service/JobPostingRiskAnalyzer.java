@@ -2,6 +2,7 @@ package com.albasave.albasave_server.jobposting.service;
 
 import com.albasave.albasave_server.jobposting.dto.BusinessCandidate;
 import com.albasave.albasave_server.jobposting.dto.ConcernItem;
+import com.albasave.albasave_server.jobposting.dto.ExternalRiskCheck;
 import com.albasave.albasave_server.jobposting.dto.ExtractedJobPosting;
 import org.springframework.stereotype.Component;
 
@@ -14,18 +15,23 @@ import java.util.Locale;
 public class JobPostingRiskAnalyzer {
     private static final int MINIMUM_WAGE_2026 = 10_320;
 
-    public List<ConcernItem> analyze(ExtractedJobPosting posting, List<BusinessCandidate> candidates) {
+    public List<ConcernItem> analyze(
+            ExtractedJobPosting posting,
+            List<BusinessCandidate> candidates,
+            List<ExternalRiskCheck> externalChecks
+    ) {
         List<ConcernItem> concerns = new ArrayList<>();
         addPostingConcerns(posting, concerns);
         addBusinessConcerns(candidates, concerns);
+        addExternalConcerns(externalChecks, concerns);
 
         if (concerns.isEmpty()) {
             concerns.add(new ConcernItem(
                     "SUMMARY",
                     "LOW",
                     "즉시 확인되는 고위험 문구는 적습니다",
-                    "이미지와 매칭 후보만으로는 명확한 법 위반 소지를 단정하기 어렵습니다. 다만 실제 지원 전 근로계약서, 휴게시간, 주휴수당, 4대보험 적용 여부를 다시 확인하는 것이 좋습니다.",
-                    "공고 이미지 및 CSV 후보 분석"
+                    "공고 이미지와 매칭된 공공데이터만으로는 명확한 법 위반을 단정하기 어렵습니다. 실제 지원 전 근로계약서, 휴게시간, 주휴수당, 4대보험 적용 여부를 다시 확인하는 것이 좋습니다.",
+                    "공고 이미지 및 공공데이터 분석"
             ));
         }
 
@@ -35,14 +41,17 @@ public class JobPostingRiskAnalyzer {
     public String buildUserReport(
             ExtractedJobPosting posting,
             List<BusinessCandidate> candidates,
+            List<ExternalRiskCheck> externalChecks,
             List<ConcernItem> concerns
     ) {
         StringBuilder report = new StringBuilder();
-        report.append("공고문 분석 결과입니다. 이 결과는 법적 판정이 아니라 지원 전 확인을 돕는 참고 리포트입니다.\n\n");
+        report.append("공고문 분석 결과입니다. 이 결과는 법적 판단이 아니라 지원 전 위험 신호를 정리한 참고 리포트입니다.\n\n");
 
         report.append("1. 추출된 핵심 정보\n");
         appendLine(report, "업장명", posting.businessName());
         appendLine(report, "브랜드", posting.brandName());
+        appendLine(report, "사업자등록번호", posting.businessRegistrationNumber());
+        appendLine(report, "전화번호", posting.phone());
         appendLine(report, "주소", posting.address());
         appendLine(report, "직무", posting.jobTitle());
         appendLine(report, "급여", posting.hourlyWageText());
@@ -51,7 +60,7 @@ public class JobPostingRiskAnalyzer {
 
         report.append("\n2. 업장 DB 매칭 후보\n");
         if (candidates.isEmpty()) {
-            report.append("- 현재 CSV 데이터에서 충분히 확실한 업장 후보를 찾지 못했습니다. 상호명/주소를 사용자가 확인하도록 해야 합니다.\n");
+            report.append("- 현재 DB에서 충분히 확실한 업장 후보를 찾지 못했습니다. 상호명, 주소, 전화번호를 사용자가 확인하도록 해야 합니다.\n");
         } else {
             for (BusinessCandidate candidate : candidates) {
                 report.append("- ")
@@ -66,7 +75,18 @@ public class JobPostingRiskAnalyzer {
             }
         }
 
-        report.append("\n3. 우려 사항\n");
+        report.append("\n3. 외부 공공 API 확인\n");
+        for (ExternalRiskCheck check : externalChecks) {
+            report.append("- [")
+                    .append(check.status())
+                    .append("] ")
+                    .append(check.title())
+                    .append(": ")
+                    .append(check.description())
+                    .append("\n");
+        }
+
+        report.append("\n4. 우려 사항\n");
         for (ConcernItem concern : concerns) {
             report.append("- [")
                     .append(concern.severity())
@@ -101,12 +121,12 @@ public class JobPostingRiskAnalyzer {
                         "공고에 주휴수당 포함 취지의 표현이 보입니다. 실제 기본시급과 주휴수당이 구분되어 지급되는지 확인해야 합니다.",
                         phrase
                 ));
-            } else if (containsAny(normalized, "협의", "추후협의", "면접후")) {
+            } else if (containsAny(normalized, "협의", "추후협의", "면접")) {
                 concerns.add(new ConcernItem(
                         "CONDITION",
                         "MEDIUM",
                         "근로조건 불명확",
-                        "급여나 근무조건을 협의로만 표시하면 지원자가 실제 조건을 사전에 파악하기 어렵습니다. 계약서 작성 전 구체적인 시급, 시간, 휴게시간을 확인해야 합니다.",
+                        "급여나 근무조건이 협의로만 제시되면 지원자가 실제 조건을 사전에 파악하기 어렵습니다. 계약서 작성 전 구체적인 시급, 시간, 휴게시간을 확인해야 합니다.",
                         phrase
                 ));
             } else if (containsAny(normalized, "벌금", "손해배상", "위약금")) {
@@ -121,8 +141,8 @@ public class JobPostingRiskAnalyzer {
                 concerns.add(new ConcernItem(
                         "POSTING_PATTERN",
                         "LOW",
-                        "긴급 채용 문구",
-                        "긴급 채용 표현 자체가 위법은 아니지만, 근로계약서 작성 없이 바로 근무를 요구하는지 확인할 필요가 있습니다.",
+                        "급구/즉시근무 문구",
+                        "급구 표현 자체가 위법은 아니지만, 근로계약서 작성 없이 바로 근무를 요구하는지 확인할 필요가 있습니다.",
                         phrase
                 ));
             }
@@ -145,8 +165,8 @@ public class JobPostingRiskAnalyzer {
                     "MATCHING",
                     "MEDIUM",
                     "업장 식별 불확실",
-                    "공고에서 추출한 정보만으로 CSV 데이터의 인허가 업장을 확정하지 못했습니다. 사용자에게 상호명과 주소 확인 단계를 제공해야 합니다.",
-                    "CSV 매칭 후보 없음"
+                    "공고에서 추출한 정보만으로 인허가/영업상태 DB의 사업장을 확정하지 못했습니다. 사용자에게 상호명과 주소 확인 단계를 제공해야 합니다.",
+                    "DB 매칭 후보 없음"
             ));
             return;
         }
@@ -157,17 +177,17 @@ public class JobPostingRiskAnalyzer {
                     "MATCHING",
                     "MEDIUM",
                     "업장 매칭 신뢰도 낮음",
-                    "가장 유사한 후보의 매칭 점수가 낮습니다. 같은 상호 또는 유사 주소의 다른 업장일 수 있으므로 사용자의 확인이 필요합니다.",
+                    "가장 유사한 후보의 매칭 점수가 낮습니다. 같은 상호 또는 유사 주소의 다른 업장일 수 있으므로 사용자 확인이 필요합니다.",
                     best.businessName() + " / " + best.matchScore()
             ));
         }
 
-        if (containsAny(nonBlank(best.businessStatus(), ""), "폐업", "휴업")) {
+        if (containsAny(nonBlank(best.businessStatus(), ""), "폐업", "휴업", "말소", "취소", "중지")) {
             concerns.add(new ConcernItem(
                     "PUBLIC_DATA",
                     "HIGH",
                     "공공데이터상 영업 상태 확인 필요",
-                    "가장 유사한 업장 후보가 공공데이터상 정상 영업 상태가 아닐 수 있습니다. 동일 업장인지 확인 후 지원 여부를 판단해야 합니다.",
+                    "가장 유사한 업장 후보가 공공데이터상 정상 영업 상태가 아닐 수 있습니다. 실제 동일 업장인지 확인한 뒤 지원 여부를 판단해야 합니다.",
                     best.businessStatus() + " " + nonBlank(best.closureDate(), "")
             ));
         }
@@ -179,13 +199,27 @@ public class JobPostingRiskAnalyzer {
                     concerns.add(new ConcernItem(
                             "PUBLIC_DATA",
                             "LOW",
-                            "신규 인허가 업장",
-                            "최근 1년 내 인허가된 업장 후보입니다. 신규 업장 자체가 위험하다는 뜻은 아니지만, 후기와 계약 조건을 더 꼼꼼히 확인하는 것이 좋습니다.",
+                            "최근 인허가 업장",
+                            "최근 1년 내 인허가된 업장 후보입니다. 신규 업장 자체가 위험하다는 뜻은 아니지만 초기 근로계약 조건은 꼼꼼히 확인하는 편이 좋습니다.",
                             best.licenseDate()
                     ));
                 }
             } catch (NumberFormatException ignored) {
                 // Ignore malformed public-data dates.
+            }
+        }
+    }
+
+    private void addExternalConcerns(List<ExternalRiskCheck> externalChecks, List<ConcernItem> concerns) {
+        for (ExternalRiskCheck check : externalChecks) {
+            if ("RISK".equalsIgnoreCase(check.status()) || "FOUND".equalsIgnoreCase(check.status())) {
+                concerns.add(new ConcernItem(
+                        "EXTERNAL_API",
+                        "HIGH",
+                        check.title(),
+                        check.description(),
+                        check.evidence()
+                ));
             }
         }
     }
