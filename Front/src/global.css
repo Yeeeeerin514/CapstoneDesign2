@@ -1,0 +1,4 @@
+/* NativeWind v4 글로벌 CSS 진입점 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
