@@ -3,13 +3,8 @@ package com.albasave.albasave_server.workinglog.domain;
 import jakarta.persistence.*;
 import lombok.*;
 
-/**
- * 사용자 테이블
- * DB 마이그레이션 필요: fcm_token 컬럼 추가
- *    ALTER TABLE "user" ADD COLUMN fcm_token VARCHAR(512);
- */
 @Entity
-@Table(name = "\"user\"") // PostgreSQL에서 user는 예약어이므로 충돌나지 않게
+@Table(name = "\"user\"")
 @Getter
 @Setter
 @Builder
@@ -29,12 +24,12 @@ public class User {
     @Column(name = "phone_number")
     private String phoneNumber;
 
+    @Column(unique = true, nullable = false)
     private String email;
 
-    /**
-     * FCM 디바이스 토큰 (푸시 알림용)
-     * 로그인/앱 실행 시 프론트에서 발급받아 서버에 저장
-     */
+    @Column(nullable = false)
+    private String password;
+
     @Column(name = "fcm_token")
     private String fcmToken;
 }
