@@ -20,14 +20,12 @@ module.exports = function (api) {
   api.cache(true);
   return {
     presets: [
-      ["babel-preset-expo", { jsxImportSource: "nativewind" }],
+      ["babel-preset-expo", { jsxImportSource: "nativewind", reanimated: false }],
       "nativewind/babel",
     ],
     plugins: [
-      // react-native-reanimated/plugin은 반드시 plugins 배열의 마지막에 와야 한다.
-      // nativewind v4가 native 환경에서 dynamic style 처리에 reanimated를 사용하므로
-      // 이 plugin이 없으면 css-interop runtime이 에러를 던진다.
-      "react-native-reanimated/plugin",
+      // 웹 빌드 시 reanimated/plugin은 react-native-worklets 의존성 문제로 제외
+      // native 빌드 시에는 직접 추가 필요
     ],
   };
 };
