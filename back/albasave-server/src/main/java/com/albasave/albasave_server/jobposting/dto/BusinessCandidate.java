@@ -10,6 +10,8 @@ public record BusinessCandidate(
         String licenseDate,
         String closureDate,
         String phone,
+        String serviceId,
+        String serviceName,
         String sourceFile,
         int matchScore
 ) {

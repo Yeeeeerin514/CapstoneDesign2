@@ -6,6 +6,8 @@ public record JobPostingAnalysisResponse(
         Long analysisId,
         ExtractedJobPosting extracted,
         List<BusinessCandidate> businessCandidates,
+        String imageUrl,
+        List<ExternalRiskCheck> externalChecks,
         AnalysisSection businessDataAnalysis,
         AnalysisSection postingTextAnalysis,
         List<ConcernItem> concerns,

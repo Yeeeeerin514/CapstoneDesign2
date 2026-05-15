@@ -36,12 +36,11 @@ public class OpenAiJobPostingExtractor {
             return Optional.empty();
         }
 
-        ObjectNode request = buildRequest(image);
         String response = restClient.post()
                 .uri("/responses")
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + properties.apiKey())
-                .body(request)
+                .body(buildRequest(image))
                 .retrieve()
                 .body(String.class);
 
@@ -80,15 +79,17 @@ public class OpenAiJobPostingExtractor {
 
     private String extractionPrompt() {
         return """
-                너는 한국 아르바이트 구인공고 캡처를 분석하는 정보 추출기다.
-                사용자는 이 결과를 업장 DB 매칭과 노동법 위험 문구 점검에 사용할 예정이다.
+                너는 한국 아르바이트 구인공고 캡처 이미지를 분석하는 정보 추출기다.
+                결과는 업장 DB 매칭, 임금/노동조건 위험 문구 탐지, 공공데이터 비교에 사용된다.
 
                 원칙:
                 - 이미지에 실제로 보이는 내용만 추출한다.
-                - 추측이 필요한 값은 null 또는 빈 배열로 둔다.
-                - 상호명, 브랜드명, 주소, 직무명, 시급, 근무요일, 근무시간, 복리후생, 공고 내 수상한 문구를 최대한 찾는다.
-                - '급구', '당일지급', '수습', '주휴수당 포함', '협의', '벌금', '손해배상', '무단결근', '교육기간 무급'처럼 노동조건 불명확성이나 위법 소지가 있는 표현은 suspiciousPhrases에 넣는다.
-                - missingInformation에는 휴게시간, 주휴수당, 4대보험, 계약기간, 정확한 근무시간처럼 이미지에서 확인되지 않는 중요한 항목을 넣는다.
+                - 확실하지 않은 값은 null 또는 빈 배열로 둔다.
+                - 사업장명, 브랜드명, 사업자등록번호, 전화번호, 주소, 직무명, 시급, 근무요일, 근무시간, 복리후생을 최대한 찾는다.
+                - 사업자등록번호는 000-00-00000 형태가 보이면 하이픈 없이 숫자 10자리로 반환한다.
+                - 전화번호는 대표번호, 채용담당자 번호, 매장 번호 중 DB 매칭에 유용한 값을 반환한다.
+                - '주휴수당 포함', '협의', '벌금', '손해배상', '위약금', '무단결근', '교육기간 무급', '급구', '당일지급'처럼 노동조건이 불명확하거나 위법 소지가 있는 표현은 suspiciousPhrases에 넣는다.
+                - missingInformation에는 휴게시간, 주휴수당, 4대보험, 계약기간, 정확한 근무시간처럼 이미지에서 확인되지 않는 중요 항목을 넣는다.
                 - hourlyWage는 숫자로 확정 가능할 때만 원 단위 정수로 넣는다.
                 """;
     }
@@ -99,9 +100,9 @@ public class OpenAiJobPostingExtractor {
         schema.put("additionalProperties", false);
         ArrayNode required = schema.putArray("required");
         for (String field : new String[]{
-                "businessName", "brandName", "address", "jobTitle", "industryHint",
-                "hourlyWageText", "hourlyWage", "workScheduleText", "workDays",
-                "workTimeText", "employmentType", "benefits", "suspiciousPhrases",
+                "businessName", "brandName", "businessRegistrationNumber", "phone", "address",
+                "jobTitle", "industryHint", "hourlyWageText", "hourlyWage", "workScheduleText",
+                "workDays", "workTimeText", "employmentType", "benefits", "suspiciousPhrases",
                 "missingInformation", "rawSummary"
         }) {
             required.add(field);
@@ -110,6 +111,8 @@ public class OpenAiJobPostingExtractor {
         ObjectNode propertiesNode = schema.putObject("properties");
         nullableString(propertiesNode, "businessName");
         nullableString(propertiesNode, "brandName");
+        nullableString(propertiesNode, "businessRegistrationNumber");
+        nullableString(propertiesNode, "phone");
         nullableString(propertiesNode, "address");
         nullableString(propertiesNode, "jobTitle");
         nullableString(propertiesNode, "industryHint");
@@ -156,15 +159,11 @@ public class OpenAiJobPostingExtractor {
     }
 
     private Optional<String> findOutputText(JsonNode node) {
-        if (node == null || node.isNull()) {
-            return Optional.empty();
-        }
-        if (node.isTextual()) {
+        if (node == null || node.isNull() || node.isTextual()) {
             return Optional.empty();
         }
         if (node.isObject()) {
-            String type = node.path("type").asText();
-            if ("output_text".equals(type) && node.has("text")) {
+            if ("output_text".equals(node.path("type").asText()) && node.has("text")) {
                 return Optional.of(node.path("text").asText());
             }
             Iterator<Map.Entry<String, JsonNode>> fields = node.fields();

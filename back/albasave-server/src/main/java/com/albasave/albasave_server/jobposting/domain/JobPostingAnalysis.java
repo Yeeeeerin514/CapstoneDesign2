@@ -32,10 +32,19 @@ public class JobPostingAnalysis {
     private String candidatesJson;
 
     @Lob
+    private String externalChecksJson;
+
+    @Lob
     private String concernsJson;
 
     @Lob
     private String report;
+
+    @Lob
+    private String responseJson;
+
+    @Column(length = 1000)
+    private String imageUrl;
 
     private Instant createdAt;
 
@@ -48,20 +57,60 @@ public class JobPostingAnalysis {
             String topBusinessStatus,
             String extractedJson,
             String candidatesJson,
+            String externalChecksJson,
             String concernsJson,
-            String report
+            String report,
+            String imageUrl
     ) {
         this.openAiUsed = openAiUsed;
         this.topBusinessName = topBusinessName;
         this.topBusinessStatus = topBusinessStatus;
         this.extractedJson = extractedJson;
         this.candidatesJson = candidatesJson;
+        this.externalChecksJson = externalChecksJson;
         this.concernsJson = concernsJson;
         this.report = report;
+        this.imageUrl = imageUrl;
         this.createdAt = Instant.now();
     }
 
     public Long getId() {
         return id;
+    }
+
+    public String getResponseJson() {
+        return responseJson;
+    }
+
+    public void setResponseJson(String responseJson) {
+        this.responseJson = responseJson;
+    }
+
+    public String getExtractedJson() {
+        return extractedJson;
+    }
+
+    public String getCandidatesJson() {
+        return candidatesJson;
+    }
+
+    public String getExternalChecksJson() {
+        return externalChecksJson;
+    }
+
+    public String getConcernsJson() {
+        return concernsJson;
+    }
+
+    public String getReport() {
+        return report;
+    }
+
+    public boolean isOpenAiUsed() {
+        return openAiUsed;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
     }
 }

@@ -144,6 +144,18 @@ public class Business {
         return phone;
     }
 
+    public String getServiceName() {
+        return serviceName;
+    }
+
+    public String getServiceId() {
+        return serviceId;
+    }
+
+    public String getManagementNumber() {
+        return managementNumber;
+    }
+
     public String getSourceFile() {
         return sourceFile;
     }
