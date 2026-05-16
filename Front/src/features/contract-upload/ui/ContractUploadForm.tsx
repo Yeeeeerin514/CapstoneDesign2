@@ -33,11 +33,13 @@ export function ContractUploadForm({
         </Text>
       </Pressable>
       <Button
-        label={isAnalyzing ? "분석 중..." : "AI로 분석하기"}
         onPress={onSubmit}
-        disabled={!canSubmit}
+        isDisabled={!canSubmit}
+        isLoading={isAnalyzing}
         fullWidth
-      />
+      >
+        {isAnalyzing ? "분석 중..." : "AI로 분석하기"}
+      </Button>
     </View>
   );
 }
