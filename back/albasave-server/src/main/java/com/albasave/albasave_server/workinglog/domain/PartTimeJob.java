@@ -68,4 +68,12 @@ public class PartTimeJob {
     /**해당 알바의 근무 업장 WiFi BSSID */
     @Column(name = "bssid")
     private String bssid;
+
+    /** 업장 이름 */
+    @Column(name = "business_name")
+    private String businessName;
+
+    /** 시급 (원) */
+    @Column(name = "hourly_wage")
+    private Integer hourlyWage;
 }

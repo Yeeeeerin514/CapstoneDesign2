@@ -21,3 +21,24 @@ openai:
 albasave:
   local-data:
     csv-directory: C:/Users/82103/Desktop/캡디 데이터
+  cors:
+    allowed-origins: http://localhost:3000
+
+jwt:
+  secret: test-secret-key-for-testing-must-be-at-least-256-bits-long-here
+  expiration-ms: 86400000
+
+cloud:
+  aws:
+    s3:
+      bucket: test-bucket
+    credentials:
+      access-key: test
+      secret-key: test
+    region:
+      static: ap-northeast-2
+    stack:
+      auto: false
+
+fcm:
+  server-key:
