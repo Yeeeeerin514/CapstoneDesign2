@@ -1,4 +1,13 @@
 import { Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
+
+function tabIcon(focusedName: IconName, outlineName: IconName) {
+  return ({ color, focused, size }: { color: string; focused: boolean; size: number }) => (
+    <Ionicons name={focused ? focusedName : outlineName} size={size} color={color} />
+  );
+}
 
 /**
  * GNB 탭 바 레이아웃
@@ -23,6 +32,7 @@ export default function TabLayout() {
         options={{
           title: "홈",
           tabBarLabel: "홈",
+          tabBarIcon: tabIcon("home", "home-outline"),
         }}
       />
       <Tabs.Screen
@@ -30,6 +40,7 @@ export default function TabLayout() {
         options={{
           title: "관심업장",
           tabBarLabel: "관심업장",
+          tabBarIcon: tabIcon("heart", "heart-outline"),
         }}
       />
       <Tabs.Screen
@@ -37,6 +48,7 @@ export default function TabLayout() {
         options={{
           title: "근무기록",
           tabBarLabel: "근무기록",
+          tabBarIcon: tabIcon("calendar", "calendar-outline"),
         }}
       />
       <Tabs.Screen
@@ -44,6 +56,7 @@ export default function TabLayout() {
         options={{
           title: "신고",
           tabBarLabel: "신고",
+          tabBarIcon: tabIcon("megaphone", "megaphone-outline"),
         }}
       />
       <Tabs.Screen
@@ -51,6 +64,7 @@ export default function TabLayout() {
         options={{
           title: "MY",
           tabBarLabel: "MY",
+          tabBarIcon: tabIcon("person", "person-outline"),
         }}
       />
     </Tabs>

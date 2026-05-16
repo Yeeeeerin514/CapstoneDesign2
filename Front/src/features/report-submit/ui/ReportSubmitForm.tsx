@@ -67,11 +67,13 @@ export function ReportSubmitForm({
       </Pressable>
 
       <Button
-        label={isSubmitting ? "진정서 생성 중..." : "진정서 미리보기 →"}
         onPress={onSubmit}
-        disabled={isSubmitting}
+        isDisabled={isSubmitting}
+        isLoading={isSubmitting}
         fullWidth
-      />
+      >
+        {isSubmitting ? "진정서 생성 중..." : "진정서 미리보기 →"}
+      </Button>
     </View>
   );
 }

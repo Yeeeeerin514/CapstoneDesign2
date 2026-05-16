@@ -1,69 +1,68 @@
-import { Pressable, Text } from "react-native";
-import { cn } from "@/shared/lib/utils";
+// src/shared/ui/Button.tsx
+import type { ReactNode } from "react";
+import { ActivityIndicator, Pressable, Text } from "react-native";
 
-type Variant = "primary" | "secondary" | "warning" | "danger" | "ghost";
+type Variant = "primary" | "secondary" | "danger" | "outline" | "ghost";
 type Size = "sm" | "md" | "lg";
 
-interface Props {
-  label: string;
-  onPress: () => void;
+interface ButtonProps {
+  children: ReactNode;
   variant?: Variant;
   size?: Size;
+  isLoading?: boolean;
+  isDisabled?: boolean;
   fullWidth?: boolean;
-  disabled?: boolean;
+  onPress?: () => void;
 }
 
-const containerByVariant: Record<Variant, string> = {
-  primary: "bg-primary",
-  secondary: "bg-card border border-border",
-  warning: "bg-warning",
-  danger: "bg-danger",
-  ghost: "bg-transparent",
+const variantStyles: Record<Variant, { container: string; text: string }> = {
+  primary:   { container: "bg-blue-600 active:bg-blue-700",   text: "text-white" },
+  secondary: { container: "bg-gray-100 active:bg-gray-200",   text: "text-gray-700" },
+  danger:    { container: "bg-red-500 active:bg-red-600",     text: "text-white" },
+  outline:   { container: "border-2 border-blue-600 bg-white active:bg-blue-50", text: "text-blue-600" },
+  ghost:     { container: "bg-transparent active:bg-gray-100", text: "text-gray-500" },
 };
 
-const textByVariant: Record<Variant, string> = {
-  primary: "text-text-on-primary",
-  secondary: "text-text-primary",
-  warning: "text-text-on-primary",
-  danger: "text-text-on-primary",
-  ghost: "text-text-secondary",
+const sizeStyles: Record<Size, { container: string; text: string }> = {
+  sm: { container: "h-10 px-4 rounded-xl",  text: "text-sm" },
+  md: { container: "h-12 px-5 rounded-2xl", text: "text-base" },
+  lg: { container: "h-14 px-6 rounded-2xl", text: "text-base" },
 };
 
-const containerBySize: Record<Size, string> = {
-  sm: "py-2 px-3 rounded-lg",
-  md: "py-3 px-4 rounded-xl",
-  lg: "py-4 px-5 rounded-2xl",
-};
-
-const textBySize: Record<Size, string> = {
-  sm: "text-sm font-medium",
-  md: "text-base font-semibold",
-  lg: "text-lg font-bold",
-};
-
-/** 공통 버튼. 색상은 토큰만 사용 (tailwind.config.js 정의값). */
 export function Button({
-  label,
-  onPress,
+  children,
   variant = "primary",
   size = "md",
+  isLoading = false,
+  isDisabled = false,
   fullWidth = false,
-  disabled = false,
-}: Props): JSX.Element {
+  onPress,
+}: ButtonProps) {
+  const v = variantStyles[variant];
+  const s = sizeStyles[size];
+  const disabled = isLoading || isDisabled;
+
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      className={cn(
-        "items-center justify-center",
-        containerByVariant[variant],
-        containerBySize[size],
-        fullWidth && "w-full",
-        disabled && "opacity-50",
-      )}
+      className={[
+        "flex-row items-center justify-center",
+        v.container,
+        s.container,
+        fullWidth ? "w-full" : "",
+        disabled ? "opacity-50" : "",
+      ].join(" ")}
     >
-      <Text className={cn(textByVariant[variant], textBySize[size])}>
-        {label}
+      {isLoading && (
+        <ActivityIndicator
+          size="small"
+          color={variant === "primary" || variant === "danger" ? "#fff" : "#2563EB"}
+          className="mr-2"
+        />
+      )}
+      <Text className={["font-semibold", v.text, s.text].join(" ")}>
+        {children}
       </Text>
     </Pressable>
   );

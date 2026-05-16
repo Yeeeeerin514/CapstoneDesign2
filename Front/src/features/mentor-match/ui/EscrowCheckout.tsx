@@ -43,17 +43,20 @@ export function EscrowCheckout({
       </Card>
 
       <Button
-        label={isAgreed ? "✓ 약관에 동의했어요" : "약관에 동의합니다"}
         onPress={onToggleAgreement}
         variant="secondary"
         fullWidth
-      />
+      >
+        {isAgreed ? "✓ 약관에 동의했어요" : "약관에 동의합니다"}
+      </Button>
       <Button
-        label={isProcessing ? "결제 처리 중..." : "결제하기"}
         onPress={onSubmit}
-        disabled={!isAgreed || isProcessing}
+        isDisabled={!isAgreed || isProcessing}
+        isLoading={isProcessing}
         fullWidth
-      />
+      >
+        {isProcessing ? "결제 처리 중..." : "결제하기"}
+      </Button>
     </View>
   );
 }
