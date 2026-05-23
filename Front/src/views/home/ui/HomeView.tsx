@@ -3,17 +3,15 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
-  StatusBar,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { router } from "expo-router";
 import {
   analyzeJobPost,
   type JobPostAnalysisResult,
@@ -81,23 +79,19 @@ export function HomeView() {
   function handleFavoriteAdded() {
     if (analysisResult === null) return;
     addWorkplace(analysisResult.workplaceName);
-    Alert.alert(
-      "등록 완료",
-      `${analysisResult.workplaceName}이(가) 관심업장에 등록되었습니다.`,
-    );
+  }
+
+  function handleNavigateToWorkplace() {
+    router.push("/(tabs)/workplace");
     setShowResult(false);
+    setAnalysisResult(null);
+    setSelectedImage(null);
   }
 
   const canSubmit = selectedImage !== null && !isAnalyzing;
 
   return (
-    <SafeAreaView
-      style={{
-        flex: 1,
-        backgroundColor: "#F8FAFC",
-        paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
-      }}
-    >
+    <View style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
       <ScreenHeader showLogo />
       <ScrollView
         className="flex-1 bg-surface"
@@ -240,9 +234,10 @@ export function HomeView() {
             result={analysisResult}
             onBack={handleBack}
             onFavoriteAdded={handleFavoriteAdded}
+            onNavigateToWorkplace={handleNavigateToWorkplace}
           />
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }

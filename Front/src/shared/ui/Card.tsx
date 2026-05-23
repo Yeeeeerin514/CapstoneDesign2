@@ -1,21 +1,24 @@
-import { View } from "react-native";
+import { View, type StyleProp, type ViewStyle } from "react-native";
 import type { ReactNode } from "react";
-import { cn } from "@/shared/lib/utils";
+import { cardStyles } from "./tokens";
 
-interface Props {
+type CardVariant = "default" | "flat" | "highlighted";
+
+interface CardProps {
   children: ReactNode;
+  variant?: CardVariant;
+  style?: StyleProp<ViewStyle>;
   className?: string;
 }
 
-/** 흰 배경 + 둥근 모서리 + 얕은 보더의 기본 카드. */
-export function Card({ children, className }: Props): JSX.Element {
+export function Card({
+  children,
+  variant = "default",
+  style,
+  className,
+}: CardProps): JSX.Element {
   return (
-    <View
-      className={cn(
-        "bg-card rounded-2xl border border-border p-4",
-        className,
-      )}
-    >
+    <View style={[cardStyles[variant], style]} className={className}>
       {children}
     </View>
   );

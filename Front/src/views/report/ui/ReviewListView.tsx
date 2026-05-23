@@ -1,0 +1,369 @@
+import { useMemo, useState } from "react";
+import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { ScreenHeader } from "@/shared/ui";
+import { useReviewStore } from "@/entities/review";
+import { ReviewDetailView } from "./ReviewDetailView";
+
+interface ReviewListViewProps {
+  onBack: () => void;
+  onConnectMentor?: () => void;
+}
+
+const INDUSTRY_FILTERS = ["전체", "카페·음식점", "편의점", "배달"] as const;
+const REGION_FILTERS = ["전체", "서울", "경기", "기타"] as const;
+
+type IndustryFilter = (typeof INDUSTRY_FILTERS)[number];
+type RegionFilter = (typeof REGION_FILTERS)[number];
+
+export function ReviewListView({
+  onBack,
+  onConnectMentor,
+}: ReviewListViewProps): JSX.Element {
+  const reviews = useReviewStore((s) => s.reviews);
+  const markHelpful = useReviewStore((s) => s.markHelpful);
+
+  const [industry, setIndustry] = useState<IndustryFilter>("전체");
+  const [region, setRegion] = useState<RegionFilter>("전체");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const filteredReviews = useMemo(() => {
+    return reviews.filter((r) => {
+      if (industry !== "전체" && r.industry !== industry) return false;
+      if (region === "기타") {
+        if (r.region === "서울" || r.region === "경기") return false;
+      } else if (region !== "전체" && r.region !== region) {
+        return false;
+      }
+      return true;
+    });
+  }, [reviews, industry, region]);
+
+  if (selectedId !== null) {
+    return (
+      <ReviewDetailView
+        reviewId={selectedId}
+        onBack={() => setSelectedId(null)}
+        onConnectMentor={onConnectMentor}
+      />
+    );
+  }
+
+  return (
+    <SafeAreaView
+      edges={["left", "right", "bottom"]}
+      style={{ flex: 1, backgroundColor: "#F8FAFC" }}
+    >
+      <ScreenHeader showLogo />
+
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          padding: 16,
+          gap: 8,
+        }}
+      >
+        <Pressable onPress={onBack}>
+          <Ionicons name="arrow-back" size={24} color="#0F172A" />
+        </Pressable>
+        <Text style={{ fontSize: 18, fontWeight: "700", color: "#0F172A" }}>
+          해결 후기
+        </Text>
+      </View>
+
+      {/* 필터 칩 — 업종 */}
+      <View style={{ paddingHorizontal: 16, marginBottom: 6 }}>
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: "600",
+            color: "#94A3B8",
+            marginBottom: 6,
+          }}
+        >
+          업종
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 6, paddingBottom: 4 }}
+        >
+          {INDUSTRY_FILTERS.map((opt) => {
+            const isActive = industry === opt;
+            return (
+              <Pressable
+                key={opt}
+                onPress={() => setIndustry(opt)}
+                style={{
+                  backgroundColor: isActive ? "#3182F6" : "#F1F5F9",
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 14,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: "500",
+                    color: isActive ? "#FFFFFF" : "#475569",
+                  }}
+                >
+                  {opt}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* 필터 칩 — 지역 */}
+      <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: "600",
+            color: "#94A3B8",
+            marginBottom: 6,
+          }}
+        >
+          지역
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 6, paddingBottom: 4 }}
+        >
+          {REGION_FILTERS.map((opt) => {
+            const isActive = region === opt;
+            return (
+              <Pressable
+                key={opt}
+                onPress={() => setRegion(opt)}
+                style={{
+                  backgroundColor: isActive ? "#3182F6" : "#F1F5F9",
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 14,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: "500",
+                    color: isActive ? "#FFFFFF" : "#475569",
+                  }}
+                >
+                  {opt}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingTop: 4, paddingBottom: 32 }}
+      >
+        {filteredReviews.length === 0 ? (
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: 14,
+              padding: 32,
+              alignItems: "center",
+            }}
+          >
+            <Ionicons name="search-outline" size={32} color="#94A3B8" />
+            <Text
+              style={{
+                fontSize: 13,
+                color: "#64748B",
+                marginTop: 8,
+                textAlign: "center",
+              }}
+            >
+              조건에 맞는 후기가 아직 없어요
+            </Text>
+          </View>
+        ) : (
+          filteredReviews.map((r) => (
+            <Pressable
+              key={r.id}
+              onPress={() => setSelectedId(r.id)}
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: 14,
+                padding: 16,
+                marginBottom: 10,
+              }}
+            >
+              {/* 상단 메타 */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 8,
+                  flexWrap: "wrap",
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 2,
+                  }}
+                >
+                  <Ionicons name="star" size={13} color="#F59E0B" />
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: "700",
+                      color: "#0F172A",
+                    }}
+                  >
+                    {r.rating.toFixed(1)}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 12, color: "#CBD5E1" }}>·</Text>
+                <Text style={{ fontSize: 12, color: "#64748B" }}>
+                  {r.industry}
+                </Text>
+                <Text style={{ fontSize: 12, color: "#CBD5E1" }}>·</Text>
+                <Text style={{ fontSize: 12, color: "#64748B" }}>
+                  {r.region}
+                </Text>
+                <Text style={{ fontSize: 12, color: "#CBD5E1" }}>·</Text>
+                <Text style={{ fontSize: 12, color: "#64748B" }}>
+                  {`${r.resolveDays}일 해결`}
+                </Text>
+              </View>
+
+              {/* 제목 (2줄) */}
+              <Text
+                numberOfLines={2}
+                style={{
+                  fontSize: 15,
+                  fontWeight: "600",
+                  color: "#0F172A",
+                  lineHeight: 21,
+                  marginBottom: 8,
+                }}
+              >
+                {r.title}
+              </Text>
+
+              {/* by + 배지 */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 4,
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={{ fontSize: 12, color: "#475569" }}>
+                  {`by ${r.authorNickname}`}
+                </Text>
+                {r.authorBadges.map((b) => (
+                  <View
+                    key={b}
+                    style={{
+                      backgroundColor: "#E8F2FF",
+                      paddingHorizontal: 5,
+                      paddingVertical: 1,
+                      borderRadius: 4,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        color: "#1B64DA",
+                        fontWeight: "600",
+                      }}
+                    >
+                      {b}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* 하단 액션 */}
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    markHelpful(r.id);
+                  }}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 9,
+                    borderRadius: 8,
+                    backgroundColor: "#F8FAFC",
+                    alignItems: "center",
+                    flexDirection: "row",
+                    justifyContent: "center",
+                    gap: 4,
+                    borderWidth: 1,
+                    borderColor: "#E2E8F0",
+                  }}
+                >
+                  <Ionicons
+                    name="thumbs-up-outline"
+                    size={12}
+                    color="#475569"
+                  />
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: "500",
+                      color: "#475569",
+                    }}
+                  >
+                    {`도움됐어요 ${r.helpfulCount}`}
+                  </Text>
+                </Pressable>
+                {r.isMentor ? (
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      if (onConnectMentor !== undefined) {
+                        onConnectMentor();
+                      } else {
+                        Alert.alert(
+                          "준비 중",
+                          "멘토 연결 기능은 곧 출시됩니다.",
+                        );
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 9,
+                      borderRadius: 8,
+                      backgroundColor: "#3182F6",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: "#FFFFFF",
+                        fontWeight: "600",
+                      }}
+                    >
+                      멘토 연결 · ₩10,000
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </Pressable>
+          ))
+        )}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

@@ -1,181 +1,408 @@
-import { useState } from "react";
 import {
-  SafeAreaView, ScrollView, Text, TouchableOpacity,
-  View, Alert, ActivityIndicator
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
 } from "react-native";
-import {
-  ArrowLeft, Upload, Camera, ImageIcon, CheckCircle, FileText
-} from "lucide-react-native";
-import type { ContractAnalysisResult } from "@/entities/job-post";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { ScreenHeader } from "@/shared/ui";
+import {
+  analyzeContract,
+  type ContractAnalysisResult,
+} from "@/entities/job-post";
+import { useContractUploadStore } from "@/features/contract-upload";
 
 interface Props {
+  workplaceId: string;
   workplaceName: string;
   onBack: () => void;
-  onAnalysisComplete: (result: ContractAnalysisResult) => void;
+  onAnalysisComplete: (
+    imageUri: string,
+    result: ContractAnalysisResult,
+  ) => void;
 }
 
-export function ContractUploadView({ workplaceName, onBack, onAnalysisComplete }: Props): JSX.Element {
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+export function ContractUploadView({
+  workplaceId: _workplaceId,
+  workplaceName: _workplaceName,
+  onBack,
+  onAnalysisComplete,
+}: Props): JSX.Element {
+  const files = useContractUploadStore((s) => s.files);
+  const isAnalyzing = useContractUploadStore((s) => s.isAnalyzing);
+  const addFile = useContractUploadStore((s) => s.addFile);
+  const removeFile = useContractUploadStore((s) => s.removeFile);
+  const clearFiles = useContractUploadStore((s) => s.clearFiles);
+  const setAnalyzing = useContractUploadStore((s) => s.setAnalyzing);
 
-  async function handleAnalyze() {
-    if (!selectedImage) return;
-    setIsAnalyzing(true);
-    try {
-      await new Promise<void>((r) => setTimeout(() => r(), 2000));
-      onAnalysisComplete({
-        workplaceName,
-        contractPeriod: "2026.04",
-        hourlyWage: 10000,
-        estimatedMonthlyPay: 2080000,
-        overallRisk: "high",
-        issues: [
-          {
-            level: "warning",
-            title: "주휴수당 명시 누락",
-            description: "주 15시간 이상 근무 시 주휴수당 지급이 의무이나 계약서에 명시 없음",
-            legalBasis: "근로기준법 제55조",
-          },
-          {
-            level: "danger",
-            title: "연장수당 규정 불명",
-            description: "주 40시간 초과 근무 시 1.5배 가산수당 조항이 계약서에 없음",
-            legalBasis: "근로기준법 제56조",
-          },
-          {
-            level: "info",
-            title: "퇴직금 안내 누락",
-            description: "1년 이상 근무 시 퇴직금이 발생하나 계약서에 미기재",
-            legalBasis: "근로자퇴직급여보장법 제8조",
-          },
-        ],
-      });
-    } catch {
-      Alert.alert("오류", "분석에 실패했습니다. 다시 시도해주세요.");
-    } finally {
-      setIsAnalyzing(false);
+  const handleCameraPress = async (): Promise<void> => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "카메라 권한 필요",
+        "계약서 촬영을 위해 카메라 권한이 필요합니다. 설정에서 허용해주세요.",
+      );
+      return;
     }
-  }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsEditing: false,
+    });
+    if (result.canceled || result.assets[0] === undefined) return;
+    addFile({
+      uri: result.assets[0].uri,
+      fileName: result.assets[0].fileName,
+    });
+  };
+
+  const handleGalleryPress = async (): Promise<void> => {
+    const { status } =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "갤러리 권한 필요",
+        "파일 선택을 위해 갤러리 접근 권한이 필요합니다.",
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+    });
+    if (result.canceled) return;
+    result.assets.forEach((asset) =>
+      addFile({ uri: asset.uri, fileName: asset.fileName }),
+    );
+  };
+
+  const handleAnalyze = async (): Promise<void> => {
+    if (files.length === 0) return;
+    const firstFile = files[0];
+    setAnalyzing(true);
+    try {
+      const result = await analyzeContract(firstFile.uri);
+      onAnalysisComplete(firstFile.uri, result);
+      clearFiles();
+    } catch {
+      Alert.alert(
+        "분석 실패",
+        "사진이 흐리거나 글자가 잘 보이지 않을 수 있습니다.\n더 선명한 사진으로 다시 시도해주세요.",
+      );
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
+    <SafeAreaView
+      edges={["left", "right", "bottom"]}
+      style={{ flex: 1, backgroundColor: "#F8FAFC" }}
+    >
       <ScreenHeader showLogo />
-      <View style={{ backgroundColor: "#fff", borderBottomWidth: 0.5, borderBottomColor: "#E5E7EB", padding: 16, flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <TouchableOpacity onPress={onBack}>
-          <ArrowLeft size={22} color="#374151" />
-        </TouchableOpacity>
+
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          padding: 16,
+          gap: 8,
+        }}
+      >
+        <Pressable onPress={onBack}>
+          <Ionicons name="arrow-back" size={24} color="#0F172A" />
+        </Pressable>
         <View>
-          <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>계약서 업로드</Text>
-          <Text style={{ fontSize: 12, color: "#6B7280" }}>근로계약서를 업로드하면 AI가 자동으로 분석합니다</Text>
+          <Text style={{ fontSize: 20, fontWeight: "700", color: "#0F172A" }}>
+            계약서 업로드
+          </Text>
+          <Text style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+            근로계약서를 업로드하면 AI가 자동으로 분석합니다
+          </Text>
         </View>
       </View>
 
-      <ScrollView style={{ flex: 1, padding: 16 }} contentContainerStyle={{ paddingBottom: 120 }}>
-        <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 16, borderWidth: 0.5, borderColor: "#E5E7EB", marginBottom: 16 }}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 4 }}>근로계약서 촬영/업로드</Text>
-          <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 12 }}>계약서를 촬영하거나 파일을 업로드해주세요</Text>
-
-          {selectedImage ? (
-            <View style={{ borderRadius: 8, overflow: "hidden", marginBottom: 12, borderWidth: 0.5, borderColor: "#E5E7EB" }}>
-              <View style={{ backgroundColor: "#F0FDF4", padding: 16, alignItems: "center" }}>
-                <CheckCircle size={40} color="#10B981" />
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#047857", marginTop: 8 }}>업로드 완료!</Text>
-                <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>AI가 계약서를 분석하고 있습니다...</Text>
-              </View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderTopWidth: 0.5, borderTopColor: "#E5E7EB" }}>
-                <FileText size={16} color="#6B7280" />
-                <Text style={{ fontSize: 13, color: "#374151", flex: 1 }}>근로계약서.jpg</Text>
-                <CheckCircle size={16} color="#10B981" />
-              </View>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={{ borderWidth: 1.5, borderStyle: "dashed", borderColor: "#D1D5DB", borderRadius: 8, padding: 32, alignItems: "center", marginBottom: 12, backgroundColor: "#F9FAFB" }}
-              onPress={() => Alert.alert("갤러리", "갤러리 연동 준비 중입니다.")}
-            >
-              <Upload size={28} color="#9CA3AF" />
-              <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 8 }}>파일을 드래그하거나 클릭하여 업로드</Text>
-              <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>JPG, PNG, PDF 파일 지원 (최대 10MB)</Text>
-            </TouchableOpacity>
-          )}
-
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <TouchableOpacity
-              style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, backgroundColor: "#F9FAFB", borderRadius: 8, borderWidth: 0.5, borderColor: "#E5E7EB" }}
-              onPress={() => {
-                setSelectedImage("camera_mock");
-                Alert.alert("카메라", "카메라 연동 준비 중입니다.\n(목업: 이미지 선택됨으로 처리)");
-              }}
-            >
-              <Camera size={15} color="#6B7280" />
-              <Text style={{ fontSize: 13, color: "#374151" }}>카메라로 촬영</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, backgroundColor: "#F9FAFB", borderRadius: 8, borderWidth: 0.5, borderColor: "#E5E7EB" }}
-              onPress={() => {
-                setSelectedImage("gallery_mock");
-                Alert.alert("갤러리", "갤러리 연동 준비 중입니다.\n(목업: 이미지 선택됨으로 처리)");
-              }}
-            >
-              <ImageIcon size={15} color="#6B7280" />
-              <Text style={{ fontSize: 13, color: "#374151" }}>파일 선택</Text>
-            </TouchableOpacity>
-          </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+      >
+        {/* dropzone */}
+        <View
+          style={{
+            borderWidth: 2,
+            borderColor: "#CBD5E1",
+            borderStyle: "dashed",
+            borderRadius: 14,
+            padding: 24,
+            alignItems: "center",
+            backgroundColor: "#FFFFFF",
+            marginBottom: 12,
+          }}
+        >
+          <Ionicons name="cloud-upload-outline" size={32} color="#94A3B8" />
+          <Text
+            style={{
+              fontSize: 13,
+              color: "#64748B",
+              marginTop: 8,
+              textAlign: "center",
+            }}
+          >
+            카메라로 촬영하거나{"\n"}파일을 선택해 업로드해주세요
+          </Text>
+          <Text style={{ fontSize: 10, color: "#94A3B8", marginTop: 4 }}>
+            JPG, PNG, PDF · 여러 장 업로드 가능 · 최대 10MB
+          </Text>
         </View>
 
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
-          <View style={{ flex: 1, backgroundColor: "#fff", borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: "#E5E7EB" }}>
-            <Text style={{ fontSize: 12, fontWeight: "600", color: "#374151", marginBottom: 8 }}>필수 확인 사항</Text>
-            {["근로계약서 전체 페이지", "서명 및 날인이 선명한 사진", "근무 시간, 임금, 휴일 등 조항 포함"].map((item) => (
-              <View key={item} style={{ flexDirection: "row", alignItems: "flex-start", gap: 4, marginBottom: 4 }}>
-                <Text style={{ fontSize: 11, color: "#10B981" }}>✓</Text>
-                <Text style={{ fontSize: 11, color: "#6B7280", flex: 1 }}>{item}</Text>
-              </View>
-            ))}
-          </View>
-          <View style={{ flex: 1, backgroundColor: "#fff", borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: "#E5E7EB" }}>
-            <Text style={{ fontSize: 12, fontWeight: "600", color: "#374151", marginBottom: 8 }}>촬영 팁</Text>
-            {["자연광에서 촬영하면 더 선명합니다", "문서를 평평하게 펼쳐주세요", "그림자가 생기지 않도록 주의"].map((item) => (
-              <View key={item} style={{ flexDirection: "row", alignItems: "flex-start", gap: 4, marginBottom: 4 }}>
-                <Text style={{ fontSize: 11, color: "#3B82F6" }}>✓</Text>
-                <Text style={{ fontSize: 11, color: "#6B7280", flex: 1 }}>{item}</Text>
-              </View>
-            ))}
-          </View>
+          <Pressable
+            onPress={() => void handleCameraPress()}
+            style={{
+              flex: 1,
+              backgroundColor: "#FFFFFF",
+              paddingVertical: 12,
+              borderRadius: 10,
+              alignItems: "center",
+              flexDirection: "row",
+              justifyContent: "center",
+              gap: 6,
+              borderWidth: 1,
+              borderColor: "#E2E8F0",
+            }}
+          >
+            <Ionicons name="camera" size={16} color="#475569" />
+            <Text
+              style={{ fontSize: 13, color: "#475569", fontWeight: "500" }}
+            >
+              카메라로 촬영
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => void handleGalleryPress()}
+            style={{
+              flex: 1,
+              backgroundColor: "#FFFFFF",
+              paddingVertical: 12,
+              borderRadius: 10,
+              alignItems: "center",
+              flexDirection: "row",
+              justifyContent: "center",
+              gap: 6,
+              borderWidth: 1,
+              borderColor: "#E2E8F0",
+            }}
+          >
+            <Ionicons name="image" size={16} color="#475569" />
+            <Text
+              style={{ fontSize: 13, color: "#475569", fontWeight: "500" }}
+            >
+              파일 선택
+            </Text>
+          </Pressable>
         </View>
 
-        <View style={{ backgroundColor: "#EFF6FF", borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: "#BFDBFE" }}>
-          <Text style={{ fontSize: 12, fontWeight: "600", color: "#1D4ED8", marginBottom: 4 }}>개인정보 보호</Text>
-          <Text style={{ fontSize: 11, color: "#3B82F6", lineHeight: 17 }}>
-            업로드된 계약서는 암호화되어 안전하게 저장되며, AI 분석 후 즉시 조회 검토에만 사용됩니다. 제3자에 공유되지 않습니다.
+        {/* 업로드된 파일 리스트 */}
+        {files.length > 0 ? (
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: 12,
+              padding: 14,
+              marginBottom: 16,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: "600",
+                color: "#0F172A",
+                marginBottom: 10,
+              }}
+            >
+              {`업로드된 파일 (${files.length}개)`}
+            </Text>
+            {files.map((file, idx) => (
+              <View
+                key={file.id}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingVertical: 8,
+                  gap: 10,
+                  borderTopWidth: idx === 0 ? 0 : 1,
+                  borderTopColor: "#F1F5F9",
+                }}
+              >
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 6,
+                    backgroundColor: "#F1F5F9",
+                    overflow: "hidden",
+                  }}
+                >
+                  <Image
+                    source={{ uri: file.uri }}
+                    style={{ width: "100%", height: "100%" }}
+                  />
+                </View>
+                <Text
+                  style={{ flex: 1, fontSize: 13, color: "#0F172A" }}
+                  numberOfLines={1}
+                >
+                  {file.name}
+                </Text>
+                <Pressable
+                  onPress={() => removeFile(file.id)}
+                  hitSlop={8}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: "#FEF2F2",
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                >
+                  <Ionicons name="close" size={14} color="#DC2626" />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {/* 개인정보 보호 안내 */}
+        <View
+          style={{
+            backgroundColor: "#EFF6FF",
+            borderRadius: 10,
+            padding: 12,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: "600",
+              color: "#1E40AF",
+              marginBottom: 4,
+            }}
+          >
+            🔒 개인정보 보호
+          </Text>
+          <Text style={{ fontSize: 11, color: "#1E40AF", lineHeight: 17 }}>
+            업로드된 계약서는 암호화되어 안전하게 저장되며, AI 분석 후 즉시 조회
+            검토에만 사용됩니다. 제3자와 공유되지 않습니다.
           </Text>
         </View>
       </ScrollView>
 
-      <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "#fff", borderTopWidth: 0.5, borderTopColor: "#E5E7EB", padding: 16, flexDirection: "row", gap: 12, alignItems: "center" }}>
-        {isAnalyzing ? (
-          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 14, backgroundColor: "#2563EB", borderRadius: 12 }}>
-            <ActivityIndicator color="#fff" size="small" />
-            <Text style={{ color: "#fff", fontWeight: "600" }}>분석 중...</Text>
-          </View>
-        ) : (
-          <>
-            <TouchableOpacity
-              style={{ flex: 1, paddingVertical: 14, backgroundColor: selectedImage ? "#2563EB" : "#93C5FD", borderRadius: 12, alignItems: "center" }}
-              onPress={handleAnalyze}
-              disabled={!selectedImage}
-            >
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
-                {selectedImage ? "분석 결과 보기 →" : "파일을 업로드해주세요"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onBack}>
-              <Text style={{ fontSize: 13, color: "#6B7280" }}>이전으로</Text>
-            </TouchableOpacity>
-          </>
-        )}
+      {/* 하단 고정 버튼 */}
+      <View
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          padding: 16,
+          backgroundColor: "#FFFFFF",
+          borderTopWidth: 1,
+          borderTopColor: "#E2E8F0",
+          flexDirection: "row",
+          gap: 8,
+        }}
+      >
+        <Pressable
+          onPress={onBack}
+          style={{
+            flex: 1,
+            paddingVertical: 14,
+            backgroundColor: "#F8FAFC",
+            borderRadius: 10,
+            alignItems: "center",
+            borderWidth: 1,
+            borderColor: "#E2E8F0",
+          }}
+        >
+          <Text style={{ color: "#475569", fontSize: 14, fontWeight: "500" }}>
+            이전으로
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => void handleAnalyze()}
+          disabled={files.length === 0 || isAnalyzing}
+          style={{
+            flex: 2,
+            paddingVertical: 14,
+            backgroundColor: files.length === 0 ? "#94A3B8" : "#3182F6",
+            borderRadius: 10,
+            alignItems: "center",
+            opacity: files.length === 0 ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}>
+            {files.length === 0
+              ? "파일을 업로드해주세요"
+              : `분석 시작하기 (${files.length}장)`}
+          </Text>
+        </Pressable>
       </View>
+
+      {/* 분석 중 오버레이 */}
+      {isAnalyzing ? (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.6)",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: 14,
+              padding: 28,
+              alignItems: "center",
+              minWidth: 200,
+            }}
+          >
+            <ActivityIndicator size="large" color="#3182F6" />
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: "600",
+                color: "#0F172A",
+                marginTop: 16,
+              }}
+            >
+              AI가 계약서를 분석하고 있어요
+            </Text>
+            <Text
+              style={{
+                fontSize: 11,
+                color: "#64748B",
+                marginTop: 4,
+                textAlign: "center",
+              }}
+            >
+              약 10~20초 소요됩니다
+            </Text>
+          </View>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }

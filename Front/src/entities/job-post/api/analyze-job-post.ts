@@ -1,6 +1,13 @@
-import type { JobPostAnalysisResult, ApiJobPostAnalysisResponse } from "../model/types";
-import { mapApiResponseToAnalysisResult } from "../model/types";
-import { MOCK_JOB_ANALYSIS } from "../model/mock-data";
+import { apiClient } from "@/shared/api/axios-instance";
+import {
+  mapApiResponseToAnalysisResult,
+  mapApiResponseToContractResult,
+  type ApiContractAnalysisResponse,
+  type ApiJobPostAnalysisResponse,
+  type ContractAnalysisResult,
+  type JobPostAnalysisResult,
+} from "../model/types";
+import { MOCK_CONTRACT_ANALYSIS, MOCK_JOB_ANALYSIS } from "../model/mock-data";
 
 const USE_MOCK = true; // 백엔드 연결 시 false로 바꾸면 끝
 
@@ -12,51 +19,56 @@ const USE_MOCK = true; // 백엔드 연결 시 false로 바꾸면 끝
  * 2. EXPO_PUBLIC_API_URL 환경변수에 서버 주소 입력
  * 3. 서버 응답 키 이름이 다르면 mapApiResponseToAnalysisResult 함수 수정
  */
-export async function analyzeJobPost(imageUri: string): Promise<JobPostAnalysisResult> {
+export async function analyzeJobPost(
+  imageUri: string,
+): Promise<JobPostAnalysisResult> {
   if (USE_MOCK) {
-    await new Promise<void>((r) => setTimeout(() => r(), 2000));
+    await new Promise<void>((resolve) => setTimeout(resolve, 2000));
     return { ...MOCK_JOB_ANALYSIS };
   }
 
-  // ── 실제 백엔드 연결 코드 (USE_MOCK = false 시 동작) ──
-  const { apiClient } = await import("@/shared/api/axios-instance");
   const formData = new FormData();
   formData.append("image", {
     uri: imageUri,
     type: "image/jpeg",
     name: "job_post.jpg",
-  } as any);
+  } as unknown as Blob);
 
   const { data } = await apiClient.post<ApiJobPostAnalysisResponse>(
     "/analyze/job-post",
     formData,
-    { headers: { "Content-Type": "multipart/form-data" } }
+    { headers: { "Content-Type": "multipart/form-data" } },
   );
-
   return mapApiResponseToAnalysisResult(data);
 }
 
 /**
- * 계약서 이미지를 분석합니다.
- * USE_MOCK을 false로 바꾸면 실제 API 호출
+ * 계약서 이미지를 OCR 분석합니다.
+ *
+ * [목업 → 백엔드 전환 방법]
+ * 1. USE_MOCK을 false로 변경
+ * 2. 백엔드가 ApiContractAnalysisResponse 스키마(snake_case)로 응답
+ * 3. mapApiResponseToContractResult 매퍼가 camelCase로 변환
  */
-export async function analyzeContract(imageUri: string): Promise<any> {
+export async function analyzeContract(
+  imageUri: string,
+): Promise<ContractAnalysisResult> {
   if (USE_MOCK) {
-    const { MOCK_CONTRACT_ANALYSIS } = await import("../model/mock-data");
-    await new Promise<void>((r) => setTimeout(() => r(), 2000));
-    return { ...MOCK_CONTRACT_ANALYSIS };
+    await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+    return MOCK_CONTRACT_ANALYSIS;
   }
 
-  const { apiClient } = await import("@/shared/api/axios-instance");
   const formData = new FormData();
   formData.append("image", {
     uri: imageUri,
-    type: "image/jpeg",
     name: "contract.jpg",
-  } as any);
+    type: "image/jpeg",
+  } as unknown as Blob);
 
-  const { data } = await apiClient.post("/analyze/contract", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-  return data;
+  const { data } = await apiClient.post<ApiContractAnalysisResponse>(
+    "/analyze/contract",
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return mapApiResponseToContractResult(data);
 }

@@ -1,116 +1,306 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import {
-  SafeAreaView, ScrollView, Text, TouchableOpacity, View
-} from "react-native";
-import { ArrowLeft } from "lucide-react-native";
-import type { ContractAnalysisResult } from "@/entities/job-post";
+  HighlightedContractText,
+  IssueDetailSheet,
+  type ContractAnalysisResult,
+  type ContractIssue,
+} from "@/entities/job-post";
 import { ScreenHeader } from "@/shared/ui";
 
-type TabKey = "issues" | "content" | "guide";
-
-interface Props {
+interface ContractAnalysisViewProps {
   result: ContractAnalysisResult;
   onBack: () => void;
   onRegister: () => void;
 }
 
-const ISSUE_STYLES = {
-  danger:  { bg: "#FEF2F2", border: "#EF4444", titleColor: "#991B1B", descColor: "#B91C1C" },
-  warning: { bg: "#FEF9F0", border: "#F59E0B", titleColor: "#92400E", descColor: "#B45309" },
-  info:    { bg: "#EFF6FF", border: "#60A5FA", titleColor: "#1E40AF", descColor: "#1D4ED8" },
-};
+type TabKey = "contract" | "issues";
 
-export function ContractAnalysisView({ result, onBack, onRegister }: Props): JSX.Element {
-  const [activeTab, setActiveTab] = useState<TabKey>("issues");
+export function ContractAnalysisView({
+  result,
+  onBack,
+  onRegister,
+}: ContractAnalysisViewProps): JSX.Element {
+  const [activeTab, setActiveTab] = useState<TabKey>("contract");
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+
+  const selectedIssue = useMemo<ContractIssue | null>(() => {
+    if (selectedIssueId === null) return null;
+    return result.issues.find((i) => i.id === selectedIssueId) ?? null;
+  }, [selectedIssueId, result.issues]);
+
+  const selectedIndex = useMemo<number>(() => {
+    if (selectedIssueId === null) return -1;
+    return result.issues.findIndex((i) => i.id === selectedIssueId);
+  }, [selectedIssueId, result.issues]);
+
+  const handlePrev = (): void => {
+    if (selectedIndex > 0) {
+      setSelectedIssueId(result.issues[selectedIndex - 1].id);
+    }
+  };
+  const handleNext = (): void => {
+    if (selectedIndex >= 0 && selectedIndex < result.issues.length - 1) {
+      setSelectedIssueId(result.issues[selectedIndex + 1].id);
+    }
+  };
+
+  // 계약기간 표시 헬퍼: "2026-04-01" → "2026.04"
+  const contractPeriodLabel = `계약 기간 ${result.contractPeriod.start.slice(0, 7).replace("-", ".")}`;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
+    <SafeAreaView
+      edges={["left", "right", "bottom"]}
+      style={{ flex: 1, backgroundColor: "#F8FAFC" }}
+    >
       <ScreenHeader showLogo />
-      <View style={{ backgroundColor: "#fff", borderBottomWidth: 0.5, borderBottomColor: "#E5E7EB", padding: 16, flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <TouchableOpacity onPress={onBack}>
-          <ArrowLeft size={22} color="#374151" />
-        </TouchableOpacity>
-        <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>AI 계약서 분석</Text>
+
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          padding: 16,
+          gap: 8,
+        }}
+      >
+        <Pressable onPress={onBack}>
+          <Ionicons name="arrow-back" size={24} color="#0F172A" />
+        </Pressable>
+        <Text style={{ fontSize: 18, fontWeight: "500", color: "#0F172A" }}>
+          AI 계약서 분석
+        </Text>
       </View>
 
-      <ScrollView style={{ flex: 1, padding: 16 }} contentContainerStyle={{ paddingBottom: 100 }}>
-        <View style={{ backgroundColor: "#F0FDF4", borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 0.5, borderColor: "#86EFAC" }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <Text style={{ fontSize: 15, fontWeight: "700", color: "#166534" }}>{result.workplaceName}</Text>
-            <View style={{ backgroundColor: "#DCFCE7", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
-              <Text style={{ fontSize: 11, color: "#15803D", fontWeight: "600" }}>계약 기간 {result.contractPeriod}</Text>
-            </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+      >
+        {/* 요약 카드 */}
+        <View
+          style={{
+            backgroundColor: "#E1F5EE",
+            borderRadius: 14,
+            padding: 16,
+            marginBottom: 16,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: "500", color: "#04342C" }}>
+              {result.workplaceName}
+            </Text>
+            <Text style={{ fontSize: 12, color: "#0F6E56" }}>
+              {contractPeriodLabel}
+            </Text>
           </View>
-          <View style={{ flexDirection: "row", gap: 16 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+            }}
+          >
             <View>
-              <Text style={{ fontSize: 11, color: "#15803D", marginBottom: 2 }}>시급</Text>
-              <Text style={{ fontSize: 18, fontWeight: "700", color: "#166534" }}>{result.hourlyWage.toLocaleString()}원</Text>
+              <Text
+                style={{ fontSize: 11, color: "#0F6E56", marginBottom: 4 }}
+              >
+                시급
+              </Text>
+              <Text
+                style={{ fontSize: 20, fontWeight: "700", color: "#04342C" }}
+              >
+                {`${result.hourlyWage.toLocaleString()}원`}
+              </Text>
             </View>
             <View>
-              <Text style={{ fontSize: 11, color: "#15803D", marginBottom: 2 }}>예상 월급</Text>
-              <Text style={{ fontSize: 18, fontWeight: "700", color: "#166534" }}>약 {Math.round(result.estimatedMonthlyPay / 10000)}만원</Text>
+              <Text
+                style={{ fontSize: 11, color: "#0F6E56", marginBottom: 4 }}
+              >
+                예상 월급
+              </Text>
+              <Text
+                style={{ fontSize: 20, fontWeight: "700", color: "#04342C" }}
+              >
+                {`약 ${Math.round(result.estimatedMonthlyWage / 10000)}만원`}
+              </Text>
             </View>
           </View>
         </View>
 
+        {/* 탭 */}
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
-          {([
-            { key: "issues", label: `발견 이슈 (${result.issues.length})`, isActive: activeTab === "issues", activeBg: "#EF4444", activeText: "#fff" },
-            { key: "content", label: "계약 내용", isActive: activeTab === "content", activeBg: "#374151", activeText: "#fff" },
-            { key: "guide", label: "법률 가이드", isActive: activeTab === "guide", activeBg: "#374151", activeText: "#fff" },
-          ] as { key: TabKey; label: string; isActive: boolean; activeBg: string; activeText: string }[]).map((tab) => (
-            <TouchableOpacity
-              key={tab.key}
-              onPress={() => setActiveTab(tab.key)}
+          <Pressable
+            onPress={() => setActiveTab("contract")}
+            style={{
+              flex: 1,
+              paddingVertical: 10,
+              borderRadius: 8,
+              backgroundColor:
+                activeTab === "contract" ? "#EF4444" : "#FFFFFF",
+              borderWidth: 1,
+              borderColor: activeTab === "contract" ? "#EF4444" : "#E2E8F0",
+              alignItems: "center",
+            }}
+          >
+            <Text
               style={{
-                flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: "center",
-                backgroundColor: tab.isActive ? tab.activeBg : "#fff",
-                borderWidth: 0.5, borderColor: tab.isActive ? tab.activeBg : "#E5E7EB",
+                color: activeTab === "contract" ? "#FFFFFF" : "#475569",
+                fontWeight: "500",
+                fontSize: 14,
               }}
             >
-              <Text style={{ fontSize: 12, fontWeight: "600", color: tab.isActive ? tab.activeText : "#6B7280" }}>
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+              {`계약서 보기 (${result.issues.length})`}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setActiveTab("issues")}
+            style={{
+              flex: 1,
+              paddingVertical: 10,
+              borderRadius: 8,
+              backgroundColor: activeTab === "issues" ? "#EF4444" : "#FFFFFF",
+              borderWidth: 1,
+              borderColor: activeTab === "issues" ? "#EF4444" : "#E2E8F0",
+              alignItems: "center",
+            }}
+          >
+            <Text
+              style={{
+                color: activeTab === "issues" ? "#FFFFFF" : "#475569",
+                fontWeight: "500",
+                fontSize: 14,
+              }}
+            >
+              이슈 목록
+            </Text>
+          </Pressable>
         </View>
 
-        {activeTab === "issues" && (
-          <View style={{ gap: 8 }}>
-            {result.issues.map((issue, idx) => {
-              const s = ISSUE_STYLES[issue.level];
-              return (
-                <View key={idx} style={{ backgroundColor: s.bg, borderLeftWidth: 3, borderLeftColor: s.border, borderRadius: 0, paddingVertical: 10, paddingRight: 12, paddingLeft: 12 }}>
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: s.titleColor, marginBottom: 3 }}>{issue.title}</Text>
-                  <Text style={{ fontSize: 12, color: s.descColor, marginBottom: 3 }}>{issue.description}</Text>
-                  <Text style={{ fontSize: 11, color: "#6B7280" }}>관련 법률: {issue.legalBasis}</Text>
-                </View>
-              );
-            })}
+        {/* 본문 */}
+        {activeTab === "contract" ? (
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: 12,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: "#E2E8F0",
+            }}
+          >
+            <HighlightedContractText
+              segments={result.textSegments}
+              issues={result.issues}
+              onIssuePress={(id) => setSelectedIssueId(id)}
+            />
+            <View
+              style={{
+                marginTop: 16,
+                padding: 10,
+                backgroundColor: "#F8FAFC",
+                borderRadius: 8,
+              }}
+            >
+              <Text
+                style={{ fontSize: 12, color: "#64748B", textAlign: "center" }}
+              >
+                형광펜 부분을 탭하면 상세 설명을 볼 수 있어요
+              </Text>
+            </View>
           </View>
-        )}
-
-        {activeTab === "content" && (
-          <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 16, borderWidth: 0.5, borderColor: "#E5E7EB", alignItems: "center" }}>
-            <Text style={{ fontSize: 13, color: "#6B7280" }}>계약 내용 탭 — 준비 중</Text>
-          </View>
-        )}
-
-        {activeTab === "guide" && (
-          <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 16, borderWidth: 0.5, borderColor: "#E5E7EB", alignItems: "center" }}>
-            <Text style={{ fontSize: 13, color: "#6B7280" }}>법률 가이드 탭 — 준비 중</Text>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {result.issues.map((issue) => (
+              <Pressable
+                key={issue.id}
+                onPress={() => setSelectedIssueId(issue.id)}
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 12,
+                  padding: 14,
+                  borderLeftWidth: 4,
+                  borderLeftColor:
+                    issue.level === "danger"
+                      ? "#EF4444"
+                      : issue.level === "warning"
+                        ? "#F97316"
+                        : "#3B82F6",
+                  borderWidth: 1,
+                  borderColor: "#E2E8F0",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontWeight: "500",
+                    color: "#0F172A",
+                    marginBottom: 4,
+                  }}
+                >
+                  {`${issue.number}. ${issue.title}`}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: "#64748B",
+                    lineHeight: 20,
+                    marginBottom: 6,
+                  }}
+                >
+                  {issue.description}
+                </Text>
+                <Text style={{ fontSize: 11, color: "#94A3B8" }}>
+                  {`관련 법령: ${issue.legalBasis.law}`}
+                </Text>
+              </Pressable>
+            ))}
           </View>
         )}
       </ScrollView>
 
-      <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "#fff", borderTopWidth: 0.5, borderTopColor: "#E5E7EB", padding: 16 }}>
-        <TouchableOpacity
+      {/* 하단 고정 버튼 */}
+      <View
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          padding: 16,
+          backgroundColor: "#FFFFFF",
+          borderTopWidth: 1,
+          borderTopColor: "#E2E8F0",
+        }}
+      >
+        <Pressable
           onPress={onRegister}
-          style={{ paddingVertical: 14, backgroundColor: "#111827", borderRadius: 12, alignItems: "center" }}
+          style={{
+            backgroundColor: "#2563EB",
+            paddingVertical: 14,
+            borderRadius: 10,
+            alignItems: "center",
+          }}
         >
-          <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>사업장 등록하기 →</Text>
-        </TouchableOpacity>
+          <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "500" }}>
+            사업장 등록하기 →
+          </Text>
+        </Pressable>
       </View>
+
+      {/* 바텀시트 */}
+      <IssueDetailSheet
+        issue={selectedIssue}
+        totalCount={result.issues.length}
+        onClose={() => setSelectedIssueId(null)}
+        onPrev={handlePrev}
+        onNext={handleNext}
+        hasPrev={selectedIndex > 0}
+        hasNext={selectedIndex >= 0 && selectedIndex < result.issues.length - 1}
+      />
     </SafeAreaView>
   );
 }
