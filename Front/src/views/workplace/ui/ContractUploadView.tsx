@@ -244,6 +244,91 @@ export function ContractUploadView({
           </View>
         </View>
 
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "#fff",
+              borderRadius: 12,
+              padding: 12,
+              borderWidth: 0.5,
+              borderColor: "#E5E7EB",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: "600",
+                color: "#374151",
+                marginBottom: 8,
+              }}
+            >
+              필수 확인 사항
+            </Text>
+            {[
+              "근로계약서 전체 페이지",
+              "서명 및 날인이 선명한 사진",
+              "근무 시간, 임금, 휴일 등 조항 포함",
+            ].map((item) => (
+              <View
+                key={item}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  gap: 4,
+                  marginBottom: 4,
+                }}
+              >
+                <Text style={{ fontSize: 11, color: "#10B981" }}>✓</Text>
+                <Text style={{ fontSize: 11, color: "#6B7280", flex: 1 }}>
+                  {item}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "#fff",
+              borderRadius: 12,
+              padding: 12,
+              borderWidth: 0.5,
+              borderColor: "#E5E7EB",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: "600",
+                color: "#374151",
+                marginBottom: 8,
+              }}
+            >
+              촬영 팁
+            </Text>
+            {[
+              "자연광에서 촬영하면 더 선명합니다",
+              "문서를 평평하게 펼쳐주세요",
+              "그림자가 생기지 않도록 주의",
+            ].map((item) => (
+              <View
+                key={item}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  gap: 4,
+                  marginBottom: 4,
+                }}
+              >
+                <Text style={{ fontSize: 11, color: "#3B82F6" }}>✓</Text>
+                <Text style={{ fontSize: 11, color: "#6B7280", flex: 1 }}>
+                  {item}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
         <View
           style={{
             backgroundColor: "#EFF6FF",

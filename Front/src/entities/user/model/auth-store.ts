@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { persistStorage } from "@/shared/lib/zustand-storage";
 
 interface AuthState {
   token: string | null;
@@ -9,12 +11,21 @@ interface AuthState {
   clearAuth: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  token: null,
-  userId: null,
-  name: null,
-  email: null,
-  setAuth: (token, userId, name, email) =>
-    set({ token, userId, name, email }),
-  clearAuth: () => set({ token: null, userId: null, name: null, email: null }),
-}));
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      token: null,
+      userId: null,
+      name: null,
+      email: null,
+      setAuth: (token, userId, name, email) =>
+        set({ token, userId, name, email }),
+      clearAuth: () =>
+        set({ token: null, userId: null, name: null, email: null }),
+    }),
+    {
+      name: "albasave-auth",
+      storage: persistStorage,
+    },
+  ),
+);

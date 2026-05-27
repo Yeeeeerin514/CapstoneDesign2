@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { apiClient } from "@/shared/api/axios-instance";
 import {
   mapJobPostingApiResponse,
@@ -9,24 +10,46 @@ import {
 } from "../model/types";
 
 /**
+ * 이미지 URI를 백엔드로 전송 가능한 FormData 필드로 변환.
+ * - Web: blob/data URL을 fetch해 Blob으로 변환
+ * - Native: { uri, type, name } 객체 (RN 자체 멀티파트 처리)
+ */
+async function buildImageFormData(
+  imageUri: string,
+  filename: string,
+): Promise<FormData> {
+  const formData = new FormData();
+  if (Platform.OS === "web") {
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
+    formData.append("image", blob, filename);
+  } else {
+    formData.append("image", {
+      uri: imageUri,
+      type: "image/jpeg",
+      name: filename,
+    } as unknown as Blob);
+  }
+  return formData;
+}
+
+/**
  * 공고문 이미지 분석.
  * POST /api/job-postings/analyze  (multipart/form-data, field=image)
  */
 export async function analyzeJobPost(
   imageUri: string,
 ): Promise<JobPostAnalysisResult> {
-  const formData = new FormData();
-  formData.append("image", {
-    uri: imageUri,
-    type: "image/jpeg",
-    name: "job_post.jpg",
-  } as unknown as Blob);
+  const formData = await buildImageFormData(imageUri, "job_post.jpg");
 
   const { data } = await apiClient.post<ApiJobPostingAnalysisResponse>(
     "/job-postings/analyze",
     formData,
     {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers:
+        Platform.OS === "web"
+          ? undefined
+          : { "Content-Type": "multipart/form-data" },
       timeout: 60_000,
     },
   );
@@ -43,18 +66,16 @@ export async function analyzeContract(
   imageUri: string,
   fallbackWorkplaceName: string,
 ): Promise<ContractAnalysisResult> {
-  const formData = new FormData();
-  formData.append("image", {
-    uri: imageUri,
-    type: "image/jpeg",
-    name: "contract.jpg",
-  } as unknown as Blob);
+  const formData = await buildImageFormData(imageUri, "contract.jpg");
 
   const { data } = await apiClient.post<ApiContractAnalysisResponse>(
     "/contracts/analyze",
     formData,
     {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers:
+        Platform.OS === "web"
+          ? undefined
+          : { "Content-Type": "multipart/form-data" },
       timeout: 60_000,
     },
   );

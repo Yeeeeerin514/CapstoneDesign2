@@ -19,6 +19,8 @@ public record ExtractedJobPosting(
         List<String> benefits,
         List<String> suspiciousPhrases,
         List<String> missingInformation,
+        List<LlmConcern> llmConcerns,
+        String overallAssessment,
         String rawSummary
 ) {
     public static ExtractedJobPosting empty() {
@@ -39,6 +41,8 @@ public record ExtractedJobPosting(
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
+                null,
                 null
         );
     }

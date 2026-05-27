@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { apiClient } from "@/shared/api/axios-instance";
 import type { ContractAnalysis } from "../model/types";
 
@@ -54,17 +55,26 @@ export async function analyzeContract(
   imageUri: string,
 ): Promise<ContractAnalysis> {
   const formData = new FormData();
-  formData.append("image", {
-    uri: imageUri,
-    type: "image/jpeg",
-    name: "contract.jpg",
-  } as unknown as Blob);
+  if (Platform.OS === "web") {
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
+    formData.append("image", blob, "contract.jpg");
+  } else {
+    formData.append("image", {
+      uri: imageUri,
+      type: "image/jpeg",
+      name: "contract.jpg",
+    } as unknown as Blob);
+  }
 
   const { data } = await apiClient.post<ApiContractAnalysisResponse>(
     "/contracts/analyze",
     formData,
     {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers:
+        Platform.OS === "web"
+          ? undefined
+          : { "Content-Type": "multipart/form-data" },
       timeout: 60_000,
     },
   );

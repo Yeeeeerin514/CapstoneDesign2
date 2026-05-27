@@ -4,6 +4,7 @@ import com.albasave.albasave_server.jobposting.dto.BusinessCandidate;
 import com.albasave.albasave_server.jobposting.dto.ConcernItem;
 import com.albasave.albasave_server.jobposting.dto.ExternalRiskCheck;
 import com.albasave.albasave_server.jobposting.dto.ExtractedJobPosting;
+import com.albasave.albasave_server.jobposting.dto.LlmConcern;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -21,6 +22,7 @@ public class JobPostingRiskAnalyzer {
             List<ExternalRiskCheck> externalChecks
     ) {
         List<ConcernItem> concerns = new ArrayList<>();
+        addLlmConcerns(posting, concerns);
         addPostingConcerns(posting, concerns);
         addBusinessConcerns(candidates, concerns);
         addExternalConcerns(externalChecks, concerns);
@@ -98,6 +100,21 @@ public class JobPostingRiskAnalyzer {
         }
 
         return report.toString();
+    }
+
+    private void addLlmConcerns(ExtractedJobPosting posting, List<ConcernItem> concerns) {
+        for (LlmConcern c : safeList(posting.llmConcerns())) {
+            if (c == null || c.title() == null || c.description() == null) continue;
+            String type = "LLM_" + (c.category() == null ? "OTHER" : c.category());
+            String severity = c.severity() == null ? "MEDIUM" : c.severity();
+            concerns.add(new ConcernItem(
+                    type,
+                    severity,
+                    c.title(),
+                    c.description(),
+                    c.evidence()
+            ));
+        }
     }
 
     private void addPostingConcerns(ExtractedJobPosting posting, List<ConcernItem> concerns) {
@@ -244,7 +261,7 @@ public class JobPostingRiskAnalyzer {
         return false;
     }
 
-    private List<String> safeList(List<String> values) {
+    private <T> List<T> safeList(List<T> values) {
         return values == null ? List.of() : values;
     }
 

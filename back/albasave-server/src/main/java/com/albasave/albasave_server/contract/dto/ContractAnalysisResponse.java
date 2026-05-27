@@ -29,5 +29,8 @@ public class ContractAnalysisResponse {
     /** S3 이미지 URL */
     private String imageUrl;
 
+    /** 진정서 작성용 정형 데이터 (사업자번호, 근로요일 enum, 근로시각 LocalTime, 입사일 LocalDate, 시급) */
+    private ContractFactSheet factSheet;
+
     private LocalDateTime createdAt;
 }

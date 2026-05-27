@@ -42,6 +42,9 @@ albasave:
     csv-directory: ${LOCALDATA_CSV_DIR:C:/Users/82103/Desktop/capstone-data}
   wage-arrears:
     csv-path: ${WAGE_ARREARS_CSV_PATH:}
+  law-api:
+    oc: ${LAW_API_OC:}
+    base-url: ${LAW_API_BASE_URL:https://www.law.go.kr/DRF}
   public-api:
     nts:
       service-key: ${NTS_SERVICE_KEY:}
