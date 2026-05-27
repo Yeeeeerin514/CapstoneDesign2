@@ -5,7 +5,6 @@ import com.albasave.albasave_server.contract.dto.ContractAnalysisResponse;
 import com.albasave.albasave_server.contract.dto.ContractViolation;
 import com.albasave.albasave_server.contract.dto.ExtractedContractInfo;
 import com.albasave.albasave_server.contract.repository.LaborContractRepository;
-import com.albasave.albasave_server.global.config.AnthropicProperties;
 import com.albasave.albasave_server.jobposting.config.OpenAiProperties;
 import com.albasave.albasave_server.jobposting.service.JobPostingImageStorageService;
 import com.albasave.albasave_server.report.service.WageCalculationService;
@@ -33,7 +32,6 @@ public class LaborContractAnalysisService {
     private final LaborContractRepository contractRepository;
     private final JobPostingImageStorageService imageStorageService;
     private final OpenAiProperties openAiProperties;
-    private final AnthropicProperties anthropicProperties;
     private final ObjectMapper objectMapper;
 
     // ─────────────────────────────────────────────────────────────────
@@ -110,15 +108,8 @@ public class LaborContractAnalysisService {
     // ─────────────────────────────────────────────────────────────────
 
     private String callOpenAi(String base64Image) {
-        // Claude API 우선 시도
-        if (anthropicProperties.isConfigured()) {
-            String result = callClaude(base64Image);
-            if (result != null) return result;
-        }
-
-        // OpenAI 폴백
         if (!openAiProperties.isConfigured()) {
-            return buildUnavailableResponse("AI API Key가 설정되지 않았습니다. ANTHROPIC_API_KEY 또는 OPENAI_API_KEY를 설정해주세요.");
+            return buildUnavailableResponse("OPENAI_API_KEY가 설정되지 않았습니다.");
         }
 
         String prompt = buildPrompt();
@@ -155,49 +146,9 @@ public class LaborContractAnalysisService {
             String msg = e.getMessage();
             log.error("[계약서 분석 OpenAI 호출 실패] {}", msg);
             if (msg != null && msg.contains("insufficient_quota")) {
-                return buildUnavailableResponse("OpenAI API 크레딧이 소진되었습니다. ANTHROPIC_API_KEY를 설정하거나 OpenAI 크레딧을 충전해주세요.");
+                return buildUnavailableResponse("OpenAI API 크레딧이 소진되었습니다. 크레딧을 충전해주세요.");
             }
             return buildUnavailableResponse("AI 분석 서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.");
-        }
-    }
-
-    /** Claude (Anthropic) API 호출 */
-    private String callClaude(String base64Image) {
-        try {
-            RestClient client = RestClient.create();
-            String requestBody = objectMapper.writeValueAsString(Map.of(
-                    "model", anthropicProperties.model(),
-                    "max_tokens", 2000,
-                    "messages", List.of(Map.of(
-                            "role", "user",
-                            "content", List.of(
-                                    Map.of("type", "image",
-                                            "source", Map.of(
-                                                    "type", "base64",
-                                                    "media_type", "image/jpeg",
-                                                    "data", base64Image
-                                            )),
-                                    Map.of("type", "text", "text", buildPrompt())
-                            )
-                    ))
-            ));
-
-            String response = client.post()
-                    .uri(anthropicProperties.baseUrl() + "/messages")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + anthropicProperties.apiKey())
-                    .header("x-api-key", anthropicProperties.apiKey())
-                    .header("anthropic-version", "2023-06-01")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(requestBody)
-                    .retrieve()
-                    .body(String.class);
-
-            JsonNode json = objectMapper.readTree(response);
-            return json.path("content").path(0).path("text").asText();
-
-        } catch (Exception e) {
-            log.error("[계약서 분석 Claude 호출 실패] {}", e.getMessage());
-            return null;
         }
     }
 

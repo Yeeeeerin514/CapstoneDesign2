@@ -3,6 +3,7 @@ package com.albasave.albasave_server.jobposting.service;
 import com.albasave.albasave_server.jobposting.dto.BusinessCandidate;
 import com.albasave.albasave_server.jobposting.dto.ExternalRiskCheck;
 import com.albasave.albasave_server.jobposting.dto.ExtractedJobPosting;
+import com.albasave.albasave_server.wagearrears.service.WageArrearsLookupService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -11,14 +12,14 @@ import java.util.List;
 @Service
 public class ExternalBusinessRiskService {
     private final NtsBusinessStatusClient ntsBusinessStatusClient;
-    private final Work24WageArrearsClient work24WageArrearsClient;
+    private final WageArrearsLookupService wageArrearsLookupService;
 
     public ExternalBusinessRiskService(
             NtsBusinessStatusClient ntsBusinessStatusClient,
-            Work24WageArrearsClient work24WageArrearsClient
+            WageArrearsLookupService wageArrearsLookupService
     ) {
         this.ntsBusinessStatusClient = ntsBusinessStatusClient;
-        this.work24WageArrearsClient = work24WageArrearsClient;
+        this.wageArrearsLookupService = wageArrearsLookupService;
     }
 
     public List<ExternalRiskCheck> check(ExtractedJobPosting posting, List<BusinessCandidate> candidates) {
@@ -28,7 +29,7 @@ public class ExternalBusinessRiskService {
                 posting.brandName(),
                 candidates.isEmpty() ? null : candidates.get(0).businessName()
         );
-        checks.add(work24WageArrearsClient.check(businessName));
+        checks.add(wageArrearsLookupService.check(businessName));
         checks.add(ntsBusinessStatusClient.check(posting.businessRegistrationNumber()));
         return checks;
     }

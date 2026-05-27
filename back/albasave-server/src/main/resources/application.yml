@@ -40,24 +40,15 @@ albasave:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173}
   local-data:
     csv-directory: ${LOCALDATA_CSV_DIR:C:/Users/82103/Desktop/capstone-data}
+  wage-arrears:
+    csv-path: ${WAGE_ARREARS_CSV_PATH:}
   public-api:
-    work24:
-      auth-key: ${WORK24_AUTH_KEY:}
-      wage-arrears-url: ${WORK24_WAGE_ARREARS_URL:https://www.work24.go.kr/cm/openapi/app-form/sa-cvpl-list.do}
     nts:
       service-key: ${NTS_SERVICE_KEY:}
       status-url: ${NTS_STATUS_URL:https://api.odcloud.kr/api/nts-businessman/v1/status}
     sbiz:
       service-key: ${SBIZ_SERVICE_KEY:}
 
-fcm:
-  server-key: ${FCM_SERVER_KEY:}
-
 jwt:
   secret: ${JWT_SECRET:albasave-default-secret-key-must-be-at-least-256-bits-long-for-hs256}
   expiration-ms: ${JWT_EXPIRATION_MS:86400000}
-
-anthropic:
-  api-key: ${ANTHROPIC_API_KEY:}
-  model: ${ANTHROPIC_MODEL:claude-haiku-4-5-20251001}
-  base-url: https://api.anthropic.com/v1

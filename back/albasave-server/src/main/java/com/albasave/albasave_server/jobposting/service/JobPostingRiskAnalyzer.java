@@ -13,7 +13,7 @@ import java.util.Locale;
 
 @Component
 public class JobPostingRiskAnalyzer {
-    private static final int MINIMUM_WAGE_2026 = 10_320;
+    private static final int MINIMUM_WAGE_2026 = 10_030;
 
     public List<ConcernItem> analyze(
             ExtractedJobPosting posting,
@@ -106,7 +106,7 @@ public class JobPostingRiskAnalyzer {
                     "WAGE",
                     "HIGH",
                     "최저임금 미달 가능성",
-                    "추출된 시급이 2026년 적용 최저임금 10,320원보다 낮습니다. 수습기간, 포괄임금, 주휴수당 포함 여부와 무관하게 실제 지급 조건을 반드시 확인해야 합니다.",
+                    "추출된 시급이 2026년 적용 최저임금 10,030원보다 낮습니다. 수습기간, 포괄임금, 주휴수당 포함 여부와 무관하게 실제 지급 조건을 반드시 확인해야 합니다.",
                     posting.hourlyWageText()
             ));
         }

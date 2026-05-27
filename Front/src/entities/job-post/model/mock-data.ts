@@ -4,8 +4,9 @@ import type {
   JobPostAnalysisResult,
 } from "./types";
 
-// 공고 분석 결과 목업
+// 공고 분석 결과 목업 (개발 중 UI 미리보기 용도, 실서비스 호출은 analyzeJobPost 사용)
 export const MOCK_JOB_ANALYSIS: JobPostAnalysisResult = {
+  analysisId: null,
   workplaceName: "OO카페 강남점",
   hourlyWage: 10000,
   workHours: "09:00~18:00",
@@ -13,11 +14,13 @@ export const MOCK_JOB_ANALYSIS: JobPostAnalysisResult = {
   businessStatus: "정상",
   wageDelinquencyCount: 2,
   minimumWage2026: 10030,
+  summary: "임금체불 이력 2건, 최저임금 미달, 주휴수당 미언급",
+  imageUrl: null,
   issues: [
     {
       level: "danger",
       title: "임금체불 이력 있음",
-      description: "고용24 조회 결과 2건 접수",
+      description: "고용노동부 명단공개 데이터 2건 일치",
     },
     {
       level: "danger",
@@ -34,11 +37,14 @@ export const MOCK_JOB_ANALYSIS: JobPostAnalysisResult = {
 
 // 계약서 분석 결과 목업
 export const MOCK_CONTRACT_ANALYSIS: ContractAnalysisResult = {
+  contractId: null,
   workplaceName: "OO카페 강남점",
   contractPeriod: "2026.04",
   hourlyWage: 10000,
   estimatedMonthlyPay: 2080000,
   overallRisk: "high",
+  summary: "최저임금 미달 + 주휴수당 미명시 + 연장수당 조항 누락",
+  imageUrl: null,
   issues: [
     {
       level: "warning",
@@ -63,5 +69,5 @@ export const MOCK_CONTRACT_ANALYSIS: ContractAnalysisResult = {
   ],
 };
 
-// 관심업장 초기 목업 (빈 배열 — 실제로 별 눌러서 추가함)
+// 관심업장 초기 목업
 export const MOCK_FAVORITE_WORKPLACES: FavoriteWorkplace[] = [];

@@ -3,7 +3,7 @@ import { env } from "@/shared/config/env";
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: env.apiUrl,
-  timeout: 10_000,
+  timeout: 15_000,
   headers: { "Content-Type": "application/json" },
 });
 
@@ -15,14 +15,4 @@ apiClient.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
-});
-
-export const claudeClient: AxiosInstance = axios.create({
-  baseURL: "https://api.anthropic.com/v1",
-  timeout: 30_000,
-  headers: {
-    "Content-Type": "application/json",
-    "anthropic-version": "2023-06-01",
-    "x-api-key": env.anthropicKey,
-  },
 });
