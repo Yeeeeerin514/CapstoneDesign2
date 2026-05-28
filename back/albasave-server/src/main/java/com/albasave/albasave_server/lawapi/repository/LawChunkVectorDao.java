@@ -72,10 +72,10 @@ public class LawChunkVectorDao {
         em.createNativeQuery(
                 """
                 CREATE INDEX IF NOT EXISTS ix_law_chunks_embedding
-                ON law_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)
+                ON law_chunks USING hnsw (embedding vector_cosine_ops)
                 """
         ).executeUpdate();
-        log.info("[LawChunkVectorDao] embedding({}) 컬럼 + ivfflat 인덱스 보강 완료", dimensions);
+        log.info("[LawChunkVectorDao] embedding({}) 컬럼 + hnsw 인덱스 보강 완료", dimensions);
     }
 
     /** 임베딩이 비어있는 청크 ID 목록 (적재 배치에서 미완료분만 보충용) */

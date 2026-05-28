@@ -9,6 +9,7 @@ import com.albasave.albasave_server.contract.repository.LaborContractRepository;
 import com.albasave.albasave_server.jobposting.config.OpenAiProperties;
 import com.albasave.albasave_server.jobposting.service.JobPostingImageStorageService;
 import com.albasave.albasave_server.lawapi.dto.LawArticle;
+import com.albasave.albasave_server.lawapi.dto.LawChunkMatch;
 import com.albasave.albasave_server.lawapi.service.LegalContextService;
 import com.albasave.albasave_server.report.service.WageCalculationService;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -52,29 +53,49 @@ public class LaborContractAnalysisService {
         // 1. S3 업로드 (실패해도 분석은 계속)
         String imageUrl = imageStorageService.upload(image).orElse(null);
 
-        // 2. OpenAI vision으로 계약서 분석
         String base64Image = encodeImage(image);
-        String rawAnalysis = callOpenAi(base64Image);
-        String cleanedJson = cleanJson(rawAnalysis);
 
-        // 3. JSON 파싱
-        ExtractedContractInfo extractedInfo = parseExtractedInfo(cleanedJson);
-        List<ContractViolation> violations = new java.util.ArrayList<>(parseViolations(cleanedJson));
-        String summary = parseSummary(cleanedJson);
+        // 2-A. [Level 2 — 1차 LLM] Vision으로 추출만
+        String extractRaw = callOpenAiExtract(base64Image);
+        String extractJson = cleanJson(extractRaw);
+        ExtractedContractInfo extractedInfo = parseExtractedInfo(extractJson);
 
-        // 3-1. 시급 미명시 시 월급/일급에서 역산
+        // 2-B. 시급 미명시 시 월급/일급에서 역산
         if (extractedInfo != null) {
             applyWageCalculation(extractedInfo);
         }
 
-        // 룰베이스 추가 검증 (역산 시급 포함)
+        // 2-C. [Level 1 RAG] 추출 정보로 관련 법령 의미 검색
+        String retrievalQuery = buildRetrievalQuery(extractedInfo);
+        List<LawChunkMatch> retrievedArticles =
+                legalContextService.searchSimilar(retrievalQuery, 5);
+        log.info("[계약서 RAG] 검색 쿼리='{}' → {}개 조문 검색됨",
+                truncate(retrievalQuery, 80), retrievedArticles.size());
+
+        // 2-D. [Level 2 — 2차 LLM] 추출 정보 + 검색된 조문 → 위반 판단
+        List<ContractViolation> violations = new java.util.ArrayList<>(
+                callOpenAiJudge(extractedInfo, retrievedArticles)
+        );
+
+        // 3. 룰베이스 추가 검증 (역산 시급 포함)
         violations.addAll(ruleBasedCheck(extractedInfo));
 
-        // RAG Phase A: 각 violation에 법제처 API에서 받은 조문 본문 자동 첨부
+        // 3-1. 중복 제거 (같은 type이 LLM + 룰베이스 양쪽에서 나올 수 있음)
+        violations = dedupeViolations(violations);
+
+        // 4. legalBasisExcerpt 채우기:
+        //    각 violation의 description으로 의미 검색 → top-1 조문 본문 첨부
+        //    검색 실패 시 기존 매핑(Level 0)으로 폴백
         for (ContractViolation v : violations) {
-            legalContextService.findArticleForViolation(v.getType())
-                    .map(this::formatArticleExcerpt)
-                    .ifPresent(v::setLegalBasisExcerpt);
+            attachLegalContext(v);
+        }
+
+        // 5. 종합 요약: 1차 응답의 summary 우선, 없으면 기본 메시지
+        String summary = parseSummary(extractJson);
+        if (summary == null || summary.isBlank()) {
+            summary = violations.isEmpty()
+                    ? "분석된 계약서에서 명확한 위반 사항은 발견되지 않았습니다."
+                    : String.format("총 %d개의 점검 항목이 발견되었습니다. 상세 내용을 확인하세요.", violations.size());
         }
 
         boolean hasViolation = !violations.isEmpty();
@@ -257,15 +278,183 @@ public class LaborContractAnalysisService {
     }
 
     // ─────────────────────────────────────────────────────────────────
+    //  Level 2 RAG: 의미 검색 쿼리 빌드 + 2차 위반 판단 + 헬퍼
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * 추출 정보로부터 의미 검색용 자유 텍스트 쿼리를 만든다.
+     * 주요 수치/조항을 자연어로 풀어서 임베딩 검색의 신호를 강화.
+     */
+    private String buildRetrievalQuery(ExtractedContractInfo info) {
+        if (info == null) {
+            return "근로계약서 필수 기재사항 임금 근로시간 휴게 주휴수당 연차";
+        }
+        StringBuilder sb = new StringBuilder();
+        Double hpd = info.getWorkingHoursPerDay();
+        Integer dpw = info.getWorkingDaysPerWeek();
+        if (hpd != null && dpw != null) {
+            sb.append("1일 ").append(hpd).append("시간, 주 ").append(dpw).append("일 근무 ");
+        }
+        Integer wage = info.getEffectiveHourlyWage();
+        if (wage != null) sb.append("시급 ").append(wage).append("원 ");
+        if (info.getMonthlyWage() != null) sb.append("월급 ").append(info.getMonthlyWage()).append("원 ");
+
+        if (Boolean.FALSE.equals(info.getBreakTimeMentioned())) sb.append("휴게시간 미명시 ");
+        if (Boolean.FALSE.equals(info.getWeeklyHolidayAllowanceMentioned())) sb.append("주휴수당 미명시 ");
+        if (Boolean.FALSE.equals(info.getOvertimeAllowanceMentioned())) sb.append("연장수당 미명시 ");
+        if (Boolean.FALSE.equals(info.getAnnualLeaveMentioned())) sb.append("연차유급휴가 미명시 ");
+
+        if (sb.length() == 0) sb.append("근로계약서 위반 검토 임금 근로시간 휴게 주휴수당 연차");
+        return sb.toString().trim();
+    }
+
+    /**
+     * Level 2 — 2차 호출: 추출 정보 + 검색된 조문을 근거로 위반 판단.
+     * Vision 불필요 (text-only) → gpt-4o-mini로도 충분.
+     */
+    private List<ContractViolation> callOpenAiJudge(
+            ExtractedContractInfo info,
+            List<LawChunkMatch> retrievedArticles
+    ) {
+        if (!openAiProperties.isConfigured() || info == null) return List.of();
+
+        String prompt = buildJudgePrompt(info, retrievedArticles);
+        try {
+            RestClient client = RestClient.create();
+            // text-only이므로 gpt-4o-mini 사용 (비용 절감, 충분히 정확)
+            String requestBody = objectMapper.writeValueAsString(Map.of(
+                    "model", "gpt-4o-mini",
+                    "messages", List.of(Map.of("role", "user", "content", prompt)),
+                    "max_tokens", 1500,
+                    "temperature", 0
+            ));
+
+            String response = client.post()
+                    .uri(openAiProperties.baseUrl() + "/chat/completions")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + openAiProperties.apiKey())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(requestBody)
+                    .retrieve()
+                    .body(String.class);
+
+            JsonNode root = objectMapper.readTree(response);
+            String content = root.path("choices").path(0).path("message").path("content").asText();
+            String cleaned = cleanJson(content);
+            JsonNode parsed = objectMapper.readTree(cleaned);
+            JsonNode arr = parsed.path("violations");
+            if (!arr.isArray()) return List.of();
+
+            return objectMapper.convertValue(arr, new TypeReference<List<ContractViolation>>() {});
+        } catch (Exception e) {
+            log.warn("[계약서 Judge LLM 실패] {} — 룰베이스만 적용", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private String buildJudgePrompt(ExtractedContractInfo info, List<LawChunkMatch> retrieved) {
+        String factsJson;
+        try {
+            factsJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(info);
+        } catch (Exception e) {
+            factsJson = info.toString();
+        }
+
+        StringBuilder ctx = new StringBuilder();
+        for (int i = 0; i < retrieved.size(); i++) {
+            LawChunkMatch m = retrieved.get(i);
+            ctx.append("【조문 ").append(i + 1).append("】 ")
+               .append(m.header())
+               .append(" (유사도 거리: ").append(String.format("%.4f", m.distance())).append(")\n")
+               .append(m.content()).append("\n\n");
+        }
+        if (ctx.length() == 0) ctx.append("(검색된 관련 조문이 없습니다)\n");
+
+        return """
+                당신은 한국 근로기준법 전문가입니다.
+                아래에 (A) 계약서에서 추출한 사실 정보 와 (B) 관련 법령 조문 발췌 가 주어집니다.
+                두 자료만을 근거로 위반 여부를 JSON 배열로 응답하세요.
+
+                [규칙]
+                1. 제공된 조문 발췌에 명확히 근거가 있을 때만 위반으로 판단.
+                2. 추측·일반화·할루시네이션 금지. 사실 정보에 값이 null이면 그 항목은 판단 보류.
+                3. MINIMUM_WAGE / REST_TIME 위반은 별도 룰베이스가 정확히 판단하므로 여기서 추가하지 마세요.
+                4. 가능한 type: OVERTIME_PAY, WEEKLY_HOLIDAY, MANDATORY_ITEMS, WORKING_HOURS, ANNUAL_LEAVE
+                5. severity: HIGH / MEDIUM / LOW
+                6. legalBasis: 발췌된 조문 중 가장 관련성 높은 것의 "근로기준법 제XX조" 형식 표기.
+                7. JSON 외 텍스트 절대 출력 금지.
+
+                === (A) 추출된 계약서 사실 ===
+                %s
+
+                === (B) 관련 법령 조문 발췌 (의미 검색 결과) ===
+                %s
+
+                === 응답 형식 ===
+                {
+                  "violations": [
+                    {
+                      "type": "OVERTIME_PAY",
+                      "severity": "MEDIUM",
+                      "description": "구체적 위반 설명 (사실+조문 근거)",
+                      "legalBasis": "근로기준법 제56조"
+                    }
+                  ]
+                }
+                """.formatted(factsJson, ctx.toString());
+    }
+
+    /** 같은 type의 violation이 LLM + 룰베이스 양쪽에서 나오면 룰베이스를 우선시한다. */
+    private List<ContractViolation> dedupeViolations(List<ContractViolation> all) {
+        // 같은 type 두 번째 등장부터는 제거. 룰베이스는 LLM 뒤에 add되므로
+        // LinkedHashMap에 type 기준으로 마지막 값(룰베이스)을 유지하도록 putAll 순서를 그대로 이용.
+        java.util.LinkedHashMap<String, ContractViolation> byType = new java.util.LinkedHashMap<>();
+        for (ContractViolation v : all) {
+            if (v.getType() == null) {
+                byType.put("_anon_" + System.identityHashCode(v), v);
+            } else {
+                byType.put(v.getType(), v);
+            }
+        }
+        return new java.util.ArrayList<>(byType.values());
+    }
+
+    /**
+     * violation에 법령 조문 본문을 첨부.
+     * 1) 의미 검색(description으로) → top-1 조문 본문
+     * 2) 실패 시 기존 매핑(LegalContextService.findArticleForViolation) → 폴백
+     */
+    private void attachLegalContext(ContractViolation v) {
+        if (v.getDescription() != null && !v.getDescription().isBlank()) {
+            List<LawChunkMatch> matches = legalContextService.searchSimilar(v.getDescription(), 1);
+            if (!matches.isEmpty()) {
+                LawChunkMatch best = matches.get(0);
+                String excerpt = best.header() + "\n" + truncate(best.content(), 600);
+                v.setLegalBasisExcerpt(excerpt);
+                return;
+            }
+        }
+        // 폴백
+        legalContextService.findArticleForViolation(v.getType())
+                .map(this::formatArticleExcerpt)
+                .ifPresent(v::setLegalBasisExcerpt);
+    }
+
+    private String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max) + " …";
+    }
+
+    // ─────────────────────────────────────────────────────────────────
     //  OpenAI 호출
     // ─────────────────────────────────────────────────────────────────
 
-    private String callOpenAi(String base64Image) {
+    /** Level 2 — 1차 호출: 이미지에서 추출만. violations 판단은 하지 않음. */
+    private String callOpenAiExtract(String base64Image) {
         if (!openAiProperties.isConfigured()) {
             return buildUnavailableResponse("OPENAI_API_KEY가 설정되지 않았습니다.");
         }
 
-        String prompt = buildPrompt();
+        String prompt = buildExtractPrompt();
         try {
             RestClient client = RestClient.create();
             String requestBody = objectMapper.writeValueAsString(Map.of(
@@ -305,6 +494,62 @@ public class LaborContractAnalysisService {
         }
     }
 
+    /** Level 2 — 1차 prompt: 추출 전용. violations 판단 X. */
+    private String buildExtractPrompt() {
+        return """
+                당신은 한국 근로계약서 분석을 위한 정밀 OCR 분석가입니다.
+                첨부된 근로계약서 이미지에서 정보를 추출하여 아래 JSON 형식으로만 응답하세요.
+                JSON 외 다른 텍스트는 절대 포함하지 마세요.
+
+                [절대 원칙 — 위반 시 치명적 오류]
+                1. 이미지에 명시적으로 보이지 않는 값은 절대 만들어내지 마세요. HALLUCINATION 엄금.
+                2. 흐릿하거나 일부만 보이거나 확실하지 않으면 그 필드는 반드시 null.
+                3. "전형적인 계약서라면 이럴 것이다"는 가정으로 값을 채우는 행위는 엄중한 오류입니다.
+                4. businessRegistrationNumber: 계약서에 '사업자등록번호', '법인등록번호' 등 명칭과 함께
+                   10자리 숫자가 명시되어 있는 경우에만 반환. 전화번호·계좌번호·주민번호 혼동 금지.
+                5. employerName: 이미지에서 실제로 읽은 상호·이름만 반환. 임의로 변경·완성 금지.
+
+                추출 규칙:
+                - hourlyWage: 계약서에 '시급'이 명시된 경우만 숫자 반환. 월급·일급제면 null.
+                - monthlyWage: 월 기준 기본 금액. 식대·가족수당 등 부가급여 제외.
+                - dailyWage: '일급' 명시된 경우만 숫자.
+                - workingHoursPerDay: 1일 소정근로시간 (휴게시간 제외 실제 근로시간).
+                  예: 9시~16시 중 휴게 12시~13시 1시간 → 소정근로시간 = 6시간.
+                - breakTimeMentioned: 계약서에 휴게 시간대가 명시적으로 기재되어 있으면 true.
+                - businessRegistrationNumber: 하이픈 제거, 숫자 10자리만.
+                - workDays: 영어 풀네임 대문자 배열. 한글 '월~금' → 해당 요일 모두 포함.
+                - workStartTime / workEndTime: "HH:mm" 24시간 형식.
+                - employmentStartDate: "yyyy-MM-dd" ISO 형식.
+
+                응답 형식 (이것 외에 어떤 텍스트도 출력 금지):
+                {
+                  "extractedInfo": {
+                    "hourlyWage": 시급(숫자) 또는 null,
+                    "monthlyWage": 월급(숫자) 또는 null,
+                    "dailyWage": 일급(숫자) 또는 null,
+                    "workingHoursPerDay": 1일 소정근로시간(숫자) 또는 null,
+                    "workingDaysPerWeek": 주 근무일수(숫자) 또는 null,
+                    "startDate": "근무 시작일 원본 문자열" 또는 null,
+                    "workPlace": "근무 장소" 또는 null,
+                    "jobDescription": "업무 내용" 또는 null,
+                    "weeklyHolidayAllowanceMentioned": true 또는 false,
+                    "overtimeAllowanceMentioned": true 또는 false,
+                    "annualLeaveMentioned": true 또는 false,
+                    "breakTimeMentioned": true 또는 false,
+                    "employerName": "고용주 상호" 또는 null,
+                    "businessRegistrationNumber": "10자리 숫자" 또는 null,
+                    "workDays": ["MONDAY", ...] 또는 [],
+                    "workStartTime": "HH:mm" 또는 null,
+                    "workEndTime": "HH:mm" 또는 null,
+                    "employmentStartDate": "yyyy-MM-dd" 또는 null
+                  },
+                  "summary": "계약서 핵심 요약 (2~3문장, 이미지에 보이는 사실만 기반)"
+                }
+                """;
+    }
+
+    /** @deprecated Level 1에서 사용했던 단일 호출 prompt. 호환용으로 남겨둠. */
+    @Deprecated
     private String buildPrompt() {
         return """
                 당신은 한국 근로기준법 전문가이자 정밀 OCR 분석가입니다.

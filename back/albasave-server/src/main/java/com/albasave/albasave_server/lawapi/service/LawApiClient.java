@@ -60,18 +60,79 @@ public class LawApiClient {
 
             List<LawArticle> out = new ArrayList<>();
             for (JsonNode jo : units) {
+                // "조문여부"가 "조문"이 아닌 경우(편/장/절 제목 등) 건너뜀
+                String type = textValue(jo, "조문여부");
+                if (type != null && !"조문".equals(type)) continue;
+
                 String number = textValue(jo, "조문번호");
                 if (number == null || number.isBlank()) continue;
                 String title = textValue(jo, "조문제목");
-                String body = textValue(jo, "조문내용");
-                if (body == null) body = "";
-                out.add(new LawArticle(lawName, number, title == null ? "" : title, body.trim()));
+                String body = buildArticleBody(jo);
+                out.add(new LawArticle(lawName, number, title == null ? "" : title, body));
             }
             log.info("[LawApi] {} 조문 {}건 로드 완료", lawName, out.size());
             return out;
         } catch (Exception e) {
             log.error("[LawApi] {} 호출 실패: {}", lawName, e.getMessage());
             return List.of();
+        }
+    }
+
+    /**
+     * 조문 본문을 합성한다.
+     * - "조문내용" 필드는 보통 제목("제55조(휴일)")만 들어있음
+     * - 실제 본문은 "항" 배열의 각 "항내용"에 들어있음 (또 "호" 배열로 중첩 가능)
+     * - 항이 없는 단순 조문은 "조문내용" 그대로 사용
+     */
+    private String buildArticleBody(JsonNode article) {
+        StringBuilder sb = new StringBuilder();
+
+        // 조문 제목 + 본문 머리
+        String head = textValue(article, "조문내용");
+        if (head != null && !head.isBlank()) {
+            sb.append(head.trim()).append('\n');
+        }
+
+        JsonNode hangs = article.path("항");
+        if (hangs.isArray() && hangs.size() > 0) {
+            for (JsonNode hang : hangs) {
+                appendHang(sb, hang);
+            }
+        } else if (hangs.isObject()) {
+            // 항이 1개일 때는 객체로 올 수도 있음
+            appendHang(sb, hangs);
+        }
+
+        return sb.toString().trim();
+    }
+
+    private void appendHang(StringBuilder sb, JsonNode hang) {
+        String content = textValue(hang, "항내용");
+        if (content != null && !content.isBlank()) {
+            sb.append(content.trim()).append('\n');
+        }
+        JsonNode hos = hang.path("호");
+        if (hos.isArray()) {
+            for (JsonNode ho : hos) {
+                String hoContent = textValue(ho, "호내용");
+                if (hoContent != null && !hoContent.isBlank()) {
+                    sb.append("  ").append(hoContent.trim()).append('\n');
+                }
+                JsonNode moks = ho.path("목");
+                if (moks.isArray()) {
+                    for (JsonNode mok : moks) {
+                        String mokContent = textValue(mok, "목내용");
+                        if (mokContent != null && !mokContent.isBlank()) {
+                            sb.append("    ").append(mokContent.trim()).append('\n');
+                        }
+                    }
+                }
+            }
+        } else if (hos.isObject()) {
+            String hoContent = textValue(hos, "호내용");
+            if (hoContent != null && !hoContent.isBlank()) {
+                sb.append("  ").append(hoContent.trim()).append('\n');
+            }
         }
     }
 
