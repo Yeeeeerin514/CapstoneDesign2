@@ -108,6 +108,15 @@ export interface ContractAnalysisResult {
 
 export type ContractIssueLevel = "danger" | "warning" | "info";
 
+export interface RelatedCase {
+  /** "PRECEDENT" | "INTERPRETATION" */
+  sourceType: string;
+  /** 사용자 표시용 헤더: "[판례] 대법원 2025.10.30 — 사건명..." */
+  header: string;
+  /** 발췌 본문 (최대 400자) */
+  excerpt: string;
+}
+
 export interface ContractIssue {
   /** 이슈 고유 ID (type + index 조합) */
   id?: string;
@@ -118,6 +127,8 @@ export interface ContractIssue {
   description: string;
   legalBasis: string;
   legalBasisExcerpt: string | null;
+  /** Level 3 RAG: 위반과 관련된 판례·해석례 (백엔드에서 의미 검색으로 자동 첨부) */
+  relatedCases?: RelatedCase[];
   type: string;
   recommendation?: string;
   actionable?: { type: string; label: string } | null;
@@ -334,12 +345,19 @@ interface ApiExtractedContractInfo {
   businessRegistrationNumber: string | null;
 }
 
+interface ApiRelatedCase {
+  sourceType: string;
+  header: string;
+  excerpt: string;
+}
+
 interface ApiContractViolation {
   type: string;
   severity: "HIGH" | "MEDIUM" | "LOW";
   description: string;
   legalBasis: string;
   legalBasisExcerpt: string | null;
+  relatedCases?: ApiRelatedCase[] | null;
 }
 
 export interface ApiContractAnalysisResponse {
@@ -393,6 +411,11 @@ export function mapContractApiResponse(
     description: v.description,
     legalBasis: v.legalBasis,
     legalBasisExcerpt: v.legalBasisExcerpt ?? null,
+    relatedCases: (v.relatedCases ?? []).map((c) => ({
+      sourceType: c.sourceType,
+      header: c.header,
+      excerpt: c.excerpt,
+    })),
     type: v.type,
   }));
 

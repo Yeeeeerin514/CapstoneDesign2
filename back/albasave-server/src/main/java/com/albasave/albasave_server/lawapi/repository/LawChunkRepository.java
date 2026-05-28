@@ -14,7 +14,11 @@ public interface LawChunkRepository extends JpaRepository<LawChunk, Long> {
 
     long countByLawName(String lawName);
 
+    long countBySourceType(String sourceType);
+
     boolean existsByLawNameAndArticleNumberAndPartNo(String lawName, String articleNumber, Integer partNo);
+
+    boolean existsBySourceTypeAndExternalIdAndPartNo(String sourceType, String externalId, Integer partNo);
 
     @Query("SELECT DISTINCT c.lawName FROM LawChunk c")
     List<String> findDistinctLawNames();

@@ -1,6 +1,7 @@
 package com.albasave.albasave_server.lawapi.service;
 
 import com.albasave.albasave_server.lawapi.dto.LawArticle;
+import com.albasave.albasave_server.lawapi.dto.LawDocument;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -113,4 +114,46 @@ public class LawChunkingService {
     }
 
     public record Chunk(int partNo, String content) {}
+
+    // ─────────────────────────────────────────────────────────────────
+    //  Level 3: 판례·해석례 청킹
+    // ─────────────────────────────────────────────────────────────────
+
+    private static final int DOC_CHUNK_MAX = 800;
+
+    /**
+     * 판례/법령해석례를 의미 단위 청크로 분할.
+     * - summary(판시사항+판결요지 / 질의요지)는 우선순위가 높으므로 첫 청크에 헤더와 함께 배치.
+     * - body(판례내용 / 이유)는 길이 800자 단위로 분할.
+     * - 모든 청크에 [판례] 또는 [해석례] 헤더 + 사건명/안건명을 prepend → 검색 정확도 향상.
+     */
+    public List<Chunk> chunkDocument(LawDocument doc) {
+        if (doc == null) return List.of();
+        List<Chunk> out = new ArrayList<>();
+        String header = doc.header();
+
+        // 0번 청크: 요약 (검색에서 가장 강력한 신호)
+        String summary = doc.summary();
+        if (doc.referenceLaw() != null && !doc.referenceLaw().isBlank()) {
+            summary = (summary == null ? "" : summary + "\n") + "참조조문: " + doc.referenceLaw();
+        }
+        if (summary != null && !summary.isBlank()) {
+            out.add(new Chunk(0, header + "\n[요약] " + summary.trim()));
+        }
+
+        // 1~번 청크: 본문 길이 단위 분할
+        String body = doc.body();
+        if (body != null && !body.isBlank()) {
+            String cleaned = body.replaceAll("\\s+", " ").trim();
+            int idx = 1;
+            for (int i = 0; i < cleaned.length(); i += DOC_CHUNK_MAX) {
+                int end = Math.min(i + DOC_CHUNK_MAX, cleaned.length());
+                String piece = cleaned.substring(i, end);
+                out.add(new Chunk(idx++, header + "\n[본문" + (idx - 1) + "] " + piece));
+                if (idx > 10) break; // 한 문서당 최대 10청크
+            }
+        }
+
+        return out;
+    }
 }

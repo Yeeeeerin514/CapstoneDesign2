@@ -68,13 +68,19 @@ public class LaborContractAnalysisService {
         // 2-C. [Level 1 RAG] 추출 정보로 관련 법령 의미 검색
         String retrievalQuery = buildRetrievalQuery(extractedInfo);
         List<LawChunkMatch> retrievedArticles =
-                legalContextService.searchSimilar(retrievalQuery, 5);
-        log.info("[계약서 RAG] 검색 쿼리='{}' → {}개 조문 검색됨",
-                truncate(retrievalQuery, 80), retrievedArticles.size());
+                legalContextService.searchSimilarByTypes(retrievalQuery, 5, java.util.List.of("LAW"));
 
-        // 2-D. [Level 2 — 2차 LLM] 추출 정보 + 검색된 조문 → 위반 판단
+        // 2-C-2. [Level 3 RAG] 동일 쿼리로 판례·해석례 별도 검색
+        List<LawChunkMatch> retrievedCases =
+                legalContextService.searchSimilarByTypes(
+                        retrievalQuery, 4, java.util.List.of("PRECEDENT", "INTERPRETATION"));
+
+        log.info("[계약서 RAG] 쿼리='{}' → 법령 {}건 / 판례·해석례 {}건",
+                truncate(retrievalQuery, 80), retrievedArticles.size(), retrievedCases.size());
+
+        // 2-D. [Level 2 — 2차 LLM] 추출 정보 + 검색된 조문 + 판례 → 위반 판단
         List<ContractViolation> violations = new java.util.ArrayList<>(
-                callOpenAiJudge(extractedInfo, retrievedArticles)
+                callOpenAiJudge(extractedInfo, retrievedArticles, retrievedCases)
         );
 
         // 3. 룰베이스 추가 검증 (역산 시급 포함)
@@ -123,6 +129,17 @@ public class LaborContractAnalysisService {
                 .employmentStartDate(factSheet.employmentStartDate())
                 .hourlyWage(factSheet.hourlyWage())
                 .minimumWageAtAnalysis(factSheet.minimumWage())
+                // ── 진정서 보강 컬럼 영속 ──
+                .monthlyWage(factSheet.monthlyWage())
+                .employmentEndDate(factSheet.employmentEndDate())
+                .wagePaymentDate(factSheet.wagePaymentDate())
+                .wagePaymentMethod(factSheet.wagePaymentMethod())
+                .breakStartTime(factSheet.breakStartTime())
+                .breakEndTime(factSheet.breakEndTime())
+                .employerName(factSheet.employerName())
+                .employerAddress(factSheet.employerAddress())
+                .employerPhone(factSheet.employerPhone())
+                .employerRepresentative(factSheet.employerRepresentative())
                 .build());
 
         return ContractAnalysisResponse.builder()
@@ -174,7 +191,9 @@ public class LaborContractAnalysisService {
         if (info == null) {
             return new ContractFactSheet(
                     null, new ArrayList<>(), null, null, null,
-                    null, WageCalculationService.MINIMUM_WAGE_2026
+                    null, WageCalculationService.MINIMUM_WAGE_2026,
+                    null, null, null, null, null, null,
+                    null, null, null, null
             );
         }
         return new ContractFactSheet(
@@ -184,8 +203,29 @@ public class LaborContractAnalysisService {
                 parseLocalTime(info.getWorkEndTime()),
                 parseLocalDate(info.getEmploymentStartDate(), info.getStartDate()),
                 info.getEffectiveHourlyWage(),
-                WageCalculationService.MINIMUM_WAGE_2026
+                WageCalculationService.MINIMUM_WAGE_2026,
+                // ── 진정서 보강 필드 ──
+                info.getMonthlyWage(),
+                parseLocalDate(info.getContractEndDate(), null),
+                blankToNull(info.getWagePaymentDate()),
+                blankToNull(info.getWagePaymentMethod()),
+                parseLocalTime(info.getBreakStartTime()),
+                parseLocalTime(info.getBreakEndTime()),
+                blankToNull(info.getEmployerName()),
+                blankToNull(info.getEmployerAddress()),
+                normalizePhone(info.getEmployerPhone()),
+                blankToNull(info.getEmployerRepresentative())
         );
+    }
+
+    private String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
+    }
+
+    private String normalizePhone(String raw) {
+        if (raw == null) return null;
+        String digits = raw.replaceAll("[^0-9]", "");
+        return digits.isBlank() ? null : digits;
     }
 
     private String normalizeBrNumber(String raw) {
@@ -314,11 +354,12 @@ public class LaborContractAnalysisService {
      */
     private List<ContractViolation> callOpenAiJudge(
             ExtractedContractInfo info,
-            List<LawChunkMatch> retrievedArticles
+            List<LawChunkMatch> retrievedArticles,
+            List<LawChunkMatch> retrievedCases
     ) {
         if (!openAiProperties.isConfigured() || info == null) return List.of();
 
-        String prompt = buildJudgePrompt(info, retrievedArticles);
+        String prompt = buildJudgePrompt(info, retrievedArticles, retrievedCases);
         try {
             RestClient client = RestClient.create();
             // text-only이므로 gpt-4o-mini 사용 (비용 절감, 충분히 정확)
@@ -351,7 +392,11 @@ public class LaborContractAnalysisService {
         }
     }
 
-    private String buildJudgePrompt(ExtractedContractInfo info, List<LawChunkMatch> retrieved) {
+    private String buildJudgePrompt(
+            ExtractedContractInfo info,
+            List<LawChunkMatch> retrievedArticles,
+            List<LawChunkMatch> retrievedCases
+    ) {
         String factsJson;
         try {
             factsJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(info);
@@ -360,22 +405,32 @@ public class LaborContractAnalysisService {
         }
 
         StringBuilder ctx = new StringBuilder();
-        for (int i = 0; i < retrieved.size(); i++) {
-            LawChunkMatch m = retrieved.get(i);
+        for (int i = 0; i < retrievedArticles.size(); i++) {
+            LawChunkMatch m = retrievedArticles.get(i);
             ctx.append("【조문 ").append(i + 1).append("】 ")
                .append(m.header())
-               .append(" (유사도 거리: ").append(String.format("%.4f", m.distance())).append(")\n")
+               .append(" (거리 ").append(String.format("%.4f", m.distance())).append(")\n")
                .append(m.content()).append("\n\n");
         }
         if (ctx.length() == 0) ctx.append("(검색된 관련 조문이 없습니다)\n");
 
+        StringBuilder casesCtx = new StringBuilder();
+        for (int i = 0; i < retrievedCases.size(); i++) {
+            LawChunkMatch m = retrievedCases.get(i);
+            casesCtx.append("【사례 ").append(i + 1).append("】 ")
+                    .append(m.header())
+                    .append(" (거리 ").append(String.format("%.4f", m.distance())).append(")\n")
+                    .append(truncate(m.content(), 600)).append("\n\n");
+        }
+        if (casesCtx.length() == 0) casesCtx.append("(관련 판례·해석례 없음)\n");
+
         return """
                 당신은 한국 근로기준법 전문가입니다.
-                아래에 (A) 계약서에서 추출한 사실 정보 와 (B) 관련 법령 조문 발췌 가 주어집니다.
-                두 자료만을 근거로 위반 여부를 JSON 배열로 응답하세요.
+                아래에 (A) 계약서에서 추출한 사실 정보 와 (B) 관련 법령 조문, (C) 관련 판례·해석례 가 주어집니다.
+                세 자료를 근거로 위반 여부를 JSON 배열로 응답하세요.
 
                 [규칙]
-                1. 제공된 조문 발췌에 명확히 근거가 있을 때만 위반으로 판단.
+                1. 제공된 조문/판례에 명확한 근거가 있을 때만 위반으로 판단.
                 2. 추측·일반화·할루시네이션 금지. 사실 정보에 값이 null이면 그 항목은 판단 보류.
                 3. MINIMUM_WAGE / REST_TIME 위반은 별도 룰베이스가 정확히 판단하므로 여기서 추가하지 마세요.
                 4. 가능한 type: OVERTIME_PAY, WEEKLY_HOLIDAY, MANDATORY_ITEMS, WORKING_HOURS, ANNUAL_LEAVE
@@ -386,7 +441,10 @@ public class LaborContractAnalysisService {
                 === (A) 추출된 계약서 사실 ===
                 %s
 
-                === (B) 관련 법령 조문 발췌 (의미 검색 결과) ===
+                === (B) 관련 법령 조문 발췌 ===
+                %s
+
+                === (C) 관련 판례·해석례 (참고용 — 같은 사실관계에서 어떻게 판단됐는지) ===
                 %s
 
                 === 응답 형식 ===
@@ -395,12 +453,12 @@ public class LaborContractAnalysisService {
                     {
                       "type": "OVERTIME_PAY",
                       "severity": "MEDIUM",
-                      "description": "구체적 위반 설명 (사실+조문 근거)",
+                      "description": "구체적 위반 설명 (사실+조문+판례 근거)",
                       "legalBasis": "근로기준법 제56조"
                     }
                   ]
                 }
-                """.formatted(factsJson, ctx.toString());
+                """.formatted(factsJson, ctx.toString(), casesCtx.toString());
     }
 
     /** 같은 type의 violation이 LLM + 룰베이스 양쪽에서 나오면 룰베이스를 우선시한다. */
@@ -419,24 +477,42 @@ public class LaborContractAnalysisService {
     }
 
     /**
-     * violation에 법령 조문 본문을 첨부.
-     * 1) 의미 검색(description으로) → top-1 조문 본문
-     * 2) 실패 시 기존 매핑(LegalContextService.findArticleForViolation) → 폴백
+     * violation에 법령 조문 본문 + 관련 판례·해석례를 첨부 (Level 1 + Level 3).
+     * 1) description으로 법령(LAW) 의미 검색 → top-1 → legalBasisExcerpt
+     * 2) description으로 판례·해석례(PRECEDENT/INTERPRETATION) 의미 검색 → top-2 → relatedCases
+     * 3) 검색 실패 시 기존 매핑으로 폴백
      */
     private void attachLegalContext(ContractViolation v) {
         if (v.getDescription() != null && !v.getDescription().isBlank()) {
-            List<LawChunkMatch> matches = legalContextService.searchSimilar(v.getDescription(), 1);
-            if (!matches.isEmpty()) {
-                LawChunkMatch best = matches.get(0);
-                String excerpt = best.header() + "\n" + truncate(best.content(), 600);
-                v.setLegalBasisExcerpt(excerpt);
-                return;
+            // 법령 조문
+            List<LawChunkMatch> lawMatches = legalContextService.searchSimilarByTypes(
+                    v.getDescription(), 1, java.util.List.of("LAW"));
+            if (!lawMatches.isEmpty()) {
+                LawChunkMatch best = lawMatches.get(0);
+                v.setLegalBasisExcerpt(best.header() + "\n" + truncate(best.content(), 600));
+            } else {
+                // 폴백: 기존 매핑
+                legalContextService.findArticleForViolation(v.getType())
+                        .map(this::formatArticleExcerpt)
+                        .ifPresent(v::setLegalBasisExcerpt);
             }
+
+            // 판례·해석례
+            List<LawChunkMatch> caseMatches = legalContextService.searchSimilarByTypes(
+                    v.getDescription(), 2, java.util.List.of("PRECEDENT", "INTERPRETATION"));
+            if (!caseMatches.isEmpty()) {
+                v.setRelatedCases(caseMatches.stream()
+                        .map(m -> new ContractViolation.RelatedCase(
+                                m.sourceType(),
+                                m.header(),
+                                truncate(m.content(), 400)))
+                        .toList());
+            }
+        } else {
+            legalContextService.findArticleForViolation(v.getType())
+                    .map(this::formatArticleExcerpt)
+                    .ifPresent(v::setLegalBasisExcerpt);
         }
-        // 폴백
-        legalContextService.findArticleForViolation(v.getType())
-                .map(this::formatArticleExcerpt)
-                .ifPresent(v::setLegalBasisExcerpt);
     }
 
     private String truncate(String s, int max) {
@@ -516,10 +592,20 @@ public class LaborContractAnalysisService {
                 - workingHoursPerDay: 1일 소정근로시간 (휴게시간 제외 실제 근로시간).
                   예: 9시~16시 중 휴게 12시~13시 1시간 → 소정근로시간 = 6시간.
                 - breakTimeMentioned: 계약서에 휴게 시간대가 명시적으로 기재되어 있으면 true.
+                - breakStartTime / breakEndTime: 휴게 시간대가 있으면 "HH:mm" 형식. 없으면 null.
                 - businessRegistrationNumber: 하이픈 제거, 숫자 10자리만.
                 - workDays: 영어 풀네임 대문자 배열. 한글 '월~금' → 해당 요일 모두 포함.
                 - workStartTime / workEndTime: "HH:mm" 24시간 형식.
-                - employmentStartDate: "yyyy-MM-dd" ISO 형식.
+                - employmentStartDate / contractEndDate: "yyyy-MM-dd" ISO 형식.
+                  계약기간이 "2026.4.1~2027.3.31"이면 startDate=2026-04-01, endDate=2027-03-31.
+                  무기계약이거나 종료일 미명시면 contractEndDate=null.
+                - wagePaymentDate: 임금 지급일을 원문 그대로 반환. 예: "매월 5일", "매월 말일", "다음달 10일".
+                  계약서에 없으면 null. (의역하지 말고 보이는 표현 그대로)
+                - wagePaymentMethod: "계좌이체", "직접지급", "현금" 등. 미명시면 null.
+                - employerAddress: 사업장(사용자) 주소를 OCR 그대로. 일부만 보이면 보이는 부분만.
+                - employerPhone: 사업장 전화번호. 하이픈은 제거.
+                - employerRepresentative: 사업주 대표자 성명. 서명란/직위 표기 옆 이름.
+                  근로자 본인 이름과 혼동 금지 — 계약서에서 보통 "(사업주)" 또는 "대표" 옆.
 
                 응답 형식 (이것 외에 어떤 텍스트도 출력 금지):
                 {
@@ -536,12 +622,20 @@ public class LaborContractAnalysisService {
                     "overtimeAllowanceMentioned": true 또는 false,
                     "annualLeaveMentioned": true 또는 false,
                     "breakTimeMentioned": true 또는 false,
+                    "breakStartTime": "HH:mm" 또는 null,
+                    "breakEndTime": "HH:mm" 또는 null,
                     "employerName": "고용주 상호" 또는 null,
                     "businessRegistrationNumber": "10자리 숫자" 또는 null,
                     "workDays": ["MONDAY", ...] 또는 [],
                     "workStartTime": "HH:mm" 또는 null,
                     "workEndTime": "HH:mm" 또는 null,
-                    "employmentStartDate": "yyyy-MM-dd" 또는 null
+                    "employmentStartDate": "yyyy-MM-dd" 또는 null,
+                    "contractEndDate": "yyyy-MM-dd" 또는 null,
+                    "wagePaymentDate": "원문 그대로 (예: 매월 5일)" 또는 null,
+                    "wagePaymentMethod": "계좌이체/직접지급" 또는 null,
+                    "employerAddress": "사업장 주소" 또는 null,
+                    "employerPhone": "전화번호 (하이픈 제거)" 또는 null,
+                    "employerRepresentative": "대표자 성명" 또는 null
                   },
                   "summary": "계약서 핵심 요약 (2~3문장, 이미지에 보이는 사실만 기반)"
                 }
@@ -705,7 +799,18 @@ public class LaborContractAnalysisService {
                 c.getHourlyWage(),
                 c.getMinimumWageAtAnalysis() != null
                         ? c.getMinimumWageAtAnalysis()
-                        : WageCalculationService.MINIMUM_WAGE_2026
+                        : WageCalculationService.MINIMUM_WAGE_2026,
+                // ── 진정서 보강 필드 (엔티티 컬럼에서 직접) ──
+                c.getMonthlyWage(),
+                c.getEmploymentEndDate(),
+                c.getWagePaymentDate(),
+                c.getWagePaymentMethod(),
+                c.getBreakStartTime(),
+                c.getBreakEndTime(),
+                c.getEmployerName(),
+                c.getEmployerAddress(),
+                c.getEmployerPhone(),
+                c.getEmployerRepresentative()
         );
 
         return ContractAnalysisResponse.builder()

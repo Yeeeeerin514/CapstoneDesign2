@@ -79,4 +79,35 @@ public class ExtractedContractInfo {
 
     /** 입사일 — yyyy-MM-dd (예: "2026-04-01") */
     private String employmentStartDate;
+
+    // ─────────────────────────────────────────────────────────────────
+    //  진정서 보강 — 임금체불 진정서 작성 시 실제 필요한 추가 정보
+    // ─────────────────────────────────────────────────────────────────
+
+    /** 계약 종료일 — yyyy-MM-dd. 무기계약이거나 미명시면 null */
+    private String contractEndDate;
+
+    /**
+     * 임금 지급일 — 계약서 원문 그대로 (예: "매월 5일", "매월 말일", "다음달 10일").
+     * 진정서 체불 시점 계산에 필수.
+     */
+    private String wagePaymentDate;
+
+    /** 임금 지급방법 — 예: "계좌이체", "직접지급" */
+    private String wagePaymentMethod;
+
+    /** 휴게 시작 시각 — HH:mm (예: "12:00") */
+    private String breakStartTime;
+
+    /** 휴게 종료 시각 — HH:mm (예: "13:00") */
+    private String breakEndTime;
+
+    /** 사업장 주소 — 진정서 피진정인 주소 */
+    private String employerAddress;
+
+    /** 사업장 전화번호 — 진정서 피진정인 연락처 */
+    private String employerPhone;
+
+    /** 사업주 대표자 성명 — 진정서 피진정인 성명 */
+    private String employerRepresentative;
 }

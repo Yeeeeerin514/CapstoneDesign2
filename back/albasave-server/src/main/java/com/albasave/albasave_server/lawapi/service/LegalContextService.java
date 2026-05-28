@@ -97,11 +97,20 @@ public class LegalContextService {
      * @return distance 오름차순으로 정렬된 매치 리스트
      */
     public List<LawChunkMatch> searchSimilar(String query, int topK) {
+        return searchSimilarByTypes(query, topK, null);
+    }
+
+    /**
+     * sourceType 필터 의미 검색.
+     * @param sourceTypes  null이면 전체. List.of("LAW") / List.of("PRECEDENT","INTERPRETATION") 등.
+     */
+    public List<LawChunkMatch> searchSimilarByTypes(String query, int topK, List<String> sourceTypes) {
         if (query == null || query.isBlank()) return List.of();
         try {
             float[] vec = embeddingClient.embed(query);
             if (vec == null) return List.of();
-            return vectorDao.searchSimilar(OpenAiEmbeddingClient.toVectorLiteral(vec), topK);
+            return vectorDao.searchSimilarByTypes(
+                    OpenAiEmbeddingClient.toVectorLiteral(vec), topK, sourceTypes);
         } catch (Exception e) {
             log.warn("[LegalContext] 의미 검색 실패 — 빈 결과 반환: {}", e.getMessage());
             return List.of();
@@ -129,7 +138,7 @@ public class LegalContextService {
             );
             if (!alreadyIncluded) {
                 matches.add(new LawChunkMatch(
-                        -1L, a.lawName(), a.articleNumber(), a.articleTitle(), 0,
+                        -1L, "LAW", a.lawName(), a.articleNumber(), a.articleTitle(), 0,
                         a.body(), 1.0
                 ));
             }

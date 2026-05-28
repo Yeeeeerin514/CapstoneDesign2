@@ -2,6 +2,7 @@ package com.albasave.albasave_server.lawapi.service;
 
 import com.albasave.albasave_server.lawapi.domain.LawChunk;
 import com.albasave.albasave_server.lawapi.dto.LawArticle;
+import com.albasave.albasave_server.lawapi.dto.LawDocument;
 import com.albasave.albasave_server.lawapi.repository.LawChunkRepository;
 import com.albasave.albasave_server.lawapi.repository.LawChunkVectorDao;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,24 @@ public class LawEmbeddingLoader {
             "근로자퇴직급여 보장법"
     );
 
+    /**
+     * Level 3: 판례 / 법령해석례 적재용 키워드.
+     * 노동 관련 핵심 주제어로 검색하여 결과를 합산.
+     */
+    private static final List<String> LABOR_QUERIES = List.of(
+            "주휴수당",
+            "임금체불",
+            "연장근로 가산수당",
+            "휴게시간",
+            "최저임금",
+            "연차유급휴가",
+            "퇴직금",
+            "근로계약서",
+            "통상임금",
+            "포괄임금"
+    );
+    private static final int DOCS_PER_QUERY = 5;
+
     private final LawApiClient lawApiClient;
     private final LawChunkingService chunkingService;
     private final LawChunkRepository chunkRepository;
@@ -58,7 +77,95 @@ public class LawEmbeddingLoader {
                 log.error("[LawEmbeddingLoader] {} 적재 실패: {}", lawName, e.getMessage());
             }
         }
+
+        // Level 3: 판례·해석례 적재
+        try {
+            loadDocuments();
+        } catch (Exception e) {
+            log.error("[LawEmbeddingLoader] 판례·해석례 적재 실패: {}", e.getMessage());
+        }
+
         log.info("[LawEmbeddingLoader] 모든 법령 적재 시도 완료");
+    }
+
+    /**
+     * 키워드별 판례·해석례를 검색하여 청크 분할 + 임베딩 적재.
+     * 같은 문서가 여러 키워드에 잡힐 수 있으므로 externalId 중복 체크.
+     */
+    public void loadDocuments() {
+        long existingPrec = chunkRepository.countBySourceType("PRECEDENT");
+        long existingInterp = chunkRepository.countBySourceType("INTERPRETATION");
+        if (existingPrec > 0 || existingInterp > 0) {
+            log.info("[LawEmbeddingLoader] 판례 {}개 / 해석례 {}개 청크 이미 존재 — 건너뜀",
+                    existingPrec, existingInterp);
+            return;
+        }
+
+        java.util.Set<String> seenPrec = new java.util.HashSet<>();
+        java.util.Set<String> seenInterp = new java.util.HashSet<>();
+
+        for (String q : LABOR_QUERIES) {
+            try {
+                for (LawDocument doc : lawApiClient.fetchPrecedents(q, DOCS_PER_QUERY)) {
+                    if (seenPrec.add(doc.externalId())) {
+                        loadOneDocument(doc);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[LawEmbeddingLoader] 판례 '{}' 적재 실패: {}", q, e.getMessage());
+            }
+            try {
+                for (LawDocument doc : lawApiClient.fetchInterpretations(q, DOCS_PER_QUERY)) {
+                    if (seenInterp.add(doc.externalId())) {
+                        loadOneDocument(doc);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[LawEmbeddingLoader] 해석례 '{}' 적재 실패: {}", q, e.getMessage());
+            }
+        }
+        log.info("[LawEmbeddingLoader] 판례 {}건 / 해석례 {}건 적재 완료", seenPrec.size(), seenInterp.size());
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void loadOneDocument(LawDocument doc) {
+        List<LawChunkingService.Chunk> chunks = chunkingService.chunkDocument(doc);
+        if (chunks.isEmpty()) return;
+
+        List<LawChunk> savedChunks = new java.util.ArrayList<>();
+        List<String> texts = new java.util.ArrayList<>();
+        for (LawChunkingService.Chunk c : chunks) {
+            if (chunkRepository.existsBySourceTypeAndExternalIdAndPartNo(
+                    doc.sourceType(), doc.externalId(), c.partNo())) {
+                continue;
+            }
+            LawChunk entity = LawChunk.builder()
+                    .sourceType(doc.sourceType())
+                    .lawName(doc.issuer() == null ? doc.sourceType() : doc.issuer())
+                    .articleNumber(doc.externalId())  // 외부 ID를 article_number에도 동일하게 (호환)
+                    .articleTitle(doc.title())
+                    .externalId(doc.externalId())
+                    .partNo(c.partNo())
+                    .content(c.content())
+                    .embeddingModel("text-embedding-3-small")
+                    .build();
+            savedChunks.add(chunkRepository.save(entity));
+            texts.add(c.content());
+        }
+        if (savedChunks.isEmpty()) return;
+
+        List<float[]> vectors = embeddingClient.embedBatch(texts);
+        if (vectors.size() != savedChunks.size()) {
+            log.warn("[LawEmbeddingLoader] {} {} 임베딩 수 불일치 (chunks={}, vectors={})",
+                    doc.sourceType(), doc.externalId(), savedChunks.size(), vectors.size());
+            return;
+        }
+        for (int i = 0; i < savedChunks.size(); i++) {
+            vectorDao.saveEmbedding(
+                    savedChunks.get(i).getId(),
+                    OpenAiEmbeddingClient.toVectorLiteral(vectors.get(i))
+            );
+        }
     }
 
     @Transactional

@@ -312,6 +312,35 @@ export function ContractAnalysisView({
                         </Text>
                       </View>
                     )}
+                    {issue.relatedCases !== undefined && issue.relatedCases.length > 0 && (
+                      <View
+                        style={{
+                          marginTop: 8,
+                          paddingTop: 6,
+                          paddingHorizontal: 8,
+                          paddingBottom: 8,
+                          borderLeftWidth: 2,
+                          borderLeftColor: "#7C3AED",
+                          backgroundColor: "#F5F3FF",
+                          borderRadius: 4,
+                          gap: 6,
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, color: "#5B21B6", fontWeight: "700" }}>
+                          ⚖️ 관련 판례·해석례 ({issue.relatedCases.length}건)
+                        </Text>
+                        {issue.relatedCases.map((c, ci) => (
+                          <View key={ci} style={{ gap: 2 }}>
+                            <Text style={{ fontSize: 10, color: "#5B21B6", fontWeight: "600" }}>
+                              {c.header}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: "#4C1D95", lineHeight: 16 }}>
+                              {c.excerpt}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
                   </View>
                 );
               })

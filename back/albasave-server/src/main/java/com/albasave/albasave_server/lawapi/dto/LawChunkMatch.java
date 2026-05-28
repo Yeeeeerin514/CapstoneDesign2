@@ -6,6 +6,7 @@ package com.albasave.albasave_server.lawapi.dto;
  */
 public record LawChunkMatch(
         Long id,
+        String sourceType,
         String lawName,
         String articleNumber,
         String articleTitle,
@@ -13,8 +14,16 @@ public record LawChunkMatch(
         String content,
         double distance
 ) {
-    /** 사용자 표시용 헤더: "근로기준법 제54조(휴게)" */
+    /** 사용자 표시용 헤더 — 출처 유형별로 다르게. */
     public String header() {
+        if ("PRECEDENT".equals(sourceType)) {
+            return "[판례] " + (lawName == null ? "" : lawName + " ")
+                    + (articleTitle == null || articleTitle.isBlank() ? "" : "— " + articleTitle);
+        }
+        if ("INTERPRETATION".equals(sourceType)) {
+            return "[해석례] " + (lawName == null ? "" : lawName + " ")
+                    + (articleTitle == null || articleTitle.isBlank() ? "" : "— " + articleTitle);
+        }
         if (articleTitle == null || articleTitle.isBlank()) {
             return lawName + " 제" + articleNumber + "조";
         }

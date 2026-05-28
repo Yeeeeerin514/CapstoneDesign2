@@ -32,31 +32,44 @@ public class LawChunkVectorDao {
         .executeUpdate();
     }
 
-    /** cosine distance 기준 top-K 검색. 결과는 거리 오름차순. */
-    @SuppressWarnings("unchecked")
+    /** 모든 source_type 통합 검색. */
     public List<LawChunkMatch> searchSimilar(String embeddingLiteral, int topK) {
-        List<Object[]> rows = em.createNativeQuery(
-                """
-                SELECT id, law_name, article_number, article_title, part_no, content,
+        return searchSimilarByTypes(embeddingLiteral, topK, null);
+    }
+
+    /**
+     * sourceType 필터 옵션 추가 검색.
+     * @param sourceTypes  null이면 전체. 예: List.of("LAW") 또는 List.of("PRECEDENT", "INTERPRETATION")
+     */
+    @SuppressWarnings("unchecked")
+    public List<LawChunkMatch> searchSimilarByTypes(String embeddingLiteral, int topK, List<String> sourceTypes) {
+        String sql = """
+                SELECT id, source_type, law_name, article_number, article_title, part_no, content,
                        embedding <=> CAST(:emb AS vector) AS distance
                 FROM law_chunks
                 WHERE embedding IS NOT NULL
+                """ +
+                (sourceTypes == null || sourceTypes.isEmpty() ? "" : " AND source_type IN (:types) ") +
+                """
                 ORDER BY embedding <=> CAST(:emb AS vector)
                 LIMIT :k
-                """
-        )
-        .setParameter("emb", embeddingLiteral)
-        .setParameter("k", topK)
-        .getResultList();
-
+                """;
+        var query = em.createNativeQuery(sql)
+                .setParameter("emb", embeddingLiteral)
+                .setParameter("k", topK);
+        if (sourceTypes != null && !sourceTypes.isEmpty()) {
+            query.setParameter("types", sourceTypes);
+        }
+        List<Object[]> rows = query.getResultList();
         return rows.stream().map(r -> new LawChunkMatch(
                 ((Number) r[0]).longValue(),
                 (String) r[1],
                 (String) r[2],
                 (String) r[3],
-                r[4] == null ? null : ((Number) r[4]).intValue(),
-                (String) r[5],
-                ((Number) r[6]).doubleValue()
+                (String) r[4],
+                r[5] == null ? null : ((Number) r[5]).intValue(),
+                (String) r[6],
+                ((Number) r[7]).doubleValue()
         )).toList();
     }
 

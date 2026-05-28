@@ -1,6 +1,7 @@
 package com.albasave.albasave_server.contract.controller;
 
 import com.albasave.albasave_server.contract.dto.ContractAnalysisResponse;
+import com.albasave.albasave_server.contract.dto.ContractFactSheet;
 import com.albasave.albasave_server.contract.service.LaborContractAnalysisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -61,5 +62,31 @@ public class LaborContractController {
             @AuthenticationPrincipal Long userId,
             @PathVariable Long contractId) {
         return ResponseEntity.ok(contractService.getOne(userId, contractId));
+    }
+
+    /**
+     * 진정서 작성용 정형 데이터만 가볍게 조회.
+     * GET /api/contracts/{contractId}/factsheet
+     *
+     * <p>진정서 작성 화면에서 분석 결과 전체가 아닌 정형 필드만 필요할 때 사용.
+     * 응답이 ContractAnalysisResponse 대비 약 1/5 크기.
+     *
+     * <h3>응답 필드</h3>
+     * <ul>
+     *   <li>businessRegistrationNumber: String (10자리)</li>
+     *   <li>workDays: List&lt;DayOfWeek&gt;</li>
+     *   <li>workStartTime / workEndTime: LocalTime (HH:mm)</li>
+     *   <li>employmentStartDate / employmentEndDate: LocalDate (yyyy-MM-dd)</li>
+     *   <li>hourlyWage / monthlyWage: Integer</li>
+     *   <li>wagePaymentDate: String (예: "매월 5일")</li>
+     *   <li>breakStartTime / breakEndTime: LocalTime</li>
+     *   <li>employerName / employerAddress / employerPhone / employerRepresentative: String</li>
+     * </ul>
+     */
+    @GetMapping("/{contractId}/factsheet")
+    public ResponseEntity<ContractFactSheet> getFactSheet(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long contractId) {
+        return ResponseEntity.ok(contractService.getOne(userId, contractId).getFactSheet());
     }
 }
