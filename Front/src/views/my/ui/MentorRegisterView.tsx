@@ -20,14 +20,24 @@ import {
   type Industry,
   type RegionCode,
   type ResolutionMethod,
+  type VerificationMethod,
 } from "@/entities/mentor";
 
 interface Props {
   onBack: () => void;
   onSaved?: () => void;
+  /**
+   * 자격 검증 정보 — MyView 게이트에서 자동 전달.
+   * 누락 시 백엔드가 거부 (이미 등록된 멘토는 예외).
+   */
+  verification?: {
+    method: VerificationMethod;
+    verifiedCaseIds?: number[];
+    evidenceUrls?: string[];
+  };
 }
 
-export function MentorRegisterView({ onBack, onSaved }: Props): JSX.Element {
+export function MentorRegisterView({ onBack, onSaved, verification }: Props): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -95,6 +105,10 @@ export function MentorRegisterView({ onBack, onSaved }: Props): JSX.Element {
         bio: bio.trim() || undefined,
         capacity: Number(capacity) || 3,
         consultingFee: Number(consultingFee) || 10000,
+        // 자격 검증 정보 (게이트에서 자동 전달)
+        verificationMethod: verification?.method ?? "RESOLVED_CASE",
+        verifiedCaseIds: verification?.verifiedCaseIds,
+        evidenceUrls: verification?.evidenceUrls,
       });
       Alert.alert("등록 완료", "멘토 프로필이 저장되었습니다.");
       onSaved?.();

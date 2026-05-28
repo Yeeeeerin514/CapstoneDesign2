@@ -33,8 +33,12 @@ public class MatchRecommendation {
     private final int consultingFee;
     private final String bio;
 
-    /** 매칭 점수 (0~1) */
+    /** 최종 매칭 점수 (0~1, 앙상블) */
     private final double matchScore;
+    /** Gower distance 기반 규칙 점수 (분해 시각화용) */
+    private final Double ruleBasedScore;
+    /** Two-tower 신경망 점수 (가용 시. 분해 시각화용) */
+    private final Double neuralScore;
     /** 항목별 기여도 (matchScore 합산 가능) */
     private final Map<String, Double> contributions;
     /** 사용자 친화적 추천 이유 텍스트 (예: ["같은 업종(배달)", "같은 사업장 규모(5인 미만)"]) */

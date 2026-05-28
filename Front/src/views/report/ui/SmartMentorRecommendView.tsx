@@ -21,6 +21,9 @@ import {
   type MatchResponseEnvelope,
   type RegionCode,
 } from "@/entities/mentor";
+import { useMentorMatchStore } from "@/features/mentor-match";
+import { useAuthStore } from "@/entities/user/model/auth-store";
+import { router } from "expo-router";
 
 const FEATURE_LABEL: Record<string, string> = {
   damageTypes: "피해 유형",
@@ -59,6 +62,8 @@ export function SmartMentorRecommendView({
   const [envelope, setEnvelope] = useState<MatchResponseEnvelope | null>(null);
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const [stage, setStage] = useState<"검색" | "필터" | "매칭" | "완료">("검색");
+  const userId = useAuthStore((s) => s.userIdString);
+  const createMentorMatch = useMentorMatchStore((s) => s.createMatch);
 
   useEffect(() => {
     (async () => {
@@ -96,10 +101,45 @@ export function SmartMentorRecommendView({
     setConfirmingId(rec.matchId);
     try {
       await confirmMatch(rec.matchId);
+
+      // 채팅 컨텍스트 자동 주입 — mentor-match store에 새 매칭 생성
+      // 시스템 메시지 + 멘토 인삿말이 자동 추가됨 (store가 처리)
+      // 매칭 이유까지 함께 시스템 메시지로 노출하기 위해 별도로 한 줄 더 누적
+      const contextMessage =
+        rec.matchReasons.length > 0
+          ? `이 매칭은 ${rec.matchReasons.slice(0, 3).join(" / ")} 기준으로 선정됐어요.`
+          : "매칭이 완료됐습니다.";
+
+      const match = createMentorMatch({
+        caseId: caseId !== null && caseId !== undefined ? String(caseId) : "ai-match",
+        menteeId: userId,
+        mentorId: String(rec.mentorUserId),
+        mentorNickname: rec.mentorNickname,
+        mentorBadges: rec.isVerified ? ["인증멘토"] : [],
+        mentorIndustry: rec.industry ?? "",
+      });
+
+      // 매칭 이유 시스템 메시지 추가 (createMatch 기본 메시지 다음에)
+      useMentorMatchStore.getState().addMessage(match.id, {
+        senderId: "system",
+        senderRole: "system",
+        text: contextMessage,
+        timestamp: new Date().toISOString(),
+      });
+
       Alert.alert(
         "매칭 완료",
-        `${rec.mentorNickname} 멘토와 매칭됐어요.`,
-        [{ text: "확인", onPress: () => onMatched?.(rec.matchId, rec.mentorNickname) }],
+        `${rec.mentorNickname} 멘토와 매칭됐어요.\n1:1 대화를 시작하시겠어요?`,
+        [
+          { text: "나중에", style: "cancel", onPress: () => onMatched?.(rec.matchId, rec.mentorNickname) },
+          {
+            text: "대화 시작",
+            onPress: () => {
+              onMatched?.(rec.matchId, rec.mentorNickname);
+              router.push(`/mentor-chat/${match.id}`);
+            },
+          },
+        ],
       );
     } catch (err) {
       Alert.alert("매칭 실패", err instanceof Error ? err.message : "다시 시도해주세요");
@@ -264,8 +304,31 @@ function MentorMatchCard({
             gap: 6,
           }}
         >
+          {/* 앙상블 분해 (Gower + Neural) */}
+          {(rec.ruleBasedScore !== undefined && rec.ruleBasedScore !== null) && (
+            <View style={{ marginBottom: 8, paddingBottom: 8, borderBottomWidth: 0.5, borderBottomColor: colors.border }}>
+              <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4, fontWeight: "700" }}>
+                점수 구성 (앙상블)
+              </Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 2 }}>
+                <Text style={{ fontSize: 11, color: colors.text }}>📊 규칙 기반 (Gower)</Text>
+                <Text style={{ fontSize: 11, color: colors.text, fontWeight: "600" }}>
+                  {(rec.ruleBasedScore * 100).toFixed(1)}%
+                </Text>
+              </View>
+              {rec.neuralScore !== null && rec.neuralScore !== undefined && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 11, color: colors.text }}>🧠 신경망 (Two-tower)</Text>
+                  <Text style={{ fontSize: 11, color: colors.text, fontWeight: "600" }}>
+                    {(rec.neuralScore * 100).toFixed(1)}%
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
           <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 2 }}>
-            이 멘토가 추천된 이유 (Gower distance × Thompson Sampling 가중치)
+            항목별 기여도 (Gower distance × Thompson Sampling 가중치)
           </Text>
           {contributionEntries.map(([feature, value]) => {
             const v = value as number;

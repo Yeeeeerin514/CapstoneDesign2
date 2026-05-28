@@ -16,6 +16,14 @@ import { useAuthStore } from "@/entities/user/model/auth-store";
 import { GroupJoinView } from "./GroupJoinView";
 import { router } from "expo-router";
 import { MentorRecommendView } from "./MentorRecommendView";
+import { SmartMentorRecommendView } from "./SmartMentorRecommendView";
+import {
+  amountToRange,
+  inferBusinessSize,
+  mapDamageTypeLabelsToCode,
+  mapIndustryLabelToCode,
+  mapRegionLabelToCode,
+} from "./report-case-mapper";
 import { GroupChatView } from "./GroupChatView";
 import { useMentorMatchStore } from "@/features/mentor-match";
 import { ReportDraftWizardView } from "./ReportDraftWizardView";
@@ -232,6 +240,7 @@ export function ReportDetailView({
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [showGroupJoin, setShowGroupJoin] = useState(false);
   const [showMentorRecommend, setShowMentorRecommend] = useState(false);
+  const [showSmartMentor, setShowSmartMentor] = useState(false);
   const [showDraftWizard, setShowDraftWizard] = useState(false);
   const [showResolveConfirm, setShowResolveConfirm] = useState(false);
   const [showSubmissionResult, setShowSubmissionResult] = useState(false);
@@ -284,6 +293,30 @@ export function ReportDetailView({
     );
   }
 
+  if (showSmartMentor) {
+    const industryCode = mapIndustryLabelToCode(reportCase.industry);
+    return (
+      <SmartMentorRecommendView
+        caseId={Number(reportCase.id) || null}
+        industry={industryCode}
+        damageTypes={mapDamageTypeLabelsToCode(reportCase.damageTypes)}
+        businessSize={inferBusinessSize(industryCode)}
+        region={mapRegionLabelToCode(reportCase.region)}
+        description={
+          reportCase.estimatedUnpaidAmount > 0
+            ? `${reportCase.workplaceName} - 미지급 추정 ${reportCase.estimatedUnpaidAmount.toLocaleString()}원`
+            : reportCase.workplaceName
+        }
+        onBack={() => setShowSmartMentor(false)}
+        onMatched={(matchId, mentorNickname) => {
+          setShowSmartMentor(false);
+          // 채팅 통합은 Phase 3에서 — 지금은 안내만
+          // TODO: 백엔드 멘토 매칭 → 채팅 시스템 연동
+        }}
+      />
+    );
+  }
+
   if (showMentorRecommend) {
     return (
       <MentorRecommendView
@@ -330,7 +363,7 @@ export function ReportDetailView({
         onGoCaseDetail={() => setShowSubmissionResult(false)}
         onConnectMentor={() => {
           setShowSubmissionResult(false);
-          setShowMentorRecommend(true);
+          setShowSmartMentor(true); // AI 매칭 시스템 진입
         }}
       />
     );
@@ -414,7 +447,8 @@ export function ReportDetailView({
   };
 
   const handleConnectMentor = (): void => {
-    setShowMentorRecommend(true);
+    // 메인 매칭 흐름은 AI 시스템 (Gower + Gale-Shapley + Thompson Sampling)
+    setShowSmartMentor(true);
   };
 
   const handleFindCoAction = (): void => {

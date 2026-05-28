@@ -33,7 +33,11 @@ public class MentoringService {
     private final GowerDistanceService gowerService;
     private final GaleShapleyMatcher matcher;
     private final ThompsonSamplingWeightStore weightStore;
+    private final TwoTowerInferenceService twoTower;
     private final ObjectMapper objectMapper;
+
+    /** 앙상블 가중치: finalScore = α·gower + (1-α)·neural. 신경망 미적재 시 α=1로 자동 폴백. */
+    private static final double ENSEMBLE_GOWER_WEIGHT = 0.5;
 
     // ─────────────────────────────────────────────────────────────────
     //  멘토 등록
@@ -41,7 +45,32 @@ public class MentoringService {
 
     @Transactional
     public MentorProfile registerOrUpdateMentor(Long userId, String defaultNickname, MentorRegistrationRequest req) {
+        // ── 자격 검증 ──────────────────────────────────────────────────
+        // 모든 사용자가 멘토가 될 수 없음. 다음 중 하나 필수:
+        //   1) RESOLVED_CASE: verifiedCaseIds 1개 이상 (앱 내 해결 경험)
+        //   2) EVIDENCE_UPLOAD: evidenceUrls 1개 이상 (외부 증빙 자료)
+        //   3) 기존 등록자라 verification 이미 갖춘 경우는 부분 수정 허용
         MentorProfile existing = mentorRepository.findByUserId(userId).orElse(null);
+        boolean alreadyVerified = existing != null && existing.getVerificationMethod() != null;
+
+        VerificationMethod method = req.getVerificationMethod();
+        if (!alreadyVerified) {
+            if (method == null) {
+                throw new IllegalArgumentException(
+                        "멘토 등록 자격이 없습니다. 앱 내 해결한 신고 사건 또는 증빙 자료가 필요합니다.");
+            }
+            if (method == VerificationMethod.RESOLVED_CASE
+                    && (req.getVerifiedCaseIds() == null || req.getVerifiedCaseIds().isEmpty())) {
+                throw new IllegalArgumentException(
+                        "RESOLVED_CASE 검증에는 해결된 사건 ID가 1개 이상 필요합니다.");
+            }
+            if (method == VerificationMethod.EVIDENCE_UPLOAD
+                    && (req.getEvidenceUrls() == null || req.getEvidenceUrls().isEmpty())) {
+                throw new IllegalArgumentException(
+                        "EVIDENCE_UPLOAD 검증에는 증빙 자료 URL이 1개 이상 필요합니다.");
+            }
+        }
+
         MentorProfile profile = existing != null ? existing : new MentorProfile();
 
         profile.setUserId(userId);
@@ -59,6 +88,24 @@ public class MentoringService {
         profile.setBio(req.getBio());
         if (req.getCapacity() != null) profile.setCapacity(Math.max(1, Math.min(req.getCapacity(), 10)));
         if (req.getConsultingFee() != null) profile.setConsultingFee(Math.max(0, req.getConsultingFee()));
+
+        // 검증 정보 영속 (신규 검증 또는 추가 케이스 첨부)
+        if (method != null) {
+            profile.setVerificationMethod(method);
+            profile.setVerifiedAt(LocalDateTime.now());
+            try {
+                if (req.getVerifiedCaseIds() != null && !req.getVerifiedCaseIds().isEmpty()) {
+                    profile.setVerifiedCaseIdsJson(objectMapper.writeValueAsString(req.getVerifiedCaseIds()));
+                }
+                if (req.getEvidenceUrls() != null && !req.getEvidenceUrls().isEmpty()) {
+                    profile.setEvidenceUrlsJson(objectMapper.writeValueAsString(req.getEvidenceUrls()));
+                }
+            } catch (Exception e) {
+                log.warn("[Mentor] 자격 증빙 JSON 직렬화 실패: {}", e.getMessage());
+            }
+            profile.setVerified(true); // 검증 통과한 멘토는 isVerified true
+        }
+
         profile.setUpdatedAt(LocalDateTime.now());
         if (existing == null) profile.setCreatedAt(LocalDateTime.now());
 
@@ -94,30 +141,50 @@ public class MentoringService {
         // 2) Thompson Sampling으로 이번 매칭의 가중치 샘플링
         Map<String, Double> weights = weightStore.sampleWeights();
 
-        // 3) 전체 멘토 풀 조회 (Phase 1: 단순. Phase 3에서 업종/지역 필터 추가 가능)
-        List<MentorProfile> allMentors = mentorRepository.findAll();
-        log.info("[Matching] 멘토 풀 {}명, 멘티 요청 industry={}", allMentors.size(), payload.getIndustry());
+        // 3) 검증된 멘토만 풀에 포함 (미검증/자격 없는 멘토는 매칭에서 제외)
+        List<MentorProfile> allMentors = mentorRepository.findAll().stream()
+                .filter(m -> m.getVerificationMethod() != null)
+                .collect(Collectors.toList());
+        log.info("[Matching] 검증된 멘토 풀 {}명, 멘티 요청 industry={}", allMentors.size(), payload.getIndustry());
 
         // 4) Gale-Shapley로 top-K 추천
         int topK = payload.getTopK() == null ? 3 : Math.max(1, Math.min(payload.getTopK(), 10));
         List<GaleShapleyMatcher.Candidate> candidates = matcher.recommend(allMentors, request, weights, topK);
 
-        // 5) MentorshipMatch를 PROPOSED 상태로 저장 + 응답 빌드
-        List<MatchRecommendation> recs = new ArrayList<>();
-        for (int i = 0; i < candidates.size(); i++) {
-            GaleShapleyMatcher.Candidate c = candidates.get(i);
-            int rank = i + 1;
+        // 5) 앙상블 점수 계산 + MentorshipMatch를 PROPOSED 상태로 저장 + 응답 빌드
+        // gowerScore: rule-based (5단계 알고리즘)
+        // neuralScore: Two-tower 신경망 (가용 시)
+        // finalScore: α·gower + (1-α)·neural
+        boolean neuralOn = twoTower.isReady();
+        double gowerW = neuralOn ? ENSEMBLE_GOWER_WEIGHT : 1.0;
 
-            String contributionsJson = serializeContributions(c.distance().contributions());
+        // 앙상블 점수로 candidates 재정렬
+        record ScoredCandidate(GaleShapleyMatcher.Candidate cand, double gower, Double neural, double finalScore) {}
+        List<ScoredCandidate> scored = new ArrayList<>();
+        for (GaleShapleyMatcher.Candidate c : candidates) {
+            double g = c.distance().matchScore();
+            Double n = twoTower.score(c.mentor(), request);
+            double finalScore = neuralOn && n != null
+                    ? gowerW * g + (1 - gowerW) * n
+                    : g;
+            scored.add(new ScoredCandidate(c, g, n, finalScore));
+        }
+        scored.sort((a, b) -> Double.compare(b.finalScore(), a.finalScore()));
+
+        List<MatchRecommendation> recs = new ArrayList<>();
+        for (int i = 0; i < scored.size(); i++) {
+            ScoredCandidate sc = scored.get(i);
+            int rank = i + 1;
+            String contributionsJson = serializeContributions(sc.cand().distance().contributions());
 
             MentorshipMatch match = MentorshipMatch.builder()
                     .requestId(request.getId())
-                    .mentorProfileId(c.mentor().getId())
+                    .mentorProfileId(sc.cand().mentor().getId())
                     .menteeUserId(userId)
                     .caseId(payload.getCaseId())
-                    .matchScore(c.distance().matchScore())
-                    .ruleBasedScore(c.distance().matchScore())
-                    .neuralScore(null)
+                    .matchScore(sc.finalScore())
+                    .ruleBasedScore(sc.gower())
+                    .neuralScore(sc.neural())
                     .featureContributionsJson(contributionsJson)
                     .status(MatchStatus.PROPOSED)
                     .rankInRecommendation(rank)
@@ -125,14 +192,19 @@ public class MentoringService {
                     .build();
             match = matchRepository.save(match);
 
-            recs.add(buildRecommendation(match.getId(), c, rank, request));
+            recs.add(buildRecommendation(match.getId(), sc.cand(), rank, request,
+                    sc.finalScore(), sc.gower(), sc.neural()));
         }
+
+        String algorithm = neuralOn
+                ? "Gower + Gale-Shapley + Thompson Sampling + Two-tower NN ensemble"
+                : "Gower + Gale-Shapley + Thompson Sampling";
 
         return MatchResponseEnvelope.builder()
                 .requestId(request.getId())
                 .recommendations(recs)
                 .weights(weights)
-                .algorithm("Gower distance + Gale-Shapley + Thompson Sampling")
+                .algorithm(algorithm)
                 .build();
     }
 
@@ -141,7 +213,10 @@ public class MentoringService {
             Long matchId,
             GaleShapleyMatcher.Candidate cand,
             int rank,
-            MenteeMatchRequest request
+            MenteeMatchRequest request,
+            double finalScore,
+            double ruleBasedScore,
+            Double neuralScore
     ) {
         MentorProfile m = cand.mentor();
         Map<String, Double> contributions = cand.distance().contributions();
@@ -162,7 +237,9 @@ public class MentoringService {
                 .reviewCount(m.getReviewCount())
                 .consultingFee(m.getConsultingFee())
                 .bio(m.getBio())
-                .matchScore(cand.distance().matchScore())
+                .matchScore(finalScore)
+                .ruleBasedScore(ruleBasedScore)
+                .neuralScore(neuralScore)
                 .contributions(contributions)
                 .matchReasons(reasons)
                 .rank(rank)

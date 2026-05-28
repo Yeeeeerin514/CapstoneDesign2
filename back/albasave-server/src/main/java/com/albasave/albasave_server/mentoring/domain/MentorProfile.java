@@ -95,6 +95,36 @@ public class MentorProfile {
     @Builder.Default
     private int consultingFee = 10000;
 
+    // ─────────────────────────────────────────────────────────────────
+    //  자격 검증 (모든 사용자가 멘토가 될 수 없음 — 자격 보유자만)
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * 검증 방식. null이면 미검증 — 매칭에서 제외됨.
+     * RESOLVED_CASE: 앱 내 신고 해결 경험 보유
+     * EVIDENCE_UPLOAD: 외부 증빙 자료 업로드
+     * ADMIN_VERIFIED: 관리자 수동 승인
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_method", length = 30)
+    private VerificationMethod verificationMethod;
+
+    /**
+     * 자격 부여 근거 사건 ID들 (JSON 배열 문자열). RESOLVED_CASE인 경우 필수.
+     * 예: "[12, 47, 89]"
+     */
+    @Column(name = "verified_case_ids", length = 500)
+    private String verifiedCaseIdsJson;
+
+    /**
+     * 증빙 자료 S3 URL들 (JSON 배열 문자열). EVIDENCE_UPLOAD인 경우 필수.
+     */
+    @Column(name = "evidence_urls", columnDefinition = "TEXT")
+    private String evidenceUrlsJson;
+
+    @Column(name = "verified_at")
+    private LocalDateTime verifiedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();

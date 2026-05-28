@@ -25,6 +25,7 @@ export type {
   RegionCode,
   ResolutionMethod,
   DamageAmountRange,
+  VerificationMethod,
   MentorRegistrationRequest,
   MatchRequestPayload,
   MatchContribution,
@@ -41,6 +42,7 @@ export {
   REGION_LABEL,
   RESOLUTION_METHOD_LABEL,
   DAMAGE_AMOUNT_LABEL,
+  VERIFICATION_METHOD_LABEL,
 } from "./model/matching-types";
 export {
   registerMentor,

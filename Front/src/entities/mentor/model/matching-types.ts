@@ -113,6 +113,14 @@ export const DAMAGE_AMOUNT_LABEL: Record<DamageAmountRange, string> = {
 //  API request/response 타입
 // ─────────────────────────────────────────────────────────────────────
 
+export type VerificationMethod = "RESOLVED_CASE" | "EVIDENCE_UPLOAD" | "ADMIN_VERIFIED";
+
+export const VERIFICATION_METHOD_LABEL: Record<VerificationMethod, string> = {
+  RESOLVED_CASE: "앱 내 해결 경험",
+  EVIDENCE_UPLOAD: "증빙 자료 업로드",
+  ADMIN_VERIFIED: "관리자 승인",
+};
+
 export interface MentorRegistrationRequest {
   nickname?: string;
   industry: Industry;
@@ -126,6 +134,13 @@ export interface MentorRegistrationRequest {
   bio?: string;
   capacity?: number;
   consultingFee?: number;
+
+  // 자격 검증 — 필수 (둘 중 하나 충족)
+  verificationMethod: VerificationMethod;
+  /** RESOLVED_CASE: 해결된 신고 사건 ID 목록 */
+  verifiedCaseIds?: number[];
+  /** EVIDENCE_UPLOAD: S3 업로드된 증빙 자료 URL */
+  evidenceUrls?: string[];
 }
 
 export interface MatchRequestPayload {
@@ -165,7 +180,9 @@ export interface MatchRecommendation {
   reviewCount: number;
   consultingFee: number;
   bio: string | null;
-  matchScore: number;            // 0~1
+  matchScore: number;            // 0~1 (앙상블 최종)
+  ruleBasedScore?: number | null; // Gower 점수 (앙상블 분해 시각화용)
+  neuralScore?: number | null;    // Two-tower 점수 (가용 시)
   contributions: MatchContribution;
   matchReasons: string[];
   rank: number;                   // 1-based
@@ -206,6 +223,11 @@ export interface BackendMentorProfile {
   capacity: number;
   currentMenteeCount: number;
   consultingFee: number;
+  // 자격 검증
+  verificationMethod: VerificationMethod | null;
+  verifiedCaseIdsJson: string | null;
+  evidenceUrlsJson: string | null;
+  verifiedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
