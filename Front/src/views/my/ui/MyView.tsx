@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -6,6 +7,7 @@ import { ScreenHeader } from "@/shared/ui";
 import { useMentorMatchStore } from "@/features/mentor-match";
 import { useReportStore } from "@/features/report-submit";
 import { useAuthStore } from "@/entities/user/model/auth-store";
+import { MentorRegisterView } from "./MentorRegisterView";
 
 /**
  * MY 탭 — 현재는 "내 멘토링" 섹션만. 추후 프로필/설정 카드 추가 예정.
@@ -16,6 +18,11 @@ export function MyView(): JSX.Element {
   const nickname = useAuthStore((s) => s.nickname);
   const myMatches = useMentorMatchStore((s) => s.getMatchesByMentee(userId));
   const cases = useReportStore((s) => s.cases);
+  const [showMentorRegister, setShowMentorRegister] = useState(false);
+
+  if (showMentorRegister) {
+    return <MentorRegisterView onBack={() => setShowMentorRegister(false)} />;
+  }
 
   return (
     <SafeAreaView
@@ -34,6 +41,43 @@ export function MyView(): JSX.Element {
         <Text style={{ fontSize: 13, color: "#64748B", marginTop: 4 }}>
           {nickname.length > 0 ? `${nickname}님, 안녕하세요` : "환영합니다"}
         </Text>
+
+        {/* 멘토 등록 진입점 */}
+        <Pressable
+          onPress={() => setShowMentorRegister(true)}
+          style={{
+            marginTop: 20,
+            backgroundColor: "#1D4ED8",
+            borderRadius: 14,
+            padding: 16,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: "rgba(255,255,255,0.2)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="ribbon-outline" size={22} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>
+              경험을 나눌 멘토로 등록하기
+            </Text>
+            <Text style={{ fontSize: 11, color: "#DBEAFE", marginTop: 2, lineHeight: 16 }}>
+              내가 겪은 피해를 해결한 경험을 다른 알바생에게 도움 주세요.{"\n"}
+              AI 매칭 시스템에 자동 등록됩니다.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#fff" />
+        </Pressable>
 
         <View
           style={{

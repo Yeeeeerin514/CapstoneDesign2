@@ -1,0 +1,211 @@
+/**
+ * Phase 1 — 백엔드 매칭 시스템 (Gower + Gale-Shapley + Thompson Sampling) 타입.
+ *
+ * 기존 MentorProfile/MentorMatch는 mock 기반 프론트 전용 모델이라 호환 유지.
+ * 이 파일은 새 백엔드 API 응답을 그대로 받아 화면에 표시하는 모델.
+ */
+
+// 백엔드 enum과 1:1 매핑 (UI 라벨은 백엔드가 label() 메서드로 제공하지만
+// 폼에서 선택 시에는 enum value를 그대로 보냄)
+export type Industry =
+  | "FOOD_SERVICE" | "DELIVERY" | "CONVENIENCE_RETAIL" | "MANUFACTURING"
+  | "OFFICE" | "CONSTRUCTION" | "SERVICE" | "EDUCATION" | "HEALTHCARE" | "OTHER";
+
+export type DamageType =
+  | "WAGE_ARREARS" | "SEVERANCE_PAY" | "WEEKLY_HOLIDAY" | "OVERTIME_PAY"
+  | "INSURANCE" | "UNFAIR_DISMISSAL" | "INDUSTRIAL_ACCIDENT" | "UNPAID_BONUS"
+  | "CONTRACT_BREACH" | "OTHER";
+
+export type EmploymentType =
+  | "SHORT_TERM_PART_TIME" | "LONG_TERM_PART_TIME" | "DAILY_WORKER"
+  | "CONTRACT" | "FREELANCE" | "REGULAR" | "OTHER";
+
+export type BusinessSize = "UNDER_5" | "SIZE_5_TO_30" | "OVER_30" | "UNKNOWN";
+
+export type RegionCode =
+  | "SEOUL" | "BUSAN" | "DAEGU" | "INCHEON" | "GWANGJU" | "DAEJEON" | "ULSAN"
+  | "SEJONG" | "GYEONGGI" | "GANGWON" | "CHUNGBUK" | "CHUNGNAM" | "JEONBUK"
+  | "JEONNAM" | "GYEONGBUK" | "GYEONGNAM" | "JEJU" | "OTHER";
+
+export type ResolutionMethod =
+  | "LABOR_OFFICE_REPORT" | "CIVIL_LAWSUIT" | "PAYMENT_ORDER"
+  | "SETTLEMENT" | "LABOR_ATTORNEY" | "OTHER";
+
+export type DamageAmountRange =
+  | "UNDER_100K" | "KRW_100K_500K" | "KRW_500K_1M" | "KRW_1M_5M" | "OVER_5M";
+
+// ─────────────────────────────────────────────────────────────────────
+//  라벨 매핑 (UI 표시용)
+// ─────────────────────────────────────────────────────────────────────
+
+export const INDUSTRY_LABEL: Record<Industry, string> = {
+  FOOD_SERVICE: "요식업",
+  DELIVERY: "배달·물류",
+  CONVENIENCE_RETAIL: "편의점·판매",
+  MANUFACTURING: "제조",
+  OFFICE: "사무·관리",
+  CONSTRUCTION: "건설",
+  SERVICE: "서비스",
+  EDUCATION: "교육·강사",
+  HEALTHCARE: "의료·돌봄",
+  OTHER: "기타",
+};
+
+export const DAMAGE_TYPE_LABEL: Record<DamageType, string> = {
+  WAGE_ARREARS: "임금체불",
+  SEVERANCE_PAY: "퇴직금 미지급",
+  WEEKLY_HOLIDAY: "주휴수당 미지급",
+  OVERTIME_PAY: "연장·야간수당 미지급",
+  INSURANCE: "4대보험 미가입",
+  UNFAIR_DISMISSAL: "부당해고",
+  INDUSTRIAL_ACCIDENT: "산재",
+  UNPAID_BONUS: "상여금 미지급",
+  CONTRACT_BREACH: "계약 위반",
+  OTHER: "기타",
+};
+
+export const EMPLOYMENT_TYPE_LABEL: Record<EmploymentType, string> = {
+  SHORT_TERM_PART_TIME: "단기알바",
+  LONG_TERM_PART_TIME: "장기알바",
+  DAILY_WORKER: "일용직",
+  CONTRACT: "계약직",
+  FREELANCE: "프리랜서",
+  REGULAR: "정규직",
+  OTHER: "기타",
+};
+
+export const BUSINESS_SIZE_LABEL: Record<BusinessSize, string> = {
+  UNDER_5: "5인 미만",
+  SIZE_5_TO_30: "5~30인",
+  OVER_30: "30인 이상",
+  UNKNOWN: "확인불가",
+};
+
+export const REGION_LABEL: Record<RegionCode, string> = {
+  SEOUL: "서울특별시", BUSAN: "부산광역시", DAEGU: "대구광역시",
+  INCHEON: "인천광역시", GWANGJU: "광주광역시", DAEJEON: "대전광역시",
+  ULSAN: "울산광역시", SEJONG: "세종특별자치시",
+  GYEONGGI: "경기도", GANGWON: "강원특별자치도",
+  CHUNGBUK: "충청북도", CHUNGNAM: "충청남도",
+  JEONBUK: "전북특별자치도", JEONNAM: "전라남도",
+  GYEONGBUK: "경상북도", GYEONGNAM: "경상남도",
+  JEJU: "제주특별자치도", OTHER: "기타",
+};
+
+export const RESOLUTION_METHOD_LABEL: Record<ResolutionMethod, string> = {
+  LABOR_OFFICE_REPORT: "노동청 진정",
+  CIVIL_LAWSUIT: "민사소송",
+  PAYMENT_ORDER: "지급명령",
+  SETTLEMENT: "합의",
+  LABOR_ATTORNEY: "노무사 상담",
+  OTHER: "기타",
+};
+
+export const DAMAGE_AMOUNT_LABEL: Record<DamageAmountRange, string> = {
+  UNDER_100K: "10만원 이하",
+  KRW_100K_500K: "10~50만원",
+  KRW_500K_1M: "50~100만원",
+  KRW_1M_5M: "100~500만원",
+  OVER_5M: "500만원 이상",
+};
+
+// ─────────────────────────────────────────────────────────────────────
+//  API request/response 타입
+// ─────────────────────────────────────────────────────────────────────
+
+export interface MentorRegistrationRequest {
+  nickname?: string;
+  industry: Industry;
+  damageTypes: DamageType[];
+  employmentType?: EmploymentType;
+  businessSize: BusinessSize;
+  region?: RegionCode;
+  resolutionMethods?: ResolutionMethod[];
+  resolutionDays?: number;
+  damageAmountRange?: DamageAmountRange;
+  bio?: string;
+  capacity?: number;
+  consultingFee?: number;
+}
+
+export interface MatchRequestPayload {
+  caseId?: number | null;
+  industry: Industry;
+  damageTypes: DamageType[];
+  employmentType?: EmploymentType;
+  businessSize: BusinessSize;
+  region?: RegionCode;
+  damageAmountRange?: DamageAmountRange;
+  description?: string;
+  topK?: number;
+}
+
+export interface MatchContribution {
+  damageTypes?: number;
+  industry?: number;
+  businessSize?: number;
+  employmentType?: number;
+  damageAmountRange?: number;
+  region?: number;
+  resolutionMethods?: number;
+}
+
+export interface MatchRecommendation {
+  matchId: number;
+  mentorProfileId: number;
+  mentorUserId: number;
+  mentorNickname: string;
+  industry: string | null;       // 백엔드가 label로 변환해 보냄
+  damageTypes: string[];
+  businessSize: string | null;
+  region: string | null;
+  resolutionMethods: string[];
+  isVerified: boolean;
+  averageRating: number;
+  reviewCount: number;
+  consultingFee: number;
+  bio: string | null;
+  matchScore: number;            // 0~1
+  contributions: MatchContribution;
+  matchReasons: string[];
+  rank: number;                   // 1-based
+}
+
+export interface MatchResponseEnvelope {
+  requestId: number;
+  recommendations: MatchRecommendation[];
+  weights: Record<string, number>;
+  algorithm: string;
+}
+
+export interface FeedbackPayload {
+  matchId: number;
+  rating: number;       // 1~5
+  chatDays: number;
+  resolved: boolean;
+  comment?: string;
+}
+
+/** 백엔드 MentorProfile 엔티티 응답. */
+export interface BackendMentorProfile {
+  id: number;
+  userId: number;
+  nickname: string;
+  industry: Industry;
+  damageTypes: DamageType[];
+  employmentType: EmploymentType | null;
+  businessSize: BusinessSize;
+  region: RegionCode | null;
+  resolutionMethods: ResolutionMethod[];
+  resolutionDuration: string | null;
+  damageAmountRange: DamageAmountRange | null;
+  bio: string | null;
+  isVerified: boolean;
+  averageRating: number;
+  reviewCount: number;
+  capacity: number;
+  currentMenteeCount: number;
+  consultingFee: number;
+  createdAt: string;
+  updatedAt: string;
+}
