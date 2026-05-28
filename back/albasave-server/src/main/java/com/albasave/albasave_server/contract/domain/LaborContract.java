@@ -11,7 +11,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "labor_contract")
+@Table(name = "labor_contract",
+        indexes = {
+                @Index(name = "ix_labor_contract_user_hash", columnList = "user_id, image_hash")
+        })
 @Getter
 @Setter
 @Builder
@@ -31,6 +34,10 @@ public class LaborContract {
 
     @Column(name = "image_url")
     private String imageUrl;
+
+    /** 이미지 SHA-256 해시 (소문자 hex). 동일 이미지 재업로드 시 분석 결과 재사용 키. */
+    @Column(name = "image_hash", length = 64)
+    private String imageHash;
 
     @Column(name = "extracted_text", columnDefinition = "TEXT")
     private String extractedText;

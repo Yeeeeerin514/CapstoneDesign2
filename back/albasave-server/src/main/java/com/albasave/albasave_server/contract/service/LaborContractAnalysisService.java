@@ -50,6 +50,22 @@ public class LaborContractAnalysisService {
 
     @Transactional
     public ContractAnalysisResponse analyzeContract(Long userId, MultipartFile image, Long partTimeJobId) {
+        // 0. 이미지 SHA-256 해시 — 동일 이미지 재업로드 캐시 키
+        String imageHash = computeImageHash(image);
+
+        // 0-1. 같은 사용자가 같은 이미지를 이전에 분석했으면 결과 재사용 (일관성 보장)
+        //      LLM 비결정성으로 인한 결과 변동 방지. 캡스톤 시연에 핵심.
+        if (imageHash != null) {
+            var cached = contractRepository
+                    .findFirstByUserIdAndImageHashOrderByCreatedAtDesc(userId, imageHash);
+            if (cached.isPresent()) {
+                log.info("[계약서 분석] 동일 이미지 해시 캐시 적중 — contractId={}, hash={}",
+                        cached.get().getId(), imageHash.substring(0, 16));
+                // 새 LaborContract 행을 생성하지 않고 기존 결과를 그대로 반환
+                return toResponse(cached.get());
+            }
+        }
+
         // 1. S3 업로드 (실패해도 분석은 계속)
         String imageUrl = imageStorageService.upload(image).orElse(null);
 
@@ -120,6 +136,7 @@ public class LaborContractAnalysisService {
                 .userId(userId)
                 .partTimeJobId(partTimeJobId)
                 .imageUrl(imageUrl)
+                .imageHash(imageHash)
                 .analysisJson(persistedJson)
                 .hasViolation(hasViolation)
                 .businessRegistrationNumber(factSheet.businessRegistrationNumber())
@@ -831,6 +848,26 @@ public class LaborContractAnalysisService {
             return Base64.getEncoder().encodeToString(file.getBytes());
         } catch (Exception e) {
             throw new RuntimeException("이미지 인코딩 실패", e);
+        }
+    }
+
+    /**
+     * 이미지 SHA-256 해시 (소문자 hex). 동일 이미지 재업로드 캐시 키.
+     * 실패 시 null 반환 — 캐싱만 비활성화되고 분석은 계속 진행.
+     */
+    private String computeImageHash(MultipartFile file) {
+        try {
+            byte[] bytes = file.getBytes();
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(bytes);
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.warn("[계약서 분석] 이미지 해시 계산 실패: {}", e.getMessage());
+            return null;
         }
     }
 
