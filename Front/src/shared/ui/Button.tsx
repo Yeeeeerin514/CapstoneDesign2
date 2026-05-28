@@ -1,6 +1,12 @@
-// src/shared/ui/Button.tsx
 import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, Text } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  Text,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
+import { colors, radius, spacing } from "./tokens";
 
 type Variant = "primary" | "secondary" | "danger" | "outline" | "ghost";
 type Size = "sm" | "md" | "lg";
@@ -13,21 +19,44 @@ interface ButtonProps {
   isDisabled?: boolean;
   fullWidth?: boolean;
   onPress?: () => void;
+  style?: StyleProp<ViewStyle>;
 }
 
-const variantStyles: Record<Variant, { container: string; text: string }> = {
-  primary:   { container: "bg-blue-600 active:bg-blue-700",   text: "text-white" },
-  secondary: { container: "bg-gray-100 active:bg-gray-200",   text: "text-gray-700" },
-  danger:    { container: "bg-red-500 active:bg-red-600",     text: "text-white" },
-  outline:   { container: "border-2 border-blue-600 bg-white active:bg-blue-50", text: "text-blue-600" },
-  ghost:     { container: "bg-transparent active:bg-gray-100", text: "text-gray-500" },
+const sizeMap: Record<
+  Size,
+  { paddingVertical: number; fontSize: number; minHeight: number }
+> = {
+  sm: { paddingVertical: spacing.sm, fontSize: 14, minHeight: 40 },
+  md: { paddingVertical: spacing.md, fontSize: 15, minHeight: 48 },
+  lg: { paddingVertical: spacing.lg, fontSize: 16, minHeight: 56 },
 };
 
-const sizeStyles: Record<Size, { container: string; text: string }> = {
-  sm: { container: "h-10 px-4 rounded-xl",  text: "text-sm" },
-  md: { container: "h-12 px-5 rounded-2xl", text: "text-base" },
-  lg: { container: "h-14 px-6 rounded-2xl", text: "text-base" },
-};
+function getVariantStyle(
+  variant: Variant,
+  isInactive: boolean,
+): { background: string; text: string; borderColor?: string; borderWidth?: number } {
+  if (isInactive) {
+    return { background: colors.borderStrong, text: colors.textDisabled };
+  }
+  if (variant === "primary") {
+    return { background: colors.primary, text: colors.textOnPrimary };
+  }
+  if (variant === "secondary") {
+    return { background: colors.primaryLight, text: colors.primary };
+  }
+  if (variant === "danger") {
+    return { background: colors.danger, text: colors.white };
+  }
+  if (variant === "outline") {
+    return {
+      background: colors.white,
+      text: colors.primary,
+      borderColor: colors.primary,
+      borderWidth: 1.5,
+    };
+  }
+  return { background: "transparent", text: colors.textSecondary };
+}
 
 export function Button({
   children,
@@ -37,31 +66,42 @@ export function Button({
   isDisabled = false,
   fullWidth = false,
   onPress,
-}: ButtonProps) {
-  const v = variantStyles[variant];
-  const s = sizeStyles[size];
-  const disabled = isLoading || isDisabled;
+  style,
+}: ButtonProps): JSX.Element {
+  const isInactive = isLoading || isDisabled;
+  const v = getVariantStyle(variant, isInactive);
+  const s = sizeMap[size];
 
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
-      className={[
-        "flex-row items-center justify-center",
-        v.container,
-        s.container,
-        fullWidth ? "w-full" : "",
-        disabled ? "opacity-50" : "",
-      ].join(" ")}
+      disabled={isInactive}
+      style={({ pressed }) => [
+        {
+          borderRadius: radius.md,
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "row",
+          paddingVertical: s.paddingVertical,
+          paddingHorizontal: spacing.xl,
+          minHeight: s.minHeight,
+          backgroundColor: v.background,
+          borderColor: v.borderColor,
+          borderWidth: v.borderWidth,
+          opacity: pressed ? 0.9 : 1,
+          width: fullWidth ? "100%" : undefined,
+        },
+        style,
+      ]}
     >
-      {isLoading && (
+      {isLoading ? (
         <ActivityIndicator
           size="small"
-          color={variant === "primary" || variant === "danger" ? "#fff" : "#2563EB"}
-          className="mr-2"
+          color={v.text}
+          style={{ marginRight: 8 }}
         />
-      )}
-      <Text className={["font-semibold", v.text, s.text].join(" ")}>
+      ) : null}
+      <Text style={{ color: v.text, fontWeight: "600", fontSize: s.fontSize }}>
         {children}
       </Text>
     </Pressable>

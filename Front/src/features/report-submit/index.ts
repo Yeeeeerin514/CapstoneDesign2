@@ -1,2 +1,2 @@
 export { ReportSubmitForm } from "./ui/ReportSubmitForm";
-export { useReportSubmitStore } from "./model/store";
+export { useReportStore } from "./model/store";

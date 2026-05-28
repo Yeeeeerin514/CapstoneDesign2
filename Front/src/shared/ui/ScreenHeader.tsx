@@ -1,52 +1,68 @@
-import { Text, View } from "react-native";
-import { ShieldCheck } from "lucide-react-native";
+import { Platform, StatusBar, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { colors, spacing, typography } from "./tokens";
 
 interface Props {
   showLogo?: boolean;
   title?: string;
 }
 
-/** 화면 상단 공통 헤더. showLogo면 알바지킴이 로고 표시. title이 있으면 우측에 표시. */
+const HEADER_BODY_HEIGHT = 56;
+const LOGO_BOX_SIZE = 28;
+const LOGO_ICON_SIZE = 18;
+
 export function ScreenHeader({ showLogo = false, title }: Props): JSX.Element {
+  const insets = useSafeAreaInsets();
+  const androidStatusBarHeight =
+    Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
+  const topInset = Math.max(insets.top, androidStatusBarHeight);
+
   return (
     <View
       style={{
-        backgroundColor: "#FFFFFF",
-        borderBottomWidth: 0.5,
-        borderBottomColor: "#E5E7EB",
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
+        backgroundColor: colors.white,
+        paddingTop: topInset,
       }}
     >
-      {showLogo ? (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <View
+        style={{
+          height: HEADER_BODY_HEIGHT,
+          paddingHorizontal: spacing.lg,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        {showLogo ? (
           <View
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              backgroundColor: "#2563EB",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
+            style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
           >
-            <ShieldCheck size={16} color="#FFFFFF" />
+            <View
+              style={{
+                width: LOGO_BOX_SIZE,
+                height: LOGO_BOX_SIZE,
+                borderRadius: 8,
+                backgroundColor: colors.primary,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons
+                name="shield-checkmark"
+                size={LOGO_ICON_SIZE}
+                color={colors.white}
+              />
+            </View>
+            <Text style={typography.title3}>알바지킴이</Text>
           </View>
-          <Text style={{ fontSize: 15, fontWeight: "600", color: "#0F172A" }}>
-            알바지킴이
-          </Text>
-        </View>
-      ) : (
-        <View />
-      )}
-      {title !== undefined && (
-        <Text style={{ fontSize: 15, fontWeight: "600", color: "#0F172A" }}>
-          {title}
-        </Text>
-      )}
+        ) : (
+          <View />
+        )}
+        {title !== undefined ? (
+          <Text style={typography.title3}>{title}</Text>
+        ) : null}
+      </View>
     </View>
   );
 }

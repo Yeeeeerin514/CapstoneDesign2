@@ -4,8 +4,22 @@
  * - Expo는 `EXPO_PUBLIC_*` 접두사가 붙은 변수만 클라이언트 번들에 노출함.
  */
 export const env = {
-  apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8080/api",
+  apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8080",
+  anthropicKey: process.env.EXPO_PUBLIC_ANTHROPIC_KEY ?? "",
   appEnv: (process.env.EXPO_PUBLIC_APP_ENV ?? "development") as
     | "development"
     | "production",
+  /** 결제 provider 선택. 기본은 mock. 실제 결제 연결 시 'toss'/'kakaopay' 등. */
+  paymentProvider: (process.env.EXPO_PUBLIC_PAYMENT_PROVIDER ?? "mock") as
+    | "mock"
+    | "toss"
+    | "kakaopay",
 } as const;
+
+export function assertEnv(): void {
+  if (env.anthropicKey.length === 0) {
+    console.warn(
+      "[env] EXPO_PUBLIC_ANTHROPIC_KEY가 비어있어요. Claude API 호출이 401로 실패합니다.",
+    );
+  }
+}

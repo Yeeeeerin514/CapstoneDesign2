@@ -23,3 +23,29 @@ export function clamp(n: number, min: number, max: number): number {
 export function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
+
+/** 피해 금액을 구간 표시로 변환 (후기 카드 표시용). */
+export function getAmountRange(amount: number): string {
+  if (amount < 500_000) return "50만원 미만";
+  if (amount < 1_000_000) return "50만원대";
+  if (amount < 2_000_000) return "100만원대";
+  if (amount < 5_000_000) return "200만원대";
+  return "500만원 이상";
+}
+
+/**
+ * 사건 해결 소요일 계산.
+ * createdAt~resolvedAt 사이 일수. resolvedAt이 없으면 0.
+ */
+export function calcResolveDays(input: {
+  createdAt?: string;
+  startedAt?: string;
+  resolvedAt?: string;
+}): number {
+  if (input.resolvedAt === undefined) return 0;
+  const startIso = input.createdAt ?? input.startedAt;
+  if (startIso === undefined) return 0;
+  const start = new Date(startIso).getTime();
+  const end = new Date(input.resolvedAt).getTime();
+  return Math.max(0, Math.round((end - start) / (1000 * 60 * 60 * 24)));
+}
