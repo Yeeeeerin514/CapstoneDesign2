@@ -1,5 +1,22 @@
 import { useState } from "react";
 import { SafeAreaView, ScrollView, Text, TouchableOpacity, View, Alert, Platform, StatusBar } from "react-native";
+
+/**
+ * 웹/네이티브 모두에서 동작하는 확인 다이얼로그.
+ * RN Alert.alert는 웹에서 multi-button 미지원이라 window.confirm으로 대체한다.
+ */
+function confirmAction(title: string, message: string, onConfirm: () => void): void {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.confirm(`${title}\n\n${message}`)) {
+      onConfirm();
+    }
+    return;
+  }
+  Alert.alert(title, message, [
+    { text: "취소", style: "cancel" },
+    { text: "삭제", style: "destructive", onPress: onConfirm },
+  ]);
+}
 import { Star } from "lucide-react-native";
 import type { ContractAnalysisResult } from "@/entities/job-post";
 import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
@@ -82,10 +99,11 @@ export function WorkplaceView(): JSX.Element {
                   </Text>
                   <TouchableOpacity
                     onPress={() =>
-                      Alert.alert("관심업장 삭제", `${wp.name}을(를) 삭제하시겠어요?`, [
-                        { text: "취소", style: "cancel" },
-                        { text: "삭제", style: "destructive", onPress: () => removeWorkplace(wp.id) },
-                      ])
+                      confirmAction(
+                        "관심업장 삭제",
+                        `${wp.name}을(를) 삭제하시겠어요?`,
+                        () => removeWorkplace(wp.id),
+                      )
                     }
                   >
                     <Star size={18} color="#2563EB" fill="#2563EB" />

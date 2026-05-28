@@ -3,6 +3,7 @@ package com.albasave.albasave_server.jobposting.service;
 import com.albasave.albasave_server.jobposting.dto.BusinessCandidate;
 import com.albasave.albasave_server.jobposting.dto.ExternalRiskCheck;
 import com.albasave.albasave_server.jobposting.dto.ExtractedJobPosting;
+import com.albasave.albasave_server.juso.JusoApiClient;
 import com.albasave.albasave_server.wagearrears.service.WageArrearsLookupService;
 import org.springframework.stereotype.Service;
 
@@ -13,13 +14,16 @@ import java.util.List;
 public class ExternalBusinessRiskService {
     private final NtsBusinessStatusClient ntsBusinessStatusClient;
     private final WageArrearsLookupService wageArrearsLookupService;
+    private final JusoApiClient jusoApiClient;
 
     public ExternalBusinessRiskService(
             NtsBusinessStatusClient ntsBusinessStatusClient,
-            WageArrearsLookupService wageArrearsLookupService
+            WageArrearsLookupService wageArrearsLookupService,
+            JusoApiClient jusoApiClient
     ) {
         this.ntsBusinessStatusClient = ntsBusinessStatusClient;
         this.wageArrearsLookupService = wageArrearsLookupService;
+        this.jusoApiClient = jusoApiClient;
     }
 
     public List<ExternalRiskCheck> check(ExtractedJobPosting posting, List<BusinessCandidate> candidates) {
@@ -31,6 +35,7 @@ public class ExternalBusinessRiskService {
         );
         checks.add(wageArrearsLookupService.check(businessName));
         checks.add(ntsBusinessStatusClient.check(posting.businessRegistrationNumber()));
+        checks.add(jusoApiClient.check(posting.address()));
         return checks;
     }
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Image,
   Pressable,
   ScrollView,
   Text,
@@ -18,6 +19,8 @@ import type {
 
 interface Props {
   result: JobPostAnalysisResult;
+  /** 사용자가 업로드한 원본 이미지 URI — 분석 결과 화면에 시각 확인용으로 표시 */
+  uploadedImageUri?: string | null;
   onBack: () => void;
   onFavoriteAdded: () => void;
 }
@@ -60,13 +63,16 @@ const CHECK_STATUS_COLOR: Record<
 const SOURCE_LABEL: Record<string, string> = {
   WAGE_ARREARS_DB: "체불사업주 명단공개 DB",
   NTS_BUSINESS_STATUS: "국세청 사업자등록 상태",
+  JUSO_ADDRESS: "도로명주소 진위 검증",
 };
 
 export function JobAnalysisResultView({
   result,
+  uploadedImageUri,
   onBack,
   onFavoriteAdded: _onFavoriteAdded,
 }: Props) {
+  const previewUri = uploadedImageUri ?? result.imageUrl;
   const router = useRouter();
   const addWorkplace = useFavoriteWorkplaceStore((s) => s.addWorkplace);
   const [isFavoriteAdded, setIsFavoriteAdded] = useState(false);
@@ -113,6 +119,43 @@ export function JobAnalysisResultView({
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 120, gap: 12 }}
       >
+        {/* 분석된 이미지 미리보기 — 사용자가 어떤 이미지가 분석됐는지 시각 확인 */}
+        {previewUri !== null && previewUri !== "" && (
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: 12,
+              padding: 12,
+              borderWidth: 0.5,
+              borderColor: "#E5E7EB",
+              gap: 8,
+            }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: "700", color: "#475569" }}>
+              📷 이번에 분석된 이미지
+            </Text>
+            <Image
+              source={{ uri: previewUri }}
+              style={{
+                width: "100%",
+                height: 220,
+                borderRadius: 8,
+                backgroundColor: "#F1F5F9",
+              }}
+              resizeMode="contain"
+            />
+            <Text
+              style={{
+                fontSize: 11,
+                color: "#94A3B8",
+                textAlign: "center",
+              }}
+            >
+              내가 올린 공고가 맞는지 한번 더 확인해주세요
+            </Text>
+          </View>
+        )}
+
         {/* 위험도 배너 */}
         <View
           style={{
@@ -414,6 +457,7 @@ export function JobAnalysisResultView({
           <ExtractedRow label="전화번호" value={result.extracted.phone} />
           <ExtractedRow label="주소" value={result.extracted.address} />
           <ExtractedRow label="직무" value={result.extracted.jobTitle} />
+          <ExtractedRow label="계약기간" value={result.extracted.contractPeriod} />
           <ExtractedRow label="고용형태" value={result.extracted.employmentType} />
           {result.extracted.benefits.length > 0 && (
             <ExtractedRow label="복리후생" value={result.extracted.benefits.join(", ")} />

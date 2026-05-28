@@ -36,6 +36,7 @@ export const MOCK_JOB_ANALYSIS: JobPostAnalysisResult = {
     hourlyWageText: "10,000원",
     workTimeText: "09:00~18:00",
     workScheduleText: null,
+    contractPeriod: null,
     employmentType: null,
     benefits: [],
     suspiciousPhrases: [],

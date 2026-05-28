@@ -46,9 +46,11 @@ export async function analyzeJobPost(
     "/job-postings/analyze",
     formData,
     {
+      // 웹: 헤더 미지정 → axios가 multipart/form-data; boundary=... 자동 생성
+      // 네이티브: 명시 필요
       headers:
         Platform.OS === "web"
-          ? undefined
+          ? {}
           : { "Content-Type": "multipart/form-data" },
       timeout: 60_000,
     },
@@ -74,7 +76,7 @@ export async function analyzeContract(
     {
       headers:
         Platform.OS === "web"
-          ? undefined
+          ? {}
           : { "Content-Type": "multipart/form-data" },
       timeout: 60_000,
     },

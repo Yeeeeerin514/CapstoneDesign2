@@ -1,10 +1,19 @@
 import axios, { AxiosError, type AxiosInstance } from "axios";
 import { env } from "@/shared/config/env";
 
+/**
+ * apiClient: 기본 axios 인스턴스.
+ *
+ * 헤더 설계:
+ * - default Content-Type을 지정하지 않음.
+ *   axios가 데이터 종류에 따라 자동 설정:
+ *   - plain object → "application/json"
+ *   - FormData (브라우저) → "multipart/form-data; boundary=..." 자동
+ * - RN(native)는 FormData 감지가 약해서 호출부에서 명시적으로 multipart/form-data 지정.
+ */
 export const apiClient: AxiosInstance = axios.create({
   baseURL: env.apiUrl,
   timeout: 15_000,
-  headers: { "Content-Type": "application/json" },
 });
 
 // JWT 토큰 자동 주입 인터셉터

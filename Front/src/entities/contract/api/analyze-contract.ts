@@ -73,7 +73,7 @@ export async function analyzeContract(
     {
       headers:
         Platform.OS === "web"
-          ? undefined
+          ? {}
           : { "Content-Type": "multipart/form-data" },
       timeout: 60_000,
     },

@@ -28,6 +28,7 @@ export interface ExtractedPosting {
   hourlyWageText: string | null;
   workTimeText: string | null;
   workScheduleText: string | null;
+  contractPeriod: string | null;
   employmentType: string | null;
   benefits: string[];
   suspiciousPhrases: string[];
@@ -137,6 +138,7 @@ interface ApiExtractedJobPosting {
   workScheduleText: string | null;
   workDays: string[];
   workTimeText: string | null;
+  contractPeriod: string | null;
   employmentType: string | null;
   benefits: string[];
   suspiciousPhrases: string[];
@@ -283,6 +285,7 @@ export function mapJobPostingApiResponse(
       hourlyWageText: ex.hourlyWageText,
       workTimeText: ex.workTimeText,
       workScheduleText: ex.workScheduleText,
+      contractPeriod: ex.contractPeriod ?? null,
       employmentType: ex.employmentType,
       benefits: ex.benefits ?? [],
       suspiciousPhrases: ex.suspiciousPhrases ?? [],
