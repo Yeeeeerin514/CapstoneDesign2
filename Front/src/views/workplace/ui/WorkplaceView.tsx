@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { SafeAreaView, ScrollView, Text, TouchableOpacity, View, Alert, Platform, StatusBar } from "react-native";
+import { router } from "expo-router";
 
 /**
  * 웹/네이티브 모두에서 동작하는 확인 다이얼로그.
@@ -23,14 +24,18 @@ import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
 import { ScreenHeader } from "@/shared/ui";
 import { ContractUploadView } from "./ContractUploadView";
 import { ContractAnalysisView } from "./ContractAnalysisView";
+import { BssidRegisterView } from "./BssidRegisterView";
+import { BssidRegisterCompleteView } from "./BssidRegisterCompleteView";
 
-type Screen = "list" | "upload" | "analysis";
+type Screen = "list" | "upload" | "analysis" | "bssid-register" | "register-complete";
 
 export function WorkplaceView(): JSX.Element {
-  const { workplaces, removeWorkplace, updateContractStatus } = useFavoriteWorkplaceStore();
+  const { workplaces, removeWorkplace, updateContractStatus, setContractId, markRegistered } =
+    useFavoriteWorkplaceStore();
   const [currentScreen, setCurrentScreen] = useState<Screen>("list");
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<ContractAnalysisResult | null>(null);
+  const [registeredCredential, setRegisteredCredential] = useState<{ bssid: string; ssid: string } | null>(null);
 
   const selectedWorkplace = workplaces.find((w) => w.id === selectedWorkplaceId);
 
@@ -42,6 +47,9 @@ export function WorkplaceView(): JSX.Element {
         onAnalysisComplete={(result) => {
           setAnalysisResult(result);
           updateContractStatus(selectedWorkplace.id, "analyzed");
+          if (result.contractId !== null) {
+            setContractId(selectedWorkplace.id, result.contractId);
+          }
           setCurrentScreen("analysis");
         }}
       />
@@ -53,9 +61,39 @@ export function WorkplaceView(): JSX.Element {
       <ContractAnalysisView
         result={analysisResult}
         onBack={() => setCurrentScreen("upload")}
-        onRegister={() => {
-          Alert.alert("사업장 등록", "BSSID 등록 화면으로 이동합니다.\n(준비 중)");
+        onRegister={() => setCurrentScreen("bssid-register")}
+      />
+    );
+  }
+
+  if (currentScreen === "bssid-register" && selectedWorkplace) {
+    return (
+      <BssidRegisterView
+        workplaceName={selectedWorkplace.name}
+        onBack={() => setCurrentScreen("analysis")}
+        onRegisterComplete={(bssid, ssid) => {
+          markRegistered(selectedWorkplace.id, bssid, ssid);
+          setRegisteredCredential({ bssid, ssid });
+          setCurrentScreen("register-complete");
+        }}
+      />
+    );
+  }
+
+  if (currentScreen === "register-complete" && selectedWorkplace && registeredCredential) {
+    return (
+      <BssidRegisterCompleteView
+        workplaceName={selectedWorkplace.name}
+        ssid={registeredCredential.ssid}
+        bssid={registeredCredential.bssid}
+        onGoToDashboard={() => {
           setCurrentScreen("list");
+          setRegisteredCredential(null);
+          router.push("/(tabs)/work-record");
+        }}
+        onGoHome={() => {
+          setCurrentScreen("list");
+          setRegisteredCredential(null);
         }}
       />
     );

@@ -68,7 +68,10 @@ export interface FavoriteWorkplace {
   name: string;
   analysisResult?: JobPostAnalysisResult;
   contractStatus: "none" | "uploaded" | "analyzed";
-  bssidStatus: "none" | "registered";
+  registrationStatus: "none" | "registered";
+  bssid?: string;
+  ssid?: string;
+  registeredAt?: string;
   createdAt: string;
 }
 
