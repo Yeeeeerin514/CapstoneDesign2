@@ -18,7 +18,6 @@ import { router } from "expo-router";
 import { MentorRecommendView } from "./MentorRecommendView";
 import { SmartMentorRecommendView } from "./SmartMentorRecommendView";
 import {
-  amountToRange,
   inferBusinessSize,
   mapDamageTypeLabelsToCode,
   mapIndustryLabelToCode,
@@ -303,15 +302,14 @@ export function ReportDetailView({
         businessSize={inferBusinessSize(industryCode)}
         region={mapRegionLabelToCode(reportCase.region)}
         description={
-          reportCase.estimatedUnpaidAmount > 0
-            ? `${reportCase.workplaceName} - 미지급 추정 ${reportCase.estimatedUnpaidAmount.toLocaleString()}원`
+          reportCase.calculatedUnpaid !== null && reportCase.calculatedUnpaid > 0
+            ? `${reportCase.workplaceName} - 미지급 ${reportCase.calculatedUnpaid.toLocaleString()}원`
             : reportCase.workplaceName
         }
         onBack={() => setShowSmartMentor(false)}
-        onMatched={(matchId, mentorNickname) => {
+        onMatched={(_matchId, _mentorNickname) => {
           setShowSmartMentor(false);
-          // 채팅 통합은 Phase 3에서 — 지금은 안내만
-          // TODO: 백엔드 멘토 매칭 → 채팅 시스템 연동
+          // 채팅 진입은 SmartMentorRecommendView 내부에서 router.push로 직접 처리
         }}
       />
     );
@@ -2530,107 +2528,54 @@ export function ReportDetailView({
             지금 단계에서도 멘토를 찾아볼 수 있어요
           </Text>
 
-          {/* 멘토 카드 미리보기 */}
-          <View
+          {/* AI 매칭 진입 버튼 — 사건 컨텍스트로 적합한 멘토를 찾아 추천 */}
+          <Pressable
+            onPress={handleConnectMentor}
             style={{
-              backgroundColor: "#F8FAFC",
+              backgroundColor: "#3182F6",
               borderRadius: 12,
               padding: 14,
               marginBottom: 10,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
             }}
           >
             <View
               style={{
-                flexDirection: "row",
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: "rgba(255,255,255,0.2)",
                 alignItems: "center",
-                gap: 8,
-                marginBottom: 8,
+                justifyContent: "center",
               }}
             >
-              <View
-                style={{
-                  backgroundColor: "#E8F2FF",
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 4,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 10,
-                    color: "#1B64DA",
-                    fontWeight: "600",
-                  }}
-                >
-                  🛡 인증멘토
-                </Text>
-              </View>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 2,
-                }}
-              >
-                <Ionicons name="star" size={11} color="#F59E0B" />
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: "#0F172A",
-                    fontWeight: "700",
-                  }}
-                >
-                  4.8
-                </Text>
-              </View>
-              <Text style={{ fontSize: 12, color: "#CBD5E1" }}>·</Text>
-              <Text style={{ fontSize: 12, color: "#64748B" }}>
-                카페·음식점
-              </Text>
+              <Ionicons name="search" size={20} color="#FFFFFF" />
             </View>
-
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: "600",
-                color: "#0F172A",
-                lineHeight: 20,
-                marginBottom: 6,
-              }}
-            >
-              "진정서 핵심은 날짜와 금액이에요"
-            </Text>
-
-            <Text
-              style={{
-                fontSize: 11,
-                color: "#64748B",
-                marginBottom: 12,
-              }}
-            >
-              해결까지 18일 · 후기 12개
-            </Text>
-
-            <Pressable
-              onPress={handleConnectMentor}
-              style={{
-                backgroundColor: "#3182F6",
-                paddingVertical: 11,
-                borderRadius: 8,
-                alignItems: "center",
-              }}
-            >
+            <View style={{ flex: 1 }}>
               <Text
                 style={{
                   color: "#FFFFFF",
-                  fontSize: 13,
-                  fontWeight: "600",
+                  fontSize: 14,
+                  fontWeight: "700",
                 }}
               >
-                이 멘토와 연결하기 · ₩10,000
+                연결할 멘토 찾기
               </Text>
-            </Pressable>
-          </View>
+              <Text
+                style={{
+                  color: "#DBEAFE",
+                  fontSize: 11,
+                  marginTop: 2,
+                  lineHeight: 15,
+                }}
+              >
+                사건과 가장 비슷한 경험을 가진 멘토 Top-3 추천
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+          </Pressable>
 
           {/* 면책 문구 */}
           <View
