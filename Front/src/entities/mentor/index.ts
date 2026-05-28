@@ -52,4 +52,8 @@ export {
   submitMatchingFeedback,
   fetchMyMatches,
   fetchMatchingWeights,
+  uploadMentorEvidence,
+  fetchChatMessages,
+  sendChatMessage,
 } from "./api/matching-api";
+export type { BackendChatMessage } from "./api/matching-api";

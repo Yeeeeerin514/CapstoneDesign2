@@ -31,6 +31,11 @@ interface MentorMatchState {
   getMatchesByCase: (caseId: string) => MentorMatch[];
   /** MY 탭 — lastMessageAt(없으면 matchedAt) 기준 내림차순. */
   getMatchesByMentee: (menteeId: string) => MentorMatch[];
+
+  /** SmartMentor 매칭 시 백엔드 matchId 저장 — 피드백 제출용. */
+  setBackendMatchId: (matchId: string, backendMatchId: number) => void;
+  /** 피드백 제출 완료 표시 — 중복 평가 방지. */
+  markFeedbackSubmitted: (matchId: string) => void;
 }
 
 export const useMentorMatchStore = create<MentorMatchState>((set, get) => ({
@@ -107,4 +112,18 @@ export const useMentorMatchStore = create<MentorMatchState>((set, get) => ({
         a.lastMessageAt ?? a.matchedAt,
       ),
     ),
+
+  setBackendMatchId: (matchId, backendMatchId) =>
+    set((state) => ({
+      matches: state.matches.map((m) =>
+        m.id === matchId ? { ...m, backendMatchId } : m,
+      ),
+    })),
+
+  markFeedbackSubmitted: (matchId) =>
+    set((state) => ({
+      matches: state.matches.map((m) =>
+        m.id === matchId ? { ...m, feedbackSubmitted: true } : m,
+      ),
+    })),
 }));

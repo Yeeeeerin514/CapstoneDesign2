@@ -8,6 +8,8 @@ import { useMentorMatchStore } from "@/features/mentor-match";
 import { useReportStore } from "@/features/report-submit";
 import { useAuthStore } from "@/entities/user/model/auth-store";
 import { MentorRegisterView } from "./MentorRegisterView";
+import { EvidenceUploadView } from "./EvidenceUploadView";
+import { MatchingFeedbackModal } from "@/views/report/ui/MatchingFeedbackModal";
 import type { VerificationMethod } from "@/entities/mentor";
 
 /**
@@ -20,10 +22,13 @@ export function MyView(): JSX.Element {
   const myMatches = useMentorMatchStore((s) => s.getMatchesByMentee(userId));
   const cases = useReportStore((s) => s.cases);
   const [showMentorRegister, setShowMentorRegister] = useState(false);
+  const [showEvidenceUpload, setShowEvidenceUpload] = useState(false);
   const [mentorVerification, setMentorVerification] = useState<{
     method: VerificationMethod;
     verifiedCaseIds?: number[];
   } | null>(null);
+  const [feedbackTarget, setFeedbackTarget] = useState<{ matchId: string; backendMatchId: number; mentorNickname: string } | null>(null);
+  const markFeedbackSubmitted = useMentorMatchStore((s) => s.markFeedbackSubmitted);
 
   // 멘토 자격 검증 — 해결된 신고 사건이 1개 이상 있어야 자동 통과
   const resolvedCases = cases.filter((c) => c.status === "resolved");
@@ -32,7 +37,6 @@ export function MyView(): JSX.Element {
   function handleMentorRegisterClick(): void {
     if (hasResolvedCases) {
       // 자격 통과 — 해결된 사건 ID들 자동 첨부
-      // ReportCase.id가 string이므로 number로 시도 (실제 백엔드 연결 시점에 보정)
       const caseIds = resolvedCases
         .map((c) => Number(c.id))
         .filter((n) => !Number.isNaN(n));
@@ -41,15 +45,28 @@ export function MyView(): JSX.Element {
         verifiedCaseIds: caseIds.length > 0 ? caseIds : [0],
       });
       setShowMentorRegister(true);
+      return;
+    }
+
+    // 자격 미충족 — 증빙 업로드 옵션 안내
+    const message =
+      "멘토는 다음 중 하나를 충족해야 합니다:\n\n" +
+      "1) 우리 앱에서 신고한 사건 해결 경험\n" +
+      "2) 외부 증빙 자료 업로드 (시정지시서·입금증)\n\n" +
+      "증빙 자료를 업로드해서 자격을 얻으시겠어요?";
+
+    if (typeof window !== "undefined" && (window as { confirm?: (m: string) => boolean }).confirm) {
+      // 웹: confirm으로 결정
+      const ok = (window as { confirm: (m: string) => boolean }).confirm(`멘토 등록 자격이 필요해요\n\n${message}`);
+      if (ok) setShowEvidenceUpload(true);
     } else {
-      // 자격 미충족 안내
       Alert.alert(
         "멘토 등록 자격이 필요해요",
-        "멘토는 다음 중 하나를 충족해야 합니다:\n\n" +
-        "1) 우리 앱에서 신고한 사건을 해결한 경험\n" +
-        "2) 외부 증빙 자료(시정지시서·입금증 등) 업로드\n\n" +
-        "현재 해결된 사건이 없어요. 신고를 통해 해결을 끝낸 후 다시 시도해주세요.",
-        [{ text: "확인" }],
+        message,
+        [
+          { text: "취소", style: "cancel" },
+          { text: "증빙 자료 올리기", onPress: () => setShowEvidenceUpload(true) },
+        ],
       );
     }
   }
@@ -64,6 +81,10 @@ export function MyView(): JSX.Element {
         verification={mentorVerification ?? undefined}
       />
     );
+  }
+
+  if (showEvidenceUpload) {
+    return <EvidenceUploadView onBack={() => setShowEvidenceUpload(false)} />;
   }
 
   return (
@@ -277,15 +298,65 @@ export function MyView(): JSX.Element {
                   <Text style={{ fontSize: 11, color: "#AAAAAA" }}>
                     {dateLabel}
                   </Text>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={14}
-                    color="#CBD5E1"
-                  />
+                  {m.backendMatchId !== undefined && m.feedbackSubmitted !== true ? (
+                    <Pressable
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        setFeedbackTarget({
+                          matchId: m.id,
+                          backendMatchId: m.backendMatchId!,
+                          mentorNickname: m.mentorNickname,
+                        });
+                      }}
+                      style={{
+                        backgroundColor: "#FEF3C7",
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, color: "#92400E", fontWeight: "700" }}>
+                        ★ 평가
+                      </Text>
+                    </Pressable>
+                  ) : m.feedbackSubmitted === true ? (
+                    <View
+                      style={{
+                        backgroundColor: "#DCFCE7",
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, color: "#16A34A", fontWeight: "700" }}>
+                        ✓ 평가완료
+                      </Text>
+                    </View>
+                  ) : (
+                    <Ionicons
+                      name="chevron-forward"
+                      size={14}
+                      color="#CBD5E1"
+                    />
+                  )}
                 </View>
               </Pressable>
             );
           })
+        )}
+
+        {/* 매칭 피드백 모달 */}
+        {feedbackTarget !== null && (
+          <MatchingFeedbackModal
+            visible
+            matchId={feedbackTarget.backendMatchId}
+            mentorNickname={feedbackTarget.mentorNickname}
+            onClose={() => setFeedbackTarget(null)}
+            onSubmitted={() => {
+              markFeedbackSubmitted(feedbackTarget.matchId);
+              setFeedbackTarget(null);
+            }}
+          />
         )}
       </ScrollView>
     </SafeAreaView>

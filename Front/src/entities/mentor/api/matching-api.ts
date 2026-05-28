@@ -75,3 +75,59 @@ export async function fetchMatchingWeights(): Promise<{
   const { data } = await apiClient.get("/mentoring/weights");
   return data;
 }
+
+export interface BackendChatMessage {
+  id: number;
+  matchId: number;
+  senderUserId: number | null;
+  senderRole: "MENTOR" | "MENTEE" | "SYSTEM";
+  text: string;
+  createdAt: string;
+}
+
+/** 매칭 채팅 메시지 가져오기 — since(ISO)부터 증분만 가져옴. */
+export async function fetchChatMessages(
+  matchId: number,
+  since?: string,
+): Promise<BackendChatMessage[]> {
+  const url = since !== undefined
+    ? `/mentoring/match/${matchId}/messages?since=${encodeURIComponent(since)}`
+    : `/mentoring/match/${matchId}/messages`;
+  const { data } = await apiClient.get<BackendChatMessage[]>(url);
+  return data;
+}
+
+/** 채팅 메시지 전송 — 발신자 role은 백엔드가 결정 (mentee/mentor). */
+export async function sendChatMessage(
+  matchId: number,
+  text: string,
+): Promise<BackendChatMessage> {
+  const { data } = await apiClient.post<BackendChatMessage>(
+    `/mentoring/match/${matchId}/messages`,
+    { text },
+  );
+  return data;
+}
+
+/**
+ * 멘토 자격 증빙 자료 S3 업로드.
+ * @param file  이미지/PDF MultipartFile
+ * @returns S3 public URL (mentor-evidence/ 폴더)
+ */
+export async function uploadMentorEvidence(file: File | Blob): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file as Blob, "evidence");
+  const { data } = await apiClient.post<{ url: string }>(
+    "/mentoring/evidence/upload",
+    formData,
+    {
+      // 웹: axios가 multipart 자동 헤더 / 네이티브에선 명시
+      headers:
+        typeof navigator !== "undefined" && navigator.product === "ReactNative"
+          ? { "Content-Type": "multipart/form-data" }
+          : {},
+      timeout: 30_000,
+    },
+  );
+  return data.url;
+}

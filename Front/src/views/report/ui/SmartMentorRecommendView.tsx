@@ -118,6 +118,9 @@ export function SmartMentorRecommendView({
         mentorIndustry: rec.industry ?? "",
       });
 
+      // 백엔드 matchId 저장 — 추후 피드백 제출 시 사용
+      useMentorMatchStore.getState().setBackendMatchId(match.id, rec.matchId);
+
       // 3) 매칭 이유 시스템 메시지 추가
       useMentorMatchStore.getState().addMessage(match.id, {
         senderId: "system",
