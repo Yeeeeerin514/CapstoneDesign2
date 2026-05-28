@@ -41,7 +41,7 @@ export function HighlightedContractText({
         return (
           <Text
             key={idx}
-            onPress={() => onIssuePress(issue.id)}
+            onPress={() => issue.id !== undefined && onIssuePress(issue.id)}
             style={{
               backgroundColor: color.bg,
               borderBottomWidth: 2,

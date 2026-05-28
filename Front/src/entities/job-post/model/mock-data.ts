@@ -70,6 +70,8 @@ export const MOCK_CONTRACT_ANALYSIS: ContractAnalysisResult = {
   ],
   extracted: {
     hourlyWage: 10000,
+    monthlyWage: null,
+    dailyWage: null,
     workingHoursPerDay: 8,
     workingDaysPerWeek: 5,
     startDate: null,
@@ -78,6 +80,7 @@ export const MOCK_CONTRACT_ANALYSIS: ContractAnalysisResult = {
     weeklyHolidayAllowanceMentioned: false,
     overtimeAllowanceMentioned: false,
     annualLeaveMentioned: false,
+    breakTimeMentioned: null,
     employerName: "OO카페 강남점",
     businessRegistrationNumber: null,
   },

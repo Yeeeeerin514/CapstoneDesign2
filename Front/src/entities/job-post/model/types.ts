@@ -77,6 +77,8 @@ export interface FavoriteWorkplace {
 // ─────────────────────────────────────────────────────────────────────
 export interface ExtractedContract {
   hourlyWage: number | null;
+  monthlyWage: number | null;
+  dailyWage: number | null;
   workingHoursPerDay: number | null;
   workingDaysPerWeek: number | null;
   startDate: string | null;
@@ -85,6 +87,7 @@ export interface ExtractedContract {
   weeklyHolidayAllowanceMentioned: boolean | null;
   overtimeAllowanceMentioned: boolean | null;
   annualLeaveMentioned: boolean | null;
+  breakTimeMentioned: boolean | null;
   employerName: string | null;
   businessRegistrationNumber: string | null;
 }
@@ -103,13 +106,28 @@ export interface ContractAnalysisResult {
   extracted: ExtractedContract;
 }
 
+export type ContractIssueLevel = "danger" | "warning" | "info";
+
 export interface ContractIssue {
-  level: "danger" | "warning" | "info";
+  /** 이슈 고유 ID (type + index 조합) */
+  id?: string;
+  /** 이슈 번호 (1-based, UI 표시용) */
+  number?: number;
+  level: ContractIssueLevel;
   title: string;
   description: string;
   legalBasis: string;
   legalBasisExcerpt: string | null;
   type: string;
+  recommendation?: string;
+  actionable?: { type: string; label: string } | null;
+}
+
+export interface ContractTextSegment {
+  text: string;
+  /** 하이라이트 대상 이슈 ID (ContractIssue.id와 매칭) */
+  issueId?: string;
+  isHighlighted?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -301,6 +319,8 @@ export function mapJobPostingApiResponse(
 // ─────────────────────────────────────────────────────────────────────
 interface ApiExtractedContractInfo {
   hourlyWage: number | null;
+  monthlyWage: number | null;
+  dailyWage: number | null;
   workingHoursPerDay: number | null;
   workingDaysPerWeek: number | null;
   startDate: string | null;
@@ -309,6 +329,7 @@ interface ApiExtractedContractInfo {
   weeklyHolidayAllowanceMentioned: boolean | null;
   overtimeAllowanceMentioned: boolean | null;
   annualLeaveMentioned: boolean | null;
+  breakTimeMentioned: boolean | null;
   employerName: string | null;
   businessRegistrationNumber: string | null;
 }
@@ -348,13 +369,23 @@ export function mapContractApiResponse(
 ): ContractAnalysisResult {
   const info = api.extractedInfo;
 
+  // 시급: 명시 시급 우선, 없으면 0 (백엔드에서 역산 후 hourlyWage에 설정하므로 factSheet에 있음)
+  // 실제 역산값은 api.factSheet.hourlyWage에 있을 수 있으나, extractedInfo에서 우선 사용
   const hourlyWage = info?.hourlyWage ?? 0;
   const hoursPerDay = info?.workingHoursPerDay ?? 0;
   const daysPerWeek = info?.workingDaysPerWeek ?? 0;
-  // 월 환산: 시급 × 일 근무시간 × 주 근무일수 × 약 4.345주(연 평균)
-  const estimatedMonthlyPay = Math.round(
-    hourlyWage * hoursPerDay * daysPerWeek * 4.345,
-  );
+
+  // 예상 월급: 월급이 이미 있으면 그대로 사용, 없으면 시급 역산
+  const estimatedMonthlyPay = (() => {
+    if ((info?.monthlyWage ?? 0) > 0) return info!.monthlyWage!;
+    if (hourlyWage > 0 && hoursPerDay > 0 && daysPerWeek > 0) {
+      // 주휴 포함 월 근무시간으로 계산
+      const weeklyHours = hoursPerDay * daysPerWeek;
+      const weeklyPaidHours = weeklyHours >= 15 ? weeklyHours + hoursPerDay : weeklyHours;
+      return Math.round(hourlyWage * weeklyPaidHours * 52 / 12);
+    }
+    return 0;
+  })();
 
   const issues: ContractIssue[] = (api.violations ?? []).map((v) => ({
     level: severityToLevel(v.severity),
@@ -387,6 +418,8 @@ export function mapContractApiResponse(
     imageUrl: api.imageUrl ?? null,
     extracted: {
       hourlyWage: info?.hourlyWage ?? null,
+      monthlyWage: info?.monthlyWage ?? null,
+      dailyWage: info?.dailyWage ?? null,
       workingHoursPerDay: info?.workingHoursPerDay ?? null,
       workingDaysPerWeek: info?.workingDaysPerWeek ?? null,
       startDate: info?.startDate ?? null,
@@ -396,8 +429,12 @@ export function mapContractApiResponse(
         info?.weeklyHolidayAllowanceMentioned ?? null,
       overtimeAllowanceMentioned: info?.overtimeAllowanceMentioned ?? null,
       annualLeaveMentioned: info?.annualLeaveMentioned ?? null,
+      breakTimeMentioned: info?.breakTimeMentioned ?? null,
       employerName: info?.employerName ?? null,
       businessRegistrationNumber: info?.businessRegistrationNumber ?? null,
     },
   };
 }
+
+/** @deprecated mapContractApiResponse를 사용하세요 */
+export const mapApiResponseToContractResult = mapContractApiResponse;

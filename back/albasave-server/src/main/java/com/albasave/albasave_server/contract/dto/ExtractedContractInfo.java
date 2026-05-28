@@ -10,10 +10,27 @@ import java.util.List;
 @NoArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ExtractedContractInfo {
-    /** 계약서에서 추출한 시급 (원) */
+    /** 계약서에서 추출한 시급 (원). 시급 미명시 시 null */
     private Integer hourlyWage;
 
-    /** 1일 소정근로시간 */
+    /** 계약서에서 추출한 월급 (원). 월급제인 경우 */
+    private Integer monthlyWage;
+
+    /** 계약서에서 추출한 일급 (원). 일급제인 경우 */
+    private Integer dailyWage;
+
+    /** 서비스에서 월급/일급으로 역산한 시급 (JSON 역직렬화 대상 아님) */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private Integer calculatedHourlyWage;
+
+    public void setCalculatedHourlyWage(Integer v) { this.calculatedHourlyWage = v; }
+
+    /** 시급(원): 명시 시급 → 역산 시급 순으로 반환. 둘 다 없으면 null */
+    public Integer getEffectiveHourlyWage() {
+        return hourlyWage != null ? hourlyWage : calculatedHourlyWage;
+    }
+
+    /** 1일 소정근로시간 (휴게시간 제외 실제 근로시간) */
     private Double workingHoursPerDay;
 
     /** 주 근무일 수 */
@@ -36,6 +53,9 @@ public class ExtractedContractInfo {
 
     /** 연차유급휴가 명시 여부 */
     private Boolean annualLeaveMentioned;
+
+    /** 휴게시간 명시 여부 (계약서에 휴게 시간대가 적혀 있으면 true) */
+    private Boolean breakTimeMentioned;
 
     /** 고용주명 */
     private String employerName;

@@ -131,11 +131,13 @@ export function IssueDetailSheet({
                   marginBottom: 4,
                 }}
               >
-                {issue.legalBasis.law}
+                {issue.legalBasis}
               </Text>
-              <Text style={{ fontSize: 13, color: "#475569", lineHeight: 20 }}>
-                {issue.legalBasis.description}
-              </Text>
+              {issue.legalBasisExcerpt !== null && (
+                <Text style={{ fontSize: 13, color: "#475569", lineHeight: 20 }}>
+                  {issue.legalBasisExcerpt}
+                </Text>
+              )}
             </View>
 
             <View
@@ -161,7 +163,7 @@ export function IssueDetailSheet({
               </Text>
             </View>
 
-            {issue.actionable !== undefined ? (
+            {issue.actionable != null ? (
               <Pressable
                 style={{
                   backgroundColor: "#2563EB",
@@ -177,7 +179,7 @@ export function IssueDetailSheet({
                 <Text
                   style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "500" }}
                 >
-                  {issue.actionable.label}
+                  {issue.actionable!.label}
                 </Text>
               </Pressable>
             ) : null}

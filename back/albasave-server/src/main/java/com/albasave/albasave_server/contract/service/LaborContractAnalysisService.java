@@ -62,7 +62,12 @@ public class LaborContractAnalysisService {
         List<ContractViolation> violations = new java.util.ArrayList<>(parseViolations(cleanedJson));
         String summary = parseSummary(cleanedJson);
 
-        // 룰베이스 추가 검증 (OpenAI가 추출한 시급 정보 기반)
+        // 3-1. 시급 미명시 시 월급/일급에서 역산
+        if (extractedInfo != null) {
+            applyWageCalculation(extractedInfo);
+        }
+
+        // 룰베이스 추가 검증 (역산 시급 포함)
         violations.addAll(ruleBasedCheck(extractedInfo));
 
         // RAG Phase A: 각 violation에 법제처 API에서 받은 조문 본문 자동 첨부
@@ -112,6 +117,37 @@ public class LaborContractAnalysisService {
                 .build();
     }
 
+    /**
+     * 시급이 null인 경우 월급/일급에서 역산하여 calculatedHourlyWage에 설정.
+     * 시급 = 월급 / ((주소정근로시간 + 주휴시간) × 52/12)
+     * 주휴시간 = 1일 소정근로시간 (1일분 유급휴일)
+     */
+    private void applyWageCalculation(ExtractedContractInfo info) {
+        if (info.getHourlyWage() != null) return; // 이미 시급 있으면 건너뜀
+
+        Double hpd = info.getWorkingHoursPerDay();
+        Integer dpw = info.getWorkingDaysPerWeek();
+
+        if (info.getMonthlyWage() != null && hpd != null && dpw != null && dpw > 0) {
+            // 주 소정근로시간
+            double weeklyHours = hpd * dpw;
+            // 주휴시간 = 1일 소정근로시간 (근로기준법 제55조, 주 15시간 이상 시 1일분)
+            double weeklyPaidHours = weeklyHours >= 15 ? weeklyHours + hpd : weeklyHours;
+            // 월 소정유급시간 = 주 유급시간 × (52주/12월)
+            double monthlyHours = weeklyPaidHours * 52.0 / 12.0;
+            if (monthlyHours > 0) {
+                int calculated = (int) Math.round(info.getMonthlyWage() / monthlyHours);
+                info.setCalculatedHourlyWage(calculated);
+                log.info("[시급 역산] 월급={}, 일 {}h × 주 {}일 → 월 {}h → 시급 {}원",
+                        info.getMonthlyWage(), hpd, dpw, String.format("%.1f", monthlyHours), calculated);
+            }
+        } else if (info.getDailyWage() != null && hpd != null && hpd > 0) {
+            int calculated = (int) Math.round(info.getDailyWage() / hpd);
+            info.setCalculatedHourlyWage(calculated);
+            log.info("[시급 역산] 일급={}, 일 {}h → 시급 {}원", info.getDailyWage(), hpd, calculated);
+        }
+    }
+
     /** ExtractedContractInfo의 String/숫자 값들을 진정서가 바로 쓰는 타입으로 변환. */
     private ContractFactSheet buildFactSheet(ExtractedContractInfo info) {
         if (info == null) {
@@ -126,7 +162,7 @@ public class LaborContractAnalysisService {
                 parseLocalTime(info.getWorkStartTime()),
                 parseLocalTime(info.getWorkEndTime()),
                 parseLocalDate(info.getEmploymentStartDate(), info.getStartDate()),
-                info.getHourlyWage(),
+                info.getEffectiveHourlyWage(),
                 WageCalculationService.MINIMUM_WAGE_2026
         );
     }
@@ -275,11 +311,18 @@ public class LaborContractAnalysisService {
                 첨부된 근로계약서 이미지를 분석하여 아래 JSON 형식으로만 응답하세요.
                 JSON 외 다른 텍스트는 절대 포함하지 마세요.
 
-                [절대 원칙 — 매우 중요]
-                1. 이미지에 보이지 않는 값은 절대 만들어내지 마세요. HALLUCINATION 금지.
+                [절대 원칙 — 위반 시 치명적 오류]
+                1. 이미지에 명시적으로 보이지 않는 값은 절대 만들어내지 마세요. HALLUCINATION 엄금.
                 2. 흐릿하거나 일부만 보이거나 확실하지 않으면 그 필드는 반드시 null.
-                3. "전형적인 근로계약서에는 이런 값이 들어있다"는 가정 채우기는 명백한 오류입니다.
-                4. 위반 판단의 description은 이미지에 실제로 보이는 조항만 근거로 작성하세요.
+                3. "전형적인 계약서라면 이럴 것이다"는 가정으로 값을 채우는 행위는 엄중한 오류입니다.
+                4. 특히 businessRegistrationNumber: 계약서에 '사업자등록번호', '법인등록번호' 등 명칭과 함께
+                   10자리 숫자가 명시되어 있는 경우에만 반환. 전화번호·계좌번호·주민번호와 혼동 금지.
+                   등록번호가 이미지에 없으면 반드시 null.
+                5. 특히 employerName: 이미지에서 실제로 읽은 상호·이름만 반환. "○○회사" 같은 형태가 이미지에
+                   그대로 있으면 그대로, "○○물산"이 있으면 "○○물산"으로 반환. 임의로 변경·완성 금지.
+                6. violations 배열에는 이미지에서 직접 확인 가능한 위반만 포함하세요.
+                   MINIMUM_WAGE 위반은 hourlyWage가 숫자로 명시되어 있고 10,030원 미만인 경우에만 추가.
+                   hourlyWage가 null이거나 월급·일급제인 경우에는 MINIMUM_WAGE를 violations에 추가하지 마세요.
 
                 분석 기준 (2026년 기준):
                 - 최저시급: 10,030원
@@ -288,22 +331,29 @@ public class LaborContractAnalysisService {
                 - 근로계약서 필수 기재사항 (근로기준법 제17조):
                   임금, 소정근로시간, 제55조 휴일, 제60조 연차유급휴가, 취업 장소, 업무 내용
 
-                추출 규칙(중요):
-                - businessRegistrationNumber는 하이픈 제거 후 숫자 10자리만 반환.
-                - workDays는 영어 풀네임 대문자 배열로 반환:
-                    ["MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY","SUNDAY"] 중 해당하는 것만.
-                    한글 '월~금' 같은 범위 표현이 보이면 해당 요일들을 모두 포함시킨다.
-                    확인 불가하면 빈 배열 [].
-                - workStartTime / workEndTime은 "HH:mm" 24시간 형식 문자열. 확인 불가 시 null.
-                  '오전 9시'는 "09:00", '오후 6시'는 "18:00"로 정규화.
-                - employmentStartDate는 "yyyy-MM-dd" ISO 형식. 확인 불가 시 null.
-                  '2026년 4월 1일'은 "2026-04-01"로 정규화.
+                추출 규칙:
+                - hourlyWage: 계약서에 '시급' 또는 '시간(당)' 임금이 명시된 경우만 숫자 반환. 월급·일급제면 null.
+                - monthlyWage: 계약서에 '월급', '월(月)', '월 × 원', '일(日)·시(時)·간급' 항목이 월 기준 금액인 경우.
+                  식대·가족수당 등 부가급여 제외한 기본 월급 금액.
+                - dailyWage: 계약서에 '일급' 또는 '일(日) 기준' 임금이 명시된 경우만 숫자 반환.
+                - workingHoursPerDay: 1일 소정근로시간. 휴게시간이 명시된 경우 그것을 제외한 실제 근로시간.
+                  예: 9시~16시 중 휴게 12시~13시 1시간 → 소정근로시간 = 6시간.
+                  근무시간 범위만 있고 휴게가 없으면 종료시각 - 시작시각으로 계산.
+                - breakTimeMentioned: 계약서에 휴게 시간대(예: "12시~13시", "점심시간 1시간" 등)가 명시적으로
+                  기재되어 있으면 true, 전혀 언급이 없으면 false. 단순히 근무시간이 8시간 이상이라는 이유로
+                  true로 추정하지 마세요.
+                - businessRegistrationNumber: 하이픈 제거 후 숫자 10자리만 반환. 없으면 null.
+                - workDays: 영어 풀네임 대문자 배열. 한글 '월~금' 범위 표현 → 해당 요일 모두 포함. 불명확 → [].
+                - workStartTime / workEndTime: "HH:mm" 24시간 형식. '오전 9시' → "09:00". 불명확 → null.
+                - employmentStartDate: "yyyy-MM-dd" ISO 형식. '2026년 4월 1일' → "2026-04-01". 불명확 → null.
 
                 응답 형식:
                 {
                   "extractedInfo": {
                     "hourlyWage": 시급(숫자) 또는 null,
-                    "workingHoursPerDay": 1일 근로시간(숫자) 또는 null,
+                    "monthlyWage": 월급(숫자) 또는 null,
+                    "dailyWage": 일급(숫자) 또는 null,
+                    "workingHoursPerDay": 1일 소정근로시간(숫자, 휴게 제외) 또는 null,
                     "workingDaysPerWeek": 주 근무일수(숫자) 또는 null,
                     "startDate": "근무 시작일 원본 문자열" 또는 null,
                     "workPlace": "근무 장소" 또는 null,
@@ -311,8 +361,9 @@ public class LaborContractAnalysisService {
                     "weeklyHolidayAllowanceMentioned": true 또는 false,
                     "overtimeAllowanceMentioned": true 또는 false,
                     "annualLeaveMentioned": true 또는 false,
-                    "employerName": "고용주 이름 또는 상호" 또는 null,
-                    "businessRegistrationNumber": "사업자등록번호 10자리 숫자" 또는 null,
+                    "breakTimeMentioned": true 또는 false,
+                    "employerName": "이미지에서 읽은 고용주 상호·이름" 또는 null,
+                    "businessRegistrationNumber": "사업자등록번호 10자리(이미지에 있는 경우만)" 또는 null,
                     "workDays": ["MONDAY", ...] 또는 [],
                     "workStartTime": "HH:mm" 또는 null,
                     "workEndTime": "HH:mm" 또는 null,
@@ -320,14 +371,17 @@ public class LaborContractAnalysisService {
                   },
                   "violations": [
                     {
-                      "type": "MINIMUM_WAGE / OVERTIME_PAY / WEEKLY_HOLIDAY / MANDATORY_ITEMS / WORKING_HOURS / REST_TIME / ANNUAL_LEAVE",
+                      "type": "OVERTIME_PAY / WEEKLY_HOLIDAY / MANDATORY_ITEMS / WORKING_HOURS / ANNUAL_LEAVE",
                       "severity": "HIGH 또는 MEDIUM 또는 LOW",
-                      "description": "구체적인 위반 내용 설명",
+                      "description": "구체적인 위반 내용 설명 (이미지 근거)",
                       "legalBasis": "근로기준법 제XX조"
                     }
                   ],
                   "summary": "전체 분석 요약 (2~3문장)"
                 }
+
+                주의: violations 배열에는 이미지에서 직접 확인한 위반만 넣으세요.
+                최저임금/휴게시간/연차휴가 위반은 별도 서버 룰베이스가 정확히 판단하므로 violations에 넣지 마세요.
                 """;
     }
 
@@ -431,8 +485,8 @@ public class LaborContractAnalysisService {
     }
 
     /**
-     * OpenAI 없이도 판단 가능한 룰베이스 검증
-     * extractedInfo에서 시급이 추출됐을 때 최저임금 위반 자동 감지
+     * OpenAI 없이도 판단 가능한 룰베이스 검증.
+     * applyWageCalculation() 호출 이후에 실행해야 역산 시급을 활용할 수 있음.
      */
     private List<ContractViolation> ruleBasedCheck(ExtractedContractInfo info) {
         List<ContractViolation> extra = new java.util.ArrayList<>();
@@ -440,12 +494,17 @@ public class LaborContractAnalysisService {
 
         int minWage = WageCalculationService.MINIMUM_WAGE_2026;
 
-        // 최저임금 위반
-        if (info.getHourlyWage() != null && info.getHourlyWage() < minWage) {
+        // 최저임금 위반: 역산 시급 포함하여 판단
+        Integer effectiveWage = info.getEffectiveHourlyWage();
+        if (effectiveWage != null && effectiveWage < minWage) {
+            boolean isCalculated = info.getHourlyWage() == null;
             ContractViolation v = new ContractViolation();
             v.init("MINIMUM_WAGE", "HIGH",
-                    String.format("계약 시급 %,d원이 2026년 최저시급 %,d원에 미달합니다.",
-                            info.getHourlyWage(), minWage),
+                    isCalculated
+                        ? String.format("월급에서 역산한 시급 %,d원이 2026년 최저시급 %,d원에 미달합니다.",
+                                effectiveWage, minWage)
+                        : String.format("계약 시급 %,d원이 2026년 최저시급 %,d원에 미달합니다.",
+                                effectiveWage, minWage),
                     "근로기준법 제6조의2, 최저임금법 제6조");
             extra.add(v);
         }
@@ -480,14 +539,18 @@ public class LaborContractAnalysisService {
             extra.add(v);
         }
 
-        // 휴게시간: 일 4시간 이상이면 30분, 8시간 이상이면 1시간 휴게 의무
-        if (hpd != null && hpd >= 4) {
+        // 휴게시간: 일 4시간 이상인데 계약서에 휴게시간이 명시되어 있지 않을 때만 이슈
+        // breakTimeMentioned == false 인 경우에만 추가 (true면 정상, null이면 불명확이므로 경고)
+        if (hpd != null && hpd >= 4 && !Boolean.TRUE.equals(info.getBreakTimeMentioned())) {
             String required = hpd >= 8 ? "1시간" : "30분";
+            boolean definitelyMissing = Boolean.FALSE.equals(info.getBreakTimeMentioned());
+            String desc = definitelyMissing
+                    ? String.format("일 %.1f시간 근무라면 근로시간 도중 %s 이상의 휴게시간을 부여해야 하지만, 계약서에 휴게시간이 명시되어 있지 않습니다.",
+                            hpd, required)
+                    : String.format("일 %.1f시간 근무 기준으로 %s 이상의 휴게시간이 필요합니다. 계약서에서 휴게시간 명시 여부를 확인하세요.",
+                            hpd, required);
             ContractViolation v = new ContractViolation();
-            v.init("REST_TIME", "LOW",
-                    String.format("일 %.1f시간 근무라면 근로시간 도중 %s 이상의 휴게시간을 부여해야 합니다. 계약서에서 휴게시간 명시 여부를 다시 확인하세요.",
-                            hpd, required),
-                    "근로기준법 제54조");
+            v.init("REST_TIME", "LOW", desc, "근로기준법 제54조");
             extra.add(v);
         }
 
@@ -500,9 +563,12 @@ public class LaborContractAnalysisService {
             extra.add(v);
         }
 
-        // 필수 기재사항: 핵심 항목이 다수 누락된 경우
+        // 필수 기재사항: 임금(시급·월급·일급 중 하나라도 있으면 OK), 근로시간, 장소, 업무 누락 검사
         int missing = 0;
-        if (info.getHourlyWage() == null) missing++;
+        boolean hasWage = info.getHourlyWage() != null
+                || info.getMonthlyWage() != null
+                || info.getDailyWage() != null;
+        if (!hasWage) missing++;
         if (info.getWorkingHoursPerDay() == null) missing++;
         if (info.getStartDate() == null) missing++;
         if (info.getWorkPlace() == null) missing++;

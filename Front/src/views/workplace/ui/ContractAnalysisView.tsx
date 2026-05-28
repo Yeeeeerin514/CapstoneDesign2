@@ -154,7 +154,9 @@ export function ContractAnalysisView({
               <Text style={{ fontSize: 18, fontWeight: "700", color: banner.text }}>
                 {result.hourlyWage > 0
                   ? `${result.hourlyWage.toLocaleString()}원`
-                  : "확인불가"}
+                  : result.extracted.monthlyWage !== null
+                    ? "역산 중"
+                    : "확인불가"}
                 {isBelowMinWage && (
                   <Text style={{ fontSize: 11, color: "#DC2626" }}> (미달)</Text>
                 )}
@@ -162,7 +164,7 @@ export function ContractAnalysisView({
             </View>
             <View>
               <Text style={{ fontSize: 11, color: banner.text, marginBottom: 2 }}>
-                예상 월급
+                {result.extracted.monthlyWage !== null ? "계약 월급" : "예상 월급"}
               </Text>
               <Text style={{ fontSize: 18, fontWeight: "700", color: banner.text }}>
                 {result.estimatedMonthlyPay > 0
@@ -344,9 +346,21 @@ export function ContractAnalysisView({
               value={
                 result.extracted.hourlyWage !== null
                   ? `${result.extracted.hourlyWage.toLocaleString()}원`
-                  : "미확인"
+                  : "미확인 (월급제)"
               }
             />
+            {result.extracted.monthlyWage !== null && (
+              <ContentRow
+                label="월급"
+                value={`${result.extracted.monthlyWage.toLocaleString()}원`}
+              />
+            )}
+            {result.extracted.dailyWage !== null && (
+              <ContentRow
+                label="일급"
+                value={`${result.extracted.dailyWage.toLocaleString()}원`}
+              />
+            )}
             <ContentRow
               label="1일 근로시간"
               value={
@@ -396,6 +410,10 @@ export function ContractAnalysisView({
               >
                 계약서 기재 여부
               </Text>
+              <CheckRow
+                label="휴게시간 명시"
+                value={result.extracted.breakTimeMentioned}
+              />
               <CheckRow
                 label="주휴수당 명시"
                 value={result.extracted.weeklyHolidayAllowanceMentioned}

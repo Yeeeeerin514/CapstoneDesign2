@@ -7,9 +7,10 @@ export type {
   ContractIssue,
   ContractIssueLevel,
   ContractTextSegment,
+  ExtractedContract,
   ApiContractAnalysisResponse,
 } from "./model/types";
-export { mapApiResponseToContractResult } from "./model/types";
+export { mapApiResponseToContractResult, mapContractApiResponse } from "./model/types";
 export {
   MOCK_JOB_ANALYSIS,
   MOCK_CONTRACT_ANALYSIS,
