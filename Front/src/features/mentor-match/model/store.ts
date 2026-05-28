@@ -1,30 +1,44 @@
 import { create } from "zustand";
-import type { MentorProfile } from "@/entities/mentor";
+import { MOCK_MENTORS, type MentorProfile } from "@/entities/mentor";
 
-interface MentorMatchState {
-  recommendedMentors: MentorProfile[];
-  selectedMentor: MentorProfile | null;
-  isLoading: boolean;
-  error: string | null;
-  setRecommendedMentors: (v: MentorProfile[]) => void;
-  setSelectedMentor: (v: MentorProfile | null) => void;
-  setLoading: (v: boolean) => void;
-  setError: (v: string | null) => void;
-  reset: () => void;
+interface MentorState {
+  mentors: MentorProfile[];
+
+  /**
+   * 업종 + 피해유형 기반 mock 매칭.
+   * 업종이 같거나, damageTypes가 1개 이상 겹치면 후보.
+   * score 내림차순 정렬, top-3 반환.
+   */
+  getRecommended: (
+    industry: string,
+    damageTypes: string[],
+  ) => MentorProfile[];
+
+  /** 단일 조회. */
+  getMentorById: (userId: string) => MentorProfile | undefined;
+
+  /** 멘토 신규 등록 — 후기 작성 + 멘토 등록 체크 시 호출. */
+  addMentor: (profile: MentorProfile) => void;
 }
 
-const initialState = {
-  recommendedMentors: [] as MentorProfile[],
-  selectedMentor: null as MentorProfile | null,
-  isLoading: false,
-  error: null as string | null,
-};
+export const useMentorStore = create<MentorState>((set, get) => ({
+  mentors: MOCK_MENTORS,
 
-export const useMentorMatchStore = create<MentorMatchState>((set) => ({
-  ...initialState,
-  setRecommendedMentors: (recommendedMentors) => set({ recommendedMentors }),
-  setSelectedMentor: (selectedMentor) => set({ selectedMentor }),
-  setLoading: (isLoading) => set({ isLoading }),
-  setError: (error) => set({ error }),
-  reset: () => set({ ...initialState }),
+  getRecommended: (industry, damageTypes) => {
+    const all = get().mentors;
+    return [...all]
+      .filter(
+        (m) =>
+          m.industry === industry ||
+          m.damageTypes.some((d) => damageTypes.includes(d)),
+      )
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+  },
+
+  getMentorById: (userId) =>
+    get().mentors.find((m) => m.userId === userId),
+
+  addMentor: (profile) =>
+    set((state) => ({ mentors: [...state.mentors, profile] })),
 }));

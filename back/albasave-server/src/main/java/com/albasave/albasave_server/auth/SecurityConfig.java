@@ -33,7 +33,8 @@ public class SecurityConfig {
                                 "/api/health",
                                 "/api/admin/**",
                                 "/api/job-postings/**",
-                                "/api/contracts/**"
+                                "/api/contracts/**",
+                                "/api/dev/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

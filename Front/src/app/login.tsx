@@ -10,8 +10,7 @@ import {
   Platform,
 } from "react-native";
 import { router } from "expo-router";
-import axios from "axios";
-import { env } from "@/shared/config/env";
+import { apiClient } from "@/shared/api/axios-instance";
 import { useAuthStore } from "@/entities/user/model/auth-store";
 
 type Mode = "login" | "signup";
@@ -31,21 +30,23 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      const url =
-        mode === "login"
-          ? `${env.apiUrl}/auth/login`
-          : `${env.apiUrl}/auth/signup`;
+      const path = mode === "login" ? "/auth/login" : "/auth/signup";
       const body =
         mode === "login"
           ? { email, password }
-          : { email, password, name: name || email.split("@")[0], phoneNumber: "" };
+          : {
+              email,
+              password,
+              name: name || email.split("@")[0],
+              phoneNumber: "",
+            };
 
-      const { data } = await axios.post(url, body);
+      const { data } = await apiClient.post(path, body);
       setAuth(data.token, data.userId, data.name, data.email);
       router.replace("/(tabs)");
-    } catch (e: any) {
+    } catch (e) {
       const msg =
-        e?.response?.data?.message ?? e?.message ?? "오류가 발생했습니다.";
+        e instanceof Error ? e.message : "오류가 발생했습니다.";
       Alert.alert("실패", msg);
     } finally {
       setLoading(false);

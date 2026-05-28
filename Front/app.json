@@ -14,7 +14,11 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.albajikimi.app"
+      "bundleIdentifier": "com.albajikimi.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "계약서 및 공고 사진을 촬영하기 위해 카메라가 필요합니다.",
+        "NSPhotoLibraryUsageDescription": "계약서 및 공고 이미지를 갤러리에서 불러오기 위해 사진 접근이 필요합니다."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -28,8 +32,12 @@
         "ACCESS_BACKGROUND_LOCATION",
         "ACCESS_WIFI_STATE",
         "CHANGE_WIFI_STATE",
-        "ACCESS_NETWORK_STATE"
-      ]
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES"
+      ],
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -50,6 +58,13 @@
         {
           "icon": "./assets/notification-icon.png",
           "color": "#2563EB"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "알바지킴이가 증거 첨부를 위해 갤러리에 접근합니다.",
+          "cameraPermission": "알바지킴이가 증거 촬영을 위해 카메라에 접근합니다."
         }
       ]
     ],

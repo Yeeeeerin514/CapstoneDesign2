@@ -19,13 +19,13 @@ export function MentorCard({ mentor, onPress }: Props): JSX.Element {
         <Text className="text-base font-semibold text-text-primary">
           {mentor.nickname}
         </Text>
-        {mentor.similarity !== undefined && (
-          <Badge label={`유사도 ${mentor.similarity}%`} tone="info" />
-        )}
+        {mentor.isVerified ? (
+          <Badge label="🛡 인증멘토" tone="info" />
+        ) : null}
       </View>
       <Text className="text-xs text-text-secondary">
-        업종: {mentor.industries.join(", ")} · 해결 {mentor.resolvedCases}건 · ★{" "}
-        {mentor.rating.toFixed(1)}
+        업종: {mentor.industry} · 후기 {mentor.reviewCount}개 · ★{" "}
+        {mentor.averageRating.toFixed(1)}
       </Text>
       <Text className="text-sm font-semibold text-primary">
         상담료 {formatCurrency(mentor.consultingFee)}

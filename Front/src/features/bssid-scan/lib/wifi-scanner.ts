@@ -5,6 +5,8 @@ export interface WifiNetwork {
   ssid: string;
   /** 신호 강도 (dBm). 값이 클수록 (0에 가까울수록) 좋음. */
   level: number;
+  /** 신호가 가장 강한 네트워크에 setNetworks가 자동 부여. */
+  isRecommended?: boolean;
 }
 
 /**

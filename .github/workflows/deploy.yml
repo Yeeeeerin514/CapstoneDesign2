@@ -1,14 +1,22 @@
-﻿name: Deploy Spring Boot to EC2
+name: Deploy Spring Boot to EC2
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
+      - feature/contract-rag-and-factsheet
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ec2-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -17,47 +25,73 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Build with Gradle
-        run: |
-          cd Back/albasave-server
-          chmod +x gradlew
-          ./gradlew build -x test
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('back/albasave-server/**/*.gradle*', 'back/albasave-server/**/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
 
-      - name: Copy JAR to EC2
-        uses: appleboy/scp-action@master
+      - name: Build bootJar
+        working-directory: back/albasave-server
+        run: |
+          chmod +x ./gradlew
+          ./gradlew bootJar -x test
+
+      - name: Upload JAR to EC2
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "Back/albasave-server/build/libs/albasave-server-0.0.1-SNAPSHOT.jar"
-          target: "~/app/back/libs"
+          source: "back/albasave-server/build/libs/albasave-server-0.0.1-SNAPSHOT.jar"
+          target: "/home/ubuntu/app/back/libs/"
           strip_components: 4
+          overwrite: true
 
-      - name: Restart Spring Boot on EC2
-        uses: appleboy/ssh-action@master
+      - name: Restart service via systemctl + health check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -e
+            cd /home/ubuntu/app/back/libs
+
+            # 기존 jar는 prev-YYYYMMDD-HHMMSS.jar 로 백업 (방금 업로드된 jar는 이름 동일)
+            # scp가 같은 이름으로 덮어썼으므로 별도 swap 불필요. 단, 백업본은 별도 보관.
+            if [ -f albasave-server-0.0.1-SNAPSHOT.jar ]; then
+              cp albasave-server-0.0.1-SNAPSHOT.jar "prev-$(date +%Y%m%d-%H%M%S).jar"
+            fi
+
+            # systemd 서비스 재시작 (.env는 systemd unit이 EnvironmentFile로 이미 로드)
+            sudo systemctl restart albasave
+
+            # 헬스체크: 최대 90초 대기
+            for i in $(seq 1 30); do
+              if curl -fsS --max-time 3 http://localhost:8080/api/health 2>/dev/null | grep -q UP; then
+                echo "Health check PASS after ${i} × 3s"
+                exit 0
+              fi
+              sleep 3
+            done
+            echo "Health check FAIL after 90s — recent logs:"
+            sudo journalctl -u albasave --no-pager -n 50
+            exit 1
+
+      - name: Cleanup old backups (keep last 3)
+        if: success()
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            set -e
-            sudo fuser -k 8080/tcp || true
-            mkdir -p ~/app/back/libs
-            cat > ~/app/back/.env <<EOF
-            DB_URL=jdbc:postgresql://albasave-db.c5csm4aeqbg6.ap-northeast-2.rds.amazonaws.com:5432/albasave
-            DB_USERNAME=postgres
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            AWS_S3_BUCKET=albasave-storage-new
-            AWS_REGION=ap-northeast-2
-            AWS_ACCESS_KEY=${{ secrets.AWS_ACCESS_KEY }}
-            AWS_SECRET_KEY=${{ secrets.AWS_SECRET_KEY }}
-            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-            OPENAI_MODEL=gpt-4o-mini
-            LOCALDATA_CSV_DIR=/home/ubuntu/albasave-data
-            EOF
-            chmod 600 ~/app/back/.env
-            cd ~/app/back
-            set -a
-            . ~/app/back/.env
-            set +a
-            nohup java -jar libs/albasave-server-0.0.1-SNAPSHOT.jar > app.log 2>&1 &
+            cd /home/ubuntu/app/back/libs
+            ls -1t prev-*.jar 2>/dev/null | tail -n +4 | xargs -r rm -f
+            echo "남은 백업:"
+            ls -1 prev-*.jar 2>/dev/null || echo "(없음)"

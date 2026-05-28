@@ -1,0 +1,630 @@
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { ScreenHeader } from "@/shared/ui";
+import { useMentorStore } from "@/features/mentor-match";
+import type { MentorProfile } from "@/entities/mentor";
+import { usePaymentStore } from "@/features/payment";
+import { PAYMENT_DISTRIBUTION } from "@/shared/lib/payment";
+import { useAuthStore } from "@/entities/user/model/auth-store";
+
+interface MentorRecommendViewProps {
+  caseId: string;
+  /** 매칭 컨텍스트 — 현재 사건의 업종/피해유형. ReportCase에 필드 도입 전까지는 props로 받음. */
+  industry: string;
+  damageTypes: string[];
+  onBack: () => void;
+  /** 매칭 완료 후 1:1 대화 시작. 미지정 시 onBack으로 fallback. */
+  onStartChat?: (mentor: MentorProfile) => void;
+}
+
+type Mode = "list" | "confirm" | "success";
+
+function getMatchReasons(
+  mentor: MentorProfile,
+  industry: string,
+  damageTypes: string[],
+): string[] {
+  const reasons: string[] = [];
+  if (mentor.industry === industry) reasons.push("같은 업종 경험");
+  if (mentor.damageTypes.some((d) => damageTypes.includes(d))) {
+    reasons.push("같은 피해 유형 경험");
+  }
+  if (mentor.wasGroupLeader) reasons.push("공동대응 대표 경험");
+  if (mentor.resolvedDays <= 20) reasons.push("빠른 해결");
+  return reasons;
+}
+
+export function MentorRecommendView({
+  caseId,
+  industry,
+  damageTypes,
+  onBack,
+  onStartChat,
+}: MentorRecommendViewProps): JSX.Element {
+  const getRecommended = useMentorStore((s) => s.getRecommended);
+  const chargeMentorFee = usePaymentStore((s) => s.chargeMentorFee);
+  const isPaymentLoading = usePaymentStore((s) => s.isLoading);
+  const menteeId = useAuthStore((s) => s.userIdString);
+
+  const [mode, setMode] = useState<Mode>("list");
+  const [selectedMentor, setSelectedMentor] = useState<MentorProfile | null>(
+    null,
+  );
+
+  const recommended = getRecommended(industry, damageTypes);
+
+  const handleSelectMentor = (mentor: MentorProfile): void => {
+    setSelectedMentor(mentor);
+    setMode("confirm");
+  };
+
+  const handleConfirmPay = async (): Promise<void> => {
+    if (selectedMentor === null) return;
+    const result = await chargeMentorFee({
+      menteeId: menteeId,
+      mentorId: selectedMentor.userId,
+      caseId,
+    });
+    if (result.success) {
+      setMode("success");
+    } else {
+      Alert.alert("결제 실패", "다시 시도해주세요.");
+    }
+  };
+
+  // ───── 매칭 완료 화면 ─────
+  if (mode === "success" && selectedMentor !== null) {
+    return (
+      <SafeAreaView
+        edges={["left", "right", "bottom"]}
+        style={{ flex: 1, backgroundColor: "#F8FAFC" }}
+      >
+        <ScreenHeader showLogo />
+        <View
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 32,
+          }}
+        >
+          <View
+            style={{
+              width: 80,
+              height: 80,
+              borderRadius: 40,
+              backgroundColor: "#DCFCE7",
+              justifyContent: "center",
+              alignItems: "center",
+              marginBottom: 20,
+            }}
+          >
+            <Ionicons name="checkmark" size={44} color="#16A34A" />
+          </View>
+          <Text
+            style={{
+              fontSize: 20,
+              fontWeight: "700",
+              color: "#0F172A",
+              marginBottom: 8,
+            }}
+          >
+            매칭 완료!
+          </Text>
+          <Text
+            style={{
+              fontSize: 14,
+              color: "#475569",
+              textAlign: "center",
+              lineHeight: 22,
+              marginBottom: 4,
+            }}
+          >
+            {`${selectedMentor.nickname} 멘토와 연결되었습니다.`}
+          </Text>
+          <Text
+            style={{
+              fontSize: 13,
+              color: "#64748B",
+              textAlign: "center",
+              lineHeight: 20,
+              marginBottom: 32,
+            }}
+          >
+            멘토가 24시간 이내에 연락드릴 예정이에요.
+          </Text>
+          <Pressable
+            onPress={() => {
+              if (onStartChat !== undefined) {
+                onStartChat(selectedMentor);
+              } else {
+                onBack();
+              }
+            }}
+            style={{
+              backgroundColor: "#3182F6",
+              paddingVertical: 14,
+              paddingHorizontal: 32,
+              borderRadius: 10,
+              minWidth: 220,
+              alignItems: "center",
+              marginBottom: 10,
+            }}
+          >
+            <Text
+              style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}
+            >
+              지금 1:1 대화 시작하기
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={onBack}
+            style={{
+              paddingVertical: 10,
+              paddingHorizontal: 24,
+            }}
+          >
+            <Text
+              style={{ color: "#64748B", fontSize: 13, fontWeight: "500" }}
+            >
+              나중에 하기
+            </Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ───── 리스트 화면 ─────
+  return (
+    <SafeAreaView
+      edges={["left", "right", "bottom"]}
+      style={{ flex: 1, backgroundColor: "#F8FAFC" }}
+    >
+      <ScreenHeader showLogo />
+
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          padding: 16,
+          gap: 8,
+        }}
+      >
+        <Pressable onPress={onBack}>
+          <Ionicons name="arrow-back" size={24} color="#0F172A" />
+        </Pressable>
+        <Text style={{ fontSize: 18, fontWeight: "700", color: "#0F172A" }}>
+          멘토 찾기
+        </Text>
+      </View>
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          padding: 16,
+          paddingTop: 0,
+          paddingBottom: 32,
+        }}
+      >
+        {/* 면책 배너 (항상 표시, 닫기 불가) */}
+        <View
+          style={{
+            backgroundColor: "#F1F5F9",
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 12,
+            flexDirection: "row",
+            gap: 6,
+            alignItems: "flex-start",
+          }}
+        >
+          <Ionicons
+            name="information-circle-outline"
+            size={14}
+            color="#64748B"
+            style={{ marginTop: 1 }}
+          />
+          <Text
+            style={{
+              flex: 1,
+              fontSize: 12,
+              color: "#64748B",
+              lineHeight: 18,
+            }}
+          >
+            이 멘토들은 동료 근로자입니다. 법률 자문이 아닌 경험 공유입니다.
+            법적 판단은 공인노무사·변호사에게 받으세요.
+          </Text>
+        </View>
+
+        {/* 매칭 사유 설명 */}
+        <Text
+          style={{
+            fontSize: 13,
+            color: "#475569",
+            marginBottom: 12,
+            lineHeight: 19,
+          }}
+        >
+          {`${industry} 업종, ${damageTypes.join("·")} 피해를 해결한 멘토를 찾았어요`}
+        </Text>
+
+        {/* 멘토 카드 리스트 */}
+        {recommended.length === 0 ? (
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: 12,
+              padding: 24,
+              alignItems: "center",
+            }}
+          >
+            <Ionicons name="search-outline" size={32} color="#94A3B8" />
+            <Text
+              style={{
+                fontSize: 13,
+                color: "#64748B",
+                marginTop: 8,
+                textAlign: "center",
+              }}
+            >
+              매칭되는 멘토를 찾지 못했어요
+            </Text>
+          </View>
+        ) : (
+          recommended.map((mentor) => {
+            const matchReasons = getMatchReasons(
+              mentor,
+              industry,
+              damageTypes,
+            );
+            return (
+              <View
+                key={mentor.userId}
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 14,
+                  padding: 16,
+                  marginBottom: 10,
+                }}
+              >
+                {/* 상단: 닉네임 + 배지들 */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 6,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 15,
+                      fontWeight: "700",
+                      color: "#0F172A",
+                    }}
+                  >
+                    {mentor.nickname}
+                  </Text>
+                  {mentor.badges.map((b) => (
+                    <View
+                      key={b}
+                      style={{
+                        backgroundColor: "#E8F2FF",
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 4,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          color: "#1B64DA",
+                          fontWeight: "600",
+                        }}
+                      >
+                        {b === "인증멘토"
+                          ? "🛡 인증멘토"
+                          : b === "공동대응대표"
+                            ? "🏆 공동대응대표"
+                            : "⚡ 빠른해결"}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* 통계 */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Ionicons name="star" size={12} color="#F59E0B" />
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: "#0F172A",
+                      fontWeight: "600",
+                    }}
+                  >
+                    {mentor.averageRating.toFixed(1)}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: "#CBD5E1" }}>·</Text>
+                  <Text style={{ fontSize: 12, color: "#64748B" }}>
+                    {`후기 ${mentor.reviewCount}개`}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: "#CBD5E1" }}>·</Text>
+                  <Text style={{ fontSize: 12, color: "#64748B" }}>
+                    {`해결까지 ${mentor.resolvedDays}일`}
+                  </Text>
+                </View>
+
+                {/* bio */}
+                <Text
+                  numberOfLines={2}
+                  style={{
+                    fontSize: 13,
+                    color: "#475569",
+                    lineHeight: 19,
+                    marginBottom: 10,
+                  }}
+                >
+                  {mentor.bio}
+                </Text>
+
+                {/* 매칭 이유 태그 */}
+                {matchReasons.length > 0 ? (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      gap: 4,
+                      marginBottom: 12,
+                    }}
+                  >
+                    {matchReasons.map((reason) => (
+                      <View
+                        key={reason}
+                        style={{
+                          backgroundColor: "#F1F5F9",
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 4,
+                        }}
+                      >
+                        <Text
+                          style={{ fontSize: 11, color: "#475569" }}
+                        >
+                          {`✓ ${reason}`}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
+                {/* 연결 버튼 */}
+                <Pressable
+                  onPress={() => handleSelectMentor(mentor)}
+                  style={{
+                    backgroundColor: "#3182F6",
+                    paddingVertical: 11,
+                    borderRadius: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: 13,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {`이 멘토와 연결하기 · ₩${PAYMENT_DISTRIBUTION.total.toLocaleString()}`}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })
+        )}
+      </ScrollView>
+
+      {/* 결제 확인 모달 */}
+      <Modal
+        visible={mode === "confirm" && selectedMentor !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMode("list")}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(15, 23, 42, 0.55)",
+            justifyContent: "center",
+            paddingHorizontal: 24,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: 14,
+              padding: 20,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: "700",
+                color: "#0F172A",
+                marginBottom: 14,
+              }}
+            >
+              멘토 매칭 결제
+            </Text>
+
+            <View
+              style={{
+                backgroundColor: "#F8FAFC",
+                borderRadius: 10,
+                padding: 14,
+                marginBottom: 14,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={{ fontSize: 13, color: "#475569" }}>
+                  결제 금액
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 18,
+                    fontWeight: "700",
+                    color: "#0F172A",
+                  }}
+                >
+                  {`₩${PAYMENT_DISTRIBUTION.total.toLocaleString()}`}
+                </Text>
+              </View>
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: "#E2E8F0",
+                  marginBottom: 8,
+                }}
+              />
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  marginBottom: 4,
+                }}
+              >
+                <Text style={{ fontSize: 12, color: "#64748B" }}>
+                  해결 후 환급 예정
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: "#16A34A",
+                    fontWeight: "600",
+                  }}
+                >
+                  {`+ ₩${PAYMENT_DISTRIBUTION.menteeRefund.toLocaleString()}`}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  marginBottom: 4,
+                }}
+              >
+                <Text style={{ fontSize: 12, color: "#64748B" }}>
+                  멘토 수령
+                </Text>
+                <Text style={{ fontSize: 12, color: "#64748B" }}>
+                  {`₩${PAYMENT_DISTRIBUTION.mentor.toLocaleString()}`}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Text style={{ fontSize: 12, color: "#64748B" }}>
+                  플랫폼 수수료
+                </Text>
+                <Text style={{ fontSize: 12, color: "#64748B" }}>
+                  {`₩${PAYMENT_DISTRIBUTION.platform.toLocaleString()}`}
+                </Text>
+              </View>
+            </View>
+
+            {isPaymentLoading ? (
+              <View
+                style={{
+                  paddingVertical: 14,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <ActivityIndicator size="small" color="#3182F6" />
+                <Text style={{ fontSize: 13, color: "#475569" }}>
+                  결제 중...
+                </Text>
+              </View>
+            ) : (
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  onPress={() => setMode("list")}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    backgroundColor: "#F8FAFC",
+                    borderRadius: 10,
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: "#E2E8F0",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#475569",
+                      fontSize: 14,
+                      fontWeight: "500",
+                    }}
+                  >
+                    취소
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => void handleConfirmPay()}
+                  style={{
+                    flex: 2,
+                    paddingVertical: 12,
+                    backgroundColor: "#3182F6",
+                    borderRadius: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: 14,
+                      fontWeight: "600",
+                    }}
+                  >
+                    결제하기
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}

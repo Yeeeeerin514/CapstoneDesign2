@@ -1,30 +1,39 @@
 import { create } from "zustand";
-import type { ContractAnalysis } from "@/entities/contract";
 
-interface ContractUploadState {
-  imageUri: string | null;
-  isAnalyzing: boolean;
-  result: ContractAnalysis | null;
-  error: string | null;
-  setImageUri: (v: string | null) => void;
-  setAnalyzing: (v: boolean) => void;
-  setResult: (v: ContractAnalysis | null) => void;
-  setError: (v: string | null) => void;
-  reset: () => void;
+export interface UploadedFile {
+  id: string;
+  uri: string;
+  name: string;
 }
 
-const initialState = {
-  imageUri: null as string | null,
-  isAnalyzing: false,
-  result: null as ContractAnalysis | null,
-  error: null as string | null,
-};
+interface ContractUploadStoreState {
+  files: UploadedFile[];
+  isAnalyzing: boolean;
+  addFile: (asset: { uri: string; fileName?: string | null }) => void;
+  removeFile: (id: string) => void;
+  clearFiles: () => void;
+  setAnalyzing: (v: boolean) => void;
+}
 
-export const useContractUploadStore = create<ContractUploadState>((set) => ({
-  ...initialState,
-  setImageUri: (imageUri) => set({ imageUri }),
-  setAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
-  setResult: (result) => set({ result }),
-  setError: (error) => set({ error }),
-  reset: () => set({ ...initialState }),
-}));
+export const useContractUploadStore = create<ContractUploadStoreState>(
+  (set) => ({
+    files: [],
+    isAnalyzing: false,
+    addFile: (asset) =>
+      set((s) => ({
+        files: [
+          ...s.files,
+          {
+            id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            uri: asset.uri,
+            name:
+              asset.fileName ?? `근로계약서_${s.files.length + 1}.jpg`,
+          },
+        ],
+      })),
+    removeFile: (id) =>
+      set((s) => ({ files: s.files.filter((f) => f.id !== id) })),
+    clearFiles: () => set({ files: [] }),
+    setAnalyzing: (v) => set({ isAnalyzing: v }),
+  }),
+);

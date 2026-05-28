@@ -1,19 +1,42 @@
 import { useState } from "react";
 import { SafeAreaView, ScrollView, Text, TouchableOpacity, View, Alert, Platform, StatusBar } from "react-native";
+import { router } from "expo-router";
+
+/**
+ * 웹/네이티브 모두에서 동작하는 확인 다이얼로그.
+ * RN Alert.alert는 웹에서 multi-button 미지원이라 window.confirm으로 대체한다.
+ */
+function confirmAction(title: string, message: string, onConfirm: () => void): void {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.confirm(`${title}\n\n${message}`)) {
+      onConfirm();
+    }
+    return;
+  }
+  Alert.alert(title, message, [
+    { text: "취소", style: "cancel" },
+    { text: "삭제", style: "destructive", onPress: onConfirm },
+  ]);
+}
 import { Star } from "lucide-react-native";
 import type { ContractAnalysisResult } from "@/entities/job-post";
 import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
 import { ScreenHeader } from "@/shared/ui";
+import { apiClient } from "@/shared/api/axios-instance";
 import { ContractUploadView } from "./ContractUploadView";
 import { ContractAnalysisView } from "./ContractAnalysisView";
+import { BssidRegisterView } from "./BssidRegisterView";
+import { BssidRegisterCompleteView } from "./BssidRegisterCompleteView";
 
-type Screen = "list" | "upload" | "analysis";
+type Screen = "list" | "upload" | "analysis" | "bssid-register" | "register-complete";
 
 export function WorkplaceView(): JSX.Element {
-  const { workplaces, removeWorkplace, updateContractStatus } = useFavoriteWorkplaceStore();
+  const { workplaces, removeWorkplace, updateContractStatus, setContractId, setPartTimeJobId, markRegistered } =
+    useFavoriteWorkplaceStore();
   const [currentScreen, setCurrentScreen] = useState<Screen>("list");
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<ContractAnalysisResult | null>(null);
+  const [registeredCredential, setRegisteredCredential] = useState<{ bssid: string; ssid: string } | null>(null);
 
   const selectedWorkplace = workplaces.find((w) => w.id === selectedWorkplaceId);
 
@@ -25,6 +48,9 @@ export function WorkplaceView(): JSX.Element {
         onAnalysisComplete={(result) => {
           setAnalysisResult(result);
           updateContractStatus(selectedWorkplace.id, "analyzed");
+          if (result.contractId !== null) {
+            setContractId(selectedWorkplace.id, result.contractId);
+          }
           setCurrentScreen("analysis");
         }}
       />
@@ -36,9 +62,56 @@ export function WorkplaceView(): JSX.Element {
       <ContractAnalysisView
         result={analysisResult}
         onBack={() => setCurrentScreen("upload")}
-        onRegister={() => {
-          Alert.alert("사업장 등록", "BSSID 등록 화면으로 이동합니다.\n(준비 중)");
+        onRegister={() => setCurrentScreen("bssid-register")}
+      />
+    );
+  }
+
+  if (currentScreen === "bssid-register" && selectedWorkplace) {
+    return (
+      <BssidRegisterView
+        workplaceName={selectedWorkplace.name}
+        onBack={() => setCurrentScreen("analysis")}
+        onRegisterComplete={(bssid, ssid) => {
+          // 1) 로컬 store 즉시 반영
+          markRegistered(selectedWorkplace.id, bssid, ssid);
+          setRegisteredCredential({ bssid, ssid });
+          setCurrentScreen("register-complete");
+
+          // 2) 백엔드 part_time_job 자동 생성 + BSSID 영속 (실패해도 UX 끊김 X)
+          apiClient
+            .post<{ partTimeJobId: number }>("/working/register-workplace", {
+              workplaceName: selectedWorkplace.name,
+              bssid,
+              ssid,
+            })
+            .then((res) => {
+              if (res.data.partTimeJobId !== undefined) {
+                setPartTimeJobId(selectedWorkplace.id, res.data.partTimeJobId);
+              }
+            })
+            .catch(() => {
+              // 네트워크 실패 시 로컬 store는 유지 (재진입 시 재시도 가능)
+            });
+        }}
+      />
+    );
+  }
+
+  if (currentScreen === "register-complete" && selectedWorkplace && registeredCredential) {
+    return (
+      <BssidRegisterCompleteView
+        workplaceName={selectedWorkplace.name}
+        ssid={registeredCredential.ssid}
+        bssid={registeredCredential.bssid}
+        onGoToDashboard={() => {
           setCurrentScreen("list");
+          setRegisteredCredential(null);
+          router.push("/(tabs)/work-record");
+        }}
+        onGoHome={() => {
+          setCurrentScreen("list");
+          setRegisteredCredential(null);
         }}
       />
     );
@@ -82,10 +155,11 @@ export function WorkplaceView(): JSX.Element {
                   </Text>
                   <TouchableOpacity
                     onPress={() =>
-                      Alert.alert("관심업장 삭제", `${wp.name}을(를) 삭제하시겠어요?`, [
-                        { text: "취소", style: "cancel" },
-                        { text: "삭제", style: "destructive", onPress: () => removeWorkplace(wp.id) },
-                      ])
+                      confirmAction(
+                        "관심업장 삭제",
+                        `${wp.name}을(를) 삭제하시겠어요?`,
+                        () => removeWorkplace(wp.id),
+                      )
                     }
                   >
                     <Star size={18} color="#2563EB" fill="#2563EB" />
