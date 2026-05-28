@@ -6,7 +6,7 @@
  * + Thompson Sampling으로 매칭된 top-K 멘토를 매칭도 게이지 + 추천 이유와 함께 표시.
  */
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader, colors, radius, spacing, typography } from "@/shared/ui";
@@ -100,11 +100,10 @@ export function SmartMentorRecommendView({
   async function handleConfirm(rec: MatchRecommendation): Promise<void> {
     setConfirmingId(rec.matchId);
     try {
+      // 1) 백엔드 매칭 확정 (PROPOSED → ACTIVE)
       await confirmMatch(rec.matchId);
 
-      // 채팅 컨텍스트 자동 주입 — mentor-match store에 새 매칭 생성
-      // 시스템 메시지 + 멘토 인삿말이 자동 추가됨 (store가 처리)
-      // 매칭 이유까지 함께 시스템 메시지로 노출하기 위해 별도로 한 줄 더 누적
+      // 2) mock mentor-match store에 매칭 레코드 생성 (채팅 인프라용)
       const contextMessage =
         rec.matchReasons.length > 0
           ? `이 매칭은 ${rec.matchReasons.slice(0, 3).join(" / ")} 기준으로 선정됐어요.`
@@ -119,7 +118,7 @@ export function SmartMentorRecommendView({
         mentorIndustry: rec.industry ?? "",
       });
 
-      // 매칭 이유 시스템 메시지 추가 (createMatch 기본 메시지 다음에)
+      // 3) 매칭 이유 시스템 메시지 추가
       useMentorMatchStore.getState().addMessage(match.id, {
         senderId: "system",
         senderRole: "system",
@@ -127,22 +126,33 @@ export function SmartMentorRecommendView({
         timestamp: new Date().toISOString(),
       });
 
-      Alert.alert(
-        "매칭 완료",
-        `${rec.mentorNickname} 멘토와 매칭됐어요.\n1:1 대화를 시작하시겠어요?`,
-        [
-          { text: "나중에", style: "cancel", onPress: () => onMatched?.(rec.matchId, rec.mentorNickname) },
-          {
-            text: "대화 시작",
-            onPress: () => {
-              onMatched?.(rec.matchId, rec.mentorNickname);
-              router.push(`/mentor-chat/${match.id}`);
+      // 4) 화면 전환 — Web/Native 모두 안전하게 채팅방으로 바로 이동
+      //    (RN Alert.alert는 웹에서 multi-button 미지원이라 우회)
+      onMatched?.(rec.matchId, rec.mentorNickname);
+      if (Platform.OS === "web") {
+        // 웹: 바로 채팅 진입 (Alert 없이)
+        router.push(`/mentor-chat/${match.id}`);
+      } else {
+        // 모바일: 안내 + 채팅 진입 (단일 버튼이라 안전)
+        Alert.alert(
+          "매칭 완료",
+          `${rec.mentorNickname} 멘토와 매칭됐어요. 채팅방으로 이동합니다.`,
+          [
+            {
+              text: "확인",
+              onPress: () => router.push(`/mentor-chat/${match.id}`),
             },
-          },
-        ],
-      );
+          ],
+        );
+      }
     } catch (err) {
-      Alert.alert("매칭 실패", err instanceof Error ? err.message : "다시 시도해주세요");
+      const message = err instanceof Error ? err.message : "다시 시도해주세요";
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        // eslint-disable-next-line no-alert
+        window.alert(`매칭 실패: ${message}`);
+      } else {
+        Alert.alert("매칭 실패", message);
+      }
     } finally {
       setConfirmingId(null);
     }
