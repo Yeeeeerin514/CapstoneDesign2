@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useMentorMatchStore } from "@/features/mentor-match";
 import { useAuthStore } from "@/entities/user/model/auth-store";
+import { fetchChatMessages, sendChatMessage } from "@/entities/mentor";
 
 interface MentorChatViewProps {
   matchId: string;
@@ -44,6 +45,54 @@ export function MentorChatView({
 
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<ScrollView | null>(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null);
+  const seenBackendIdsRef = useRef<Set<number>>(new Set());
+
+  // 백엔드 채팅 폴링 — backendMatchId 있을 때만
+  const backendMatchId = match?.backendMatchId;
+  useEffect(() => {
+    if (backendMatchId === undefined || backendMatchId === null) return;
+
+    let cancelled = false;
+
+    async function tick(): Promise<void> {
+      try {
+        const msgs = await fetchChatMessages(
+          backendMatchId as number,
+          lastFetchedAt ?? undefined,
+        );
+        if (cancelled) return;
+        for (const m of msgs) {
+          if (seenBackendIdsRef.current.has(m.id)) continue;
+          seenBackendIdsRef.current.add(m.id);
+          // backend role → store role 매핑
+          const role: "mentee" | "mentor" | "system" =
+            m.senderRole === "MENTEE" ? "mentee"
+              : m.senderRole === "MENTOR" ? "mentor"
+                : "system";
+          addMessage(matchId, {
+            senderId: m.senderUserId !== null ? String(m.senderUserId) : "system",
+            senderRole: role,
+            text: m.text,
+            timestamp: m.createdAt,
+          });
+        }
+        if (msgs.length > 0) {
+          setLastFetchedAt(msgs[msgs.length - 1].createdAt);
+        }
+      } catch {
+        // 네트워크 에러는 조용히 — 다음 폴링에서 재시도
+      }
+    }
+
+    // 즉시 1회 + 5초마다
+    void tick();
+    const interval = setInterval(() => { void tick(); }, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [backendMatchId, addMessage, matchId, lastFetchedAt]);
 
   if (match === undefined) {
     return (
@@ -82,16 +131,41 @@ export function MentorChatView({
     );
   }
 
-  const handleSend = (): void => {
+  const handleSend = async (): Promise<void> => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
-    addMessage(matchId, {
-      senderId: userId,
-      senderRole: "mentee",
-      text: trimmed,
-      timestamp: new Date().toISOString(),
-    });
     setDraft("");
+
+    // 백엔드 매칭이면 → 서버 저장 + 본인 화면 즉시 반영
+    if (backendMatchId !== undefined && backendMatchId !== null) {
+      try {
+        const saved = await sendChatMessage(backendMatchId, trimmed);
+        seenBackendIdsRef.current.add(saved.id);
+        addMessage(matchId, {
+          senderId: userId,
+          senderRole: "mentee",
+          text: trimmed,
+          timestamp: saved.createdAt,
+        });
+      } catch {
+        // 전송 실패 시 로컬에만 추가 (UI 끊김 방지)
+        addMessage(matchId, {
+          senderId: userId,
+          senderRole: "mentee",
+          text: trimmed,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } else {
+      // 기존 mock 흐름 (backendMatchId 없는 경우 호환)
+      addMessage(matchId, {
+        senderId: userId,
+        senderRole: "mentee",
+        text: trimmed,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     setTimeout(
       () => scrollRef.current?.scrollToEnd({ animated: true }),
       50,

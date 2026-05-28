@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -19,8 +19,37 @@ import type { VerificationMethod } from "@/entities/mentor";
 export function MyView(): JSX.Element {
   const userId = useAuthStore((s) => s.userIdString);
   const nickname = useAuthStore((s) => s.nickname);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
   const myMatches = useMentorMatchStore((s) => s.getMatchesByMentee(userId));
   const cases = useReportStore((s) => s.cases);
+
+  function handleLogout(): void {
+    const confirmFn = (): boolean => {
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        const w = window as { confirm?: (m: string) => boolean };
+        return w.confirm ? w.confirm("로그아웃하시겠어요?") : true;
+      }
+      return false; // 네이티브는 Alert로 처리
+    };
+    if (Platform.OS === "web") {
+      if (confirmFn()) {
+        clearAuth();
+        router.replace("/login");
+      }
+    } else {
+      Alert.alert("로그아웃", "정말 로그아웃하시겠어요?", [
+        { text: "취소", style: "cancel" },
+        {
+          text: "로그아웃",
+          style: "destructive",
+          onPress: () => {
+            clearAuth();
+            router.replace("/login");
+          },
+        },
+      ]);
+    }
+  }
   const [showMentorRegister, setShowMentorRegister] = useState(false);
   const [showEvidenceUpload, setShowEvidenceUpload] = useState(false);
   const [mentorVerification, setMentorVerification] = useState<{
@@ -358,6 +387,39 @@ export function MyView(): JSX.Element {
             }}
           />
         )}
+
+        {/* 로그아웃 */}
+        <Pressable
+          onPress={handleLogout}
+          style={{
+            marginTop: 32,
+            backgroundColor: "#FFFFFF",
+            borderRadius: 12,
+            padding: 14,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            borderWidth: 0.5,
+            borderColor: "#FECACA",
+          }}
+        >
+          <Ionicons name="log-out-outline" size={18} color="#DC2626" />
+          <Text style={{ fontSize: 14, fontWeight: "600", color: "#DC2626" }}>
+            로그아웃
+          </Text>
+        </Pressable>
+
+        <Text
+          style={{
+            textAlign: "center",
+            fontSize: 11,
+            color: "#94A3B8",
+            marginTop: 12,
+          }}
+        >
+          알바지킴이 v0.1
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );

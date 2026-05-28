@@ -22,6 +22,7 @@ import { Star } from "lucide-react-native";
 import type { ContractAnalysisResult } from "@/entities/job-post";
 import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
 import { ScreenHeader } from "@/shared/ui";
+import { apiClient } from "@/shared/api/axios-instance";
 import { ContractUploadView } from "./ContractUploadView";
 import { ContractAnalysisView } from "./ContractAnalysisView";
 import { BssidRegisterView } from "./BssidRegisterView";
@@ -30,7 +31,7 @@ import { BssidRegisterCompleteView } from "./BssidRegisterCompleteView";
 type Screen = "list" | "upload" | "analysis" | "bssid-register" | "register-complete";
 
 export function WorkplaceView(): JSX.Element {
-  const { workplaces, removeWorkplace, updateContractStatus, setContractId, markRegistered } =
+  const { workplaces, removeWorkplace, updateContractStatus, setContractId, setPartTimeJobId, markRegistered } =
     useFavoriteWorkplaceStore();
   const [currentScreen, setCurrentScreen] = useState<Screen>("list");
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string | null>(null);
@@ -72,9 +73,26 @@ export function WorkplaceView(): JSX.Element {
         workplaceName={selectedWorkplace.name}
         onBack={() => setCurrentScreen("analysis")}
         onRegisterComplete={(bssid, ssid) => {
+          // 1) 로컬 store 즉시 반영
           markRegistered(selectedWorkplace.id, bssid, ssid);
           setRegisteredCredential({ bssid, ssid });
           setCurrentScreen("register-complete");
+
+          // 2) 백엔드 part_time_job 자동 생성 + BSSID 영속 (실패해도 UX 끊김 X)
+          apiClient
+            .post<{ partTimeJobId: number }>("/working/register-workplace", {
+              workplaceName: selectedWorkplace.name,
+              bssid,
+              ssid,
+            })
+            .then((res) => {
+              if (res.data.partTimeJobId !== undefined) {
+                setPartTimeJobId(selectedWorkplace.id, res.data.partTimeJobId);
+              }
+            })
+            .catch(() => {
+              // 네트워크 실패 시 로컬 store는 유지 (재진입 시 재시도 가능)
+            });
         }}
       />
     );

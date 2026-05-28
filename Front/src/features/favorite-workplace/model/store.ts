@@ -16,6 +16,8 @@ export interface FavoriteWorkplace {
   registeredAt?: string;
   /** 마지막 분석된 계약서 ID (서버 측 LaborContract.id) */
   contractId?: number;
+  /** 백엔드 part_time_job.id — BSSID 등록 시 자동 채워짐. 출퇴근 API에서 사용. */
+  partTimeJobId?: number;
   createdAt: string;
 }
 
@@ -28,6 +30,7 @@ interface FavoriteWorkplaceState {
     status: FavoriteWorkplace["contractStatus"],
   ) => void;
   setContractId: (id: string, contractId: number) => void;
+  setPartTimeJobId: (id: string, partTimeJobId: number) => void;
   /** BSSID 등록 완료 처리 (사업장 정식 등록) */
   markRegistered: (id: string, bssid: string, ssid: string) => void;
   /** 등록 취소 (사업장에서 제외) */
@@ -65,6 +68,12 @@ export const useFavoriteWorkplaceStore = create<FavoriteWorkplaceState>()(
         set((state) => ({
           workplaces: state.workplaces.map((w) =>
             w.id === id ? { ...w, contractId } : w,
+          ),
+        })),
+      setPartTimeJobId: (id, partTimeJobId) =>
+        set((state) => ({
+          workplaces: state.workplaces.map((w) =>
+            w.id === id ? { ...w, partTimeJobId } : w,
           ),
         })),
       markRegistered: (id, bssid, ssid) =>

@@ -116,18 +116,11 @@ export async function sendChatMessage(
  */
 export async function uploadMentorEvidence(file: File | Blob): Promise<string> {
   const formData = new FormData();
-  formData.append("file", file as Blob, "evidence");
+  // 네이티브에선 {uri,type,name} 객체가 file로 들어옴
+  formData.append("file", file as Blob);
   const { data } = await apiClient.post<{ url: string }>(
     "/mentoring/evidence/upload",
     formData,
-    {
-      // 웹: axios가 multipart 자동 헤더 / 네이티브에선 명시
-      headers:
-        typeof navigator !== "undefined" && navigator.product === "ReactNative"
-          ? { "Content-Type": "multipart/form-data" }
-          : {},
-      timeout: 30_000,
-    },
   );
   return data.url;
 }
