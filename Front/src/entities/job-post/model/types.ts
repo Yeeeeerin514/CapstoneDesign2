@@ -93,6 +93,14 @@ export interface ExtractedContract {
   breakTimeMentioned: boolean | null;
   employerName: string | null;
   businessRegistrationNumber: string | null;
+  /** 근무 요일 — DayOfWeek enum string. 예: ["MONDAY","TUESDAY"]. */
+  workDays: string[] | null;
+  /** "09:00" (LocalTime). */
+  workStartTime: string | null;
+  /** "16:00" (LocalTime). */
+  workEndTime: string | null;
+  /** "2020-03-05" (LocalDate). */
+  employmentStartDate: string | null;
 }
 
 export interface ContractAnalysisResult {
@@ -346,6 +354,11 @@ interface ApiExtractedContractInfo {
   breakTimeMentioned: boolean | null;
   employerName: string | null;
   businessRegistrationNumber: string | null;
+  // 명세 §2 확장 필드
+  workDays: string[] | null;
+  workStartTime: string | null;
+  workEndTime: string | null;
+  employmentStartDate: string | null;
 }
 
 interface ApiRelatedCase {
@@ -458,6 +471,10 @@ export function mapContractApiResponse(
       breakTimeMentioned: info?.breakTimeMentioned ?? null,
       employerName: info?.employerName ?? null,
       businessRegistrationNumber: info?.businessRegistrationNumber ?? null,
+      workDays: info?.workDays ?? null,
+      workStartTime: info?.workStartTime ?? null,
+      workEndTime: info?.workEndTime ?? null,
+      employmentStartDate: info?.employmentStartDate ?? null,
     },
   };
 }

@@ -17,11 +17,13 @@ import {
 } from "@/features/favorite-workplace";
 import { ScreenHeader, colors } from "@/shared/ui";
 import { deletePartTimeJob, registerWorkplace } from "@/entities/workplace";
+import { useAuthStore } from "@/entities/user/model/auth-store";
 import { ContractUploadView } from "./ContractUploadView";
 import { ContractAnalysisView } from "./ContractAnalysisView";
 import { ContractEditView } from "./ContractEditView";
 import { BssidRegisterView } from "./BssidRegisterView";
 import { BssidRegisterCompleteView } from "./BssidRegisterCompleteView";
+import { WorkInfoInputView } from "./WorkInfoInputView";
 
 type ButtonVariant = "disabled" | "primary" | "outline" | "success";
 
@@ -98,10 +100,11 @@ function getCardButtonStates(workplace: FavoriteWorkplace): CardButtonStates {
 
   let registerButton: CardButtonState;
   if (stage === "initial") {
+    // 4-B: 계약서 유무와 무관하게 항상 활성화 (계약서 없이도 등록 가능)
     registerButton = {
-      variant: "disabled",
+      variant: "primary",
       label: "업장 등록",
-      isPressable: false,
+      isPressable: true,
     };
   } else if (stage === "contract-uploaded") {
     registerButton = {
@@ -125,6 +128,7 @@ type Screen =
   | "upload"
   | "analysis"
   | "edit"
+  | "register-step1"
   | "bssid-register"
   | "register-complete";
 
@@ -144,8 +148,10 @@ export function WorkplaceView(): JSX.Element {
     setContractId,
     setPartTimeJobId,
     markRegistered,
+    setWorkInfo,
   } = useFavoriteWorkplaceStore();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
   const [currentScreen, setCurrentScreen] = useState<Screen>("list");
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string | null>(
     null,
@@ -264,7 +270,7 @@ export function WorkplaceView(): JSX.Element {
             workplaceId: selectedWorkplace.id,
             workplaceName: selectedWorkplace.name,
           });
-          setCurrentScreen("bssid-register");
+          setCurrentScreen("register-step1");
         }}
       />
     );
@@ -283,6 +289,25 @@ export function WorkplaceView(): JSX.Element {
     );
   }
 
+  if (currentScreen === "register-step1" && pendingRegistration) {
+    const registration = pendingRegistration;
+    const wp = workplaces.find((w) => w.id === registration.workplaceId);
+    return (
+      <WorkInfoInputView
+        workplaceName={registration.workplaceName}
+        prefillFromContract={wp?.contractAnalysis}
+        onBack={() => {
+          setPendingRegistration(null);
+          setCurrentScreen("list");
+        }}
+        onNext={(info) => {
+          setWorkInfo(registration.workplaceId, info);
+          setCurrentScreen("bssid-register");
+        }}
+      />
+    );
+  }
+
   if (currentScreen === "bssid-register" && pendingRegistration) {
     const registration = pendingRegistration;
     return (
@@ -293,22 +318,59 @@ export function WorkplaceView(): JSX.Element {
           setCurrentScreen("list");
         }}
         onRegisterComplete={(bssid, ssid) => {
-          // 1) 로컬 store 즉시 반영
-          markRegistered(registration.workplaceId, bssid, ssid);
-          setPendingRegistration({ ...registration, bssid, ssid });
-          setCurrentScreen("register-complete");
-
-          // 2) 백엔드 part_time_job 자동 생성 + BSSID 영속 (실패해도 UX 끊김 X)
+          // 4-B Step 3: API 성공 후 navigate (명세 정합).
+          // 에러 매핑: 400/401/network/other 분기.
+          if (!bssid) {
+            Alert.alert("Wi-Fi 선택 필요", "Wi-Fi를 먼저 선택해주세요");
+            return;
+          }
           registerWorkplace({
             workplaceName: registration.workplaceName,
             bssid,
             ssid,
           })
             .then((res) => {
+              // 성공: 로컬 store 반영 + completion 화면
+              markRegistered(registration.workplaceId, bssid, ssid);
               setPartTimeJobId(registration.workplaceId, res.partTimeJobId);
+              setPendingRegistration({ ...registration, bssid, ssid });
+              setCurrentScreen("register-complete");
             })
-            .catch(() => {
-              // 네트워크 실패 시 로컬 store는 유지 (재진입 시 재시도 가능)
+            .catch((err) => {
+              if (isAxiosError(err)) {
+                const status = err.response?.status;
+                if (status === 400) {
+                  Alert.alert("Wi-Fi 선택 필요", "Wi-Fi를 먼저 선택해주세요");
+                  return;
+                }
+                if (status === 401) {
+                  Alert.alert(
+                    "로그인 필요",
+                    "로그인이 필요합니다",
+                    [
+                      {
+                        text: "로그인 화면으로",
+                        onPress: () => {
+                          clearAuth();
+                          router.replace("/login");
+                        },
+                      },
+                    ],
+                  );
+                  return;
+                }
+                if (err.response === undefined) {
+                  Alert.alert(
+                    "연결 오류",
+                    "인터넷 연결을 확인해주세요",
+                  );
+                  return;
+                }
+              }
+              Alert.alert(
+                "등록 실패",
+                "등록에 실패했습니다. 다시 시도해주세요",
+              );
             });
         }}
       />
@@ -406,7 +468,7 @@ export function WorkplaceView(): JSX.Element {
                     workplaceId: wp.id,
                     workplaceName: wp.name,
                   });
-                  setCurrentScreen("bssid-register");
+                  setCurrentScreen("register-step1");
                 }}
               />
             ))}

@@ -24,6 +24,27 @@ export interface FavoriteWorkplace {
   contractImageUri?: string;
   /** 마지막 계약서 분석 결과. */
   contractAnalysis?: ContractAnalysisResult;
+
+  // ── 근무 정보 (4-B Step 1 입력) ──
+  /** 근무 요일 — DayOfWeek string 배열. 예: ["MONDAY","TUESDAY"]. */
+  workDays?: string[];
+  /** "09:00" (LocalTime). */
+  workStartTime?: string;
+  /** "18:00" (LocalTime). */
+  workEndTime?: string;
+  /** "2026-06-01" (LocalDate). */
+  startDay?: string;
+  /** 사용자 지정 시급. 미입력이면 백엔드 최저시급 적용. */
+  workHourlyWage?: number;
+}
+
+/** 사용자가 1단계 근무 정보 입력 후 저장되는 페이로드. */
+export interface WorkInfoInput {
+  workDays: string[];
+  workStartTime: string;
+  workEndTime: string;
+  startDay: string;
+  hourlyWage?: number;
 }
 
 interface FavoriteWorkplaceState {
@@ -54,6 +75,8 @@ interface FavoriteWorkplaceState {
   markRegistered: (id: string, bssid: string, ssid: string) => void;
   /** 등록 취소 (사업장에서 제외). */
   unregister: (id: string) => void;
+  /** 1단계 근무 정보 저장 (BSSID 등록 전 단계). */
+  setWorkInfo: (id: string, info: WorkInfoInput) => void;
 }
 
 export const useFavoriteWorkplaceStore = create<FavoriteWorkplaceState>()(
@@ -139,6 +162,21 @@ export const useFavoriteWorkplaceStore = create<FavoriteWorkplaceState>()(
                   bssid: undefined,
                   ssid: undefined,
                   registeredAt: undefined,
+                }
+              : w,
+          ),
+        })),
+      setWorkInfo: (id, info) =>
+        set((state) => ({
+          workplaces: state.workplaces.map((w) =>
+            w.id === id
+              ? {
+                  ...w,
+                  workDays: info.workDays,
+                  workStartTime: info.workStartTime,
+                  workEndTime: info.workEndTime,
+                  startDay: info.startDay,
+                  workHourlyWage: info.hourlyWage,
                 }
               : w,
           ),

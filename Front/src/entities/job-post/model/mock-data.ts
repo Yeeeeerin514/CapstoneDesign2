@@ -115,6 +115,10 @@ export const MOCK_CONTRACT_ANALYSIS: ContractAnalysisResult = {
     breakTimeMentioned: null,
     employerName: "OO카페 강남점",
     businessRegistrationNumber: null,
+    workDays: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+    workStartTime: "09:00",
+    workEndTime: "18:00",
+    employmentStartDate: "2026-04-01",
   },
 };
 
