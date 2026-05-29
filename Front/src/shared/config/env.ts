@@ -9,6 +9,11 @@ export const env = {
   appEnv: (process.env.EXPO_PUBLIC_APP_ENV ?? "development") as
     | "development"
     | "production",
+  /** 결제 provider 선택. 기본은 mock. 실제 결제 연결 시 'toss'/'kakaopay' 등. */
+  paymentProvider: (process.env.EXPO_PUBLIC_PAYMENT_PROVIDER ?? "mock") as
+    | "mock"
+    | "toss"
+    | "kakaopay",
 } as const;
 
 export function assertEnv(): void {

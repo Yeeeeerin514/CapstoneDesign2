@@ -35,6 +35,11 @@ public class JobPostingImageStorageService {
     }
 
     public Optional<String> upload(MultipartFile image) {
+        return upload(image, "job-postings");
+    }
+
+    /** prefix를 명시하여 S3 폴더를 분기 (예: "mentor-evidence"). */
+    public Optional<String> upload(MultipartFile image, String prefix) {
         if (bucket == null || bucket.isBlank() || accessKey == null || accessKey.isBlank()
                 || secretKey == null || secretKey.isBlank()) {
             return Optional.empty();
@@ -44,7 +49,7 @@ public class JobPostingImageStorageService {
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey)))
                 .build()) {
-            String key = buildKey(image);
+            String key = buildKey(image, prefix);
             PutObjectRequest request = PutObjectRequest.builder()
                     .bucket(bucket)
                     .key(key)
@@ -58,8 +63,14 @@ public class JobPostingImageStorageService {
     }
 
     private String buildKey(MultipartFile image) {
+        return buildKey(image, "job-postings");
+    }
+
+    private String buildKey(MultipartFile image, String prefix) {
         LocalDate now = LocalDate.now();
-        return "job-postings/%04d/%02d/%02d/%s%s".formatted(
+        String safe = prefix == null || prefix.isBlank() ? "job-postings" : prefix;
+        return "%s/%04d/%02d/%02d/%s%s".formatted(
+                safe,
                 now.getYear(),
                 now.getMonthValue(),
                 now.getDayOfMonth(),

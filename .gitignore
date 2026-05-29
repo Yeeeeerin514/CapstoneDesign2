@@ -1,3 +1,24 @@
 *.pem
+*.key
 .vscode/
 tmp_mid_ppt_media/
+
+# 환경 변수 — 비밀 키는 절대 추적하지 않음
+.env.local
+.env.*.local
+back/.env
+back/albasave-server/.env
+.env.production
+.env.staging
+
+# AWS 자격증명
+**/credentials.csv
+**/*-accessKeys*.csv
+
+# 작업/세션 노트 (비밀 포함 가능)
+NEXT-SESSION-HANDOFF.md
+HANDOFF-*.md
+
+# 학습 데이터/모델 (크고 재생성 가능)
+ml/mentoring/data/synthetic_pairs.jsonl
+

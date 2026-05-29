@@ -238,6 +238,7 @@ export function HomeView() {
         >
           <JobAnalysisResultView
             result={analysisResult}
+            uploadedImageUri={selectedImage}
             onBack={handleBack}
             onFavoriteAdded={handleFavoriteAdded}
           />

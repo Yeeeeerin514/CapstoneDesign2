@@ -1,72 +1,98 @@
-import { claudeClient } from "@/shared/api/axios-instance";
+import { Platform } from "react-native";
+import { apiClient } from "@/shared/api/axios-instance";
 import type { ContractAnalysis } from "../model/types";
 
-const SYSTEM_PROMPT = `당신은 한국 근로기준법 전문가입니다.
-업로드된 근로계약서 이미지를 분석하고 아래 항목을 점검해 JSON으로만 응답하세요.
-
-점검 항목:
-1) 최저임금 준수 (2026년 10,030원/시 기준)
-2) 주휴수당 명시 여부
-3) 연장수당(8시간 초과 1.5배) 규정
-4) 4대보험 기재 여부
-5) 근로시간(소정/연장) 명확성
-6) 사업장명·사업자등록번호 표기 여부
-
-응답 JSON 스키마:
-{
-  "contractId": "string (임시값 ok)",
-  "workplaceName": "string",
-  "contractPeriod": "string",
-  "hourlyWage": number,
-  "minimumWage": 10030,
-  "issues": [
-    {
-      "id": "string",
-      "severity": "danger" | "caution" | "info",
-      "title": "string",
-      "description": "string",
-      "legalBasis": "string",
-      "recommendation": "string"
-    }
-  ]
-}`;
-
-interface ClaudeMessageResponse {
-  content: Array<{ type: "text"; text: string }>;
+interface ApiExtractedContractInfo {
+  hourlyWage: number | null;
+  workingHoursPerDay: number | null;
+  workingDaysPerWeek: number | null;
+  startDate: string | null;
+  weeklyHolidayAllowanceMentioned: boolean | null;
+  overtimeAllowanceMentioned: boolean | null;
+  annualLeaveMentioned: boolean | null;
+  employerName: string | null;
+  businessRegistrationNumber: string | null;
 }
 
+interface ApiContractViolation {
+  type: string;
+  severity: "HIGH" | "MEDIUM" | "LOW";
+  description: string;
+  legalBasis: string;
+}
+
+interface ApiContractAnalysisResponse {
+  contractId: number;
+  hasViolation: boolean;
+  extractedInfo: ApiExtractedContractInfo | null;
+  violations: ApiContractViolation[];
+  summary: string | null;
+  minimumWage: number;
+  imageUrl: string | null;
+  createdAt: string;
+}
+
+const VIOLATION_TITLE: Record<string, string> = {
+  MINIMUM_WAGE: "최저임금 미달",
+  OVERTIME_PAY: "연장수당 규정 누락",
+  WEEKLY_HOLIDAY: "주휴수당 명시 누락",
+  MANDATORY_ITEMS: "필수 기재사항 누락",
+  WORKING_HOURS: "근로시간 불명확",
+  ANNUAL_LEAVE: "연차휴가 명시 누락",
+};
+
+const SEVERITY_MAP: Record<"HIGH" | "MEDIUM" | "LOW", "danger" | "caution" | "info"> = {
+  HIGH: "danger",
+  MEDIUM: "caution",
+  LOW: "info",
+};
+
 /**
- * 근로계약서 이미지(Base64)를 받아 Claude로 분석.
- * - 응답 텍스트는 ```json ``` 펜스가 붙어올 수 있어 제거 후 parse.
+ * 근로계약서 이미지를 업로드해 백엔드에서 분석한다.
+ * POST /api/contracts/analyze
  */
 export async function analyzeContract(
-  imageBase64: string,
+  imageUri: string,
 ): Promise<ContractAnalysis> {
-  const { data } = await claudeClient.post<ClaudeMessageResponse>("/messages", {
-    model: "claude-opus-4-5",
-    max_tokens: 2000,
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: "image/jpeg",
-              data: imageBase64,
-            },
-          },
-          {
-            type: "text",
-            text: "이 근로계약서를 분석해 위 스키마에 맞춰 JSON으로만 응답하세요.",
-          },
-        ],
-      },
-    ],
-  });
-  const text = data.content[0]?.text ?? "";
-  const cleaned = text.replace(/```json|```/g, "").trim();
-  return JSON.parse(cleaned) as ContractAnalysis;
+  const formData = new FormData();
+  if (Platform.OS === "web") {
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
+    formData.append("image", blob, "contract.jpg");
+  } else {
+    formData.append("image", {
+      uri: imageUri,
+      type: "image/jpeg",
+      name: "contract.jpg",
+    } as unknown as Blob);
+  }
+
+  const { data } = await apiClient.post<ApiContractAnalysisResponse>(
+    "/contracts/analyze",
+    formData,
+    {
+      headers:
+        Platform.OS === "web"
+          ? {}
+          : { "Content-Type": "multipart/form-data" },
+      timeout: 60_000,
+    },
+  );
+
+  const info = data.extractedInfo;
+  return {
+    contractId: String(data.contractId),
+    workplaceName: info?.employerName ?? "확인불가",
+    contractPeriod: info?.startDate ?? "확인불가",
+    hourlyWage: info?.hourlyWage ?? 0,
+    minimumWage: data.minimumWage,
+    issues: (data.violations ?? []).map((v, idx) => ({
+      id: `${v.type}-${idx}`,
+      severity: SEVERITY_MAP[v.severity],
+      title: VIOLATION_TITLE[v.type] ?? v.type,
+      description: v.description,
+      legalBasis: v.legalBasis,
+      recommendation: "",
+    })),
+  };
 }
