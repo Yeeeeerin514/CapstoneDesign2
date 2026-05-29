@@ -48,6 +48,7 @@ export const useAttendanceStore = create<AttendanceStoreState>((set, get) => ({
         scheduledStart: "09:00",
         scheduledEnd: "18:00",
         actualCheckIn: nowHHMM(),
+        actualCheckInIso: new Date().toISOString(),
         extendedMinutes: 0,
         workedMinutes: 0,
         overtimeMinutes: 0,

@@ -24,6 +24,20 @@ export function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/**
+ * 분(min)을 한국어 "X시간 Y분" 형태로 변환.
+ * - h===0 → "Y분"
+ * - m===0 → "X시간"
+ * - 둘 다 있을 때 → "X시간 Y분"
+ */
+export function formatMinutes(total: number): string {
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m}분`;
+  if (m === 0) return `${h}시간`;
+  return `${h}시간 ${m}분`;
+}
+
 /** 피해 금액을 구간 표시로 변환 (후기 카드 표시용). */
 export function getAmountRange(amount: number): string {
   if (amount < 500_000) return "50만원 미만";

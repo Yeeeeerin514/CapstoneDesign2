@@ -41,6 +41,7 @@ function toAttendance(r: WorkingResponse): AttendanceRecord {
     scheduledStart: "09:00", // 백엔드 응답에 미포함 — Phase 2에서 schedule join 필요
     scheduledEnd: "18:00",
     actualCheckIn: toTimeLabel(r.realStartTime),
+    actualCheckInIso: r.realStartTime ?? undefined,
     actualCheckOut: toTimeLabel(r.realEndTime),
     extendedMinutes: 0,
     workedMinutes,
@@ -93,4 +94,16 @@ export async function checkOut(
     bssid: bssid ?? "",
   });
   return toAttendance(data);
+}
+
+/**
+ * GET /api/working/total-minutes/{partTimeJobId}
+ * 인증 불필요. 누적 근무시간(분) 반환.
+ */
+// TODO: /api/working/** 인증 정책 변경 시 apiClient로 교체 필요
+export async function fetchTotalMinutes(partTimeJobId: number): Promise<number> {
+  const { data } = await apiClient.get<{ totalMinutes: number }>(
+    `/working/total-minutes/${partTimeJobId}`,
+  );
+  return data.totalMinutes;
 }

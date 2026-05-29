@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import {
   ScreenHeader,
   colors,
@@ -10,8 +10,13 @@ import {
   spacing,
   typography,
 } from "@/shared/ui";
+import { formatMinutes } from "@/shared/lib/utils";
 import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
-import { useAttendanceStore } from "@/entities/attendance";
+import {
+  fetchAttendances,
+  fetchTotalMinutes,
+  useAttendanceStore,
+} from "@/entities/attendance";
 import { useReportStore } from "@/features/report-submit";
 import { WorkCalendarView } from "./WorkCalendarView";
 
@@ -22,10 +27,29 @@ interface WorkDashboardViewProps {
 
 const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
-function formatMinutes(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${h}시간 ${m.toString().padStart(2, "0")}분`;
+/** 회색 스켈레톤 박스 — 총·주간 근무시간 로딩 중 표시. */
+function MinutesSkeleton(): JSX.Element {
+  return (
+    <View
+      style={{
+        width: 80,
+        height: 24,
+        borderRadius: 4,
+        backgroundColor: colors.border,
+      }}
+    />
+  );
+}
+
+/** 이번 주 월요일 00:00 (로컬 타임). */
+function thisWeekMondayStart(): Date {
+  const now = new Date();
+  const dow = now.getDay(); // 0=Sun ~ 6=Sat
+  const daysFromMonday = (dow + 6) % 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - daysFromMonday);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
 }
 
 export function WorkDashboardView({
@@ -33,10 +57,14 @@ export function WorkDashboardView({
   onBack,
 }: WorkDashboardViewProps): JSX.Element {
   const [showCalendar, setShowCalendar] = useState(false);
+  const [totalMinutes, setTotalMinutes] = useState<number | null>(null);
+  const [weeklyMinutes, setWeeklyMinutes] = useState<number | null>(null);
+  const [sessionElapsed, setSessionElapsed] = useState(0);
 
   const workplace = useFavoriteWorkplaceStore((s) =>
     s.workplaces.find((w) => w.id === workplaceId),
   );
+  const partTimeJobId = workplace?.partTimeJobId;
   const workState = useAttendanceStore((s) => s.workState);
   const activeSession = useAttendanceStore((s) => s.activeSession);
   const stats = useAttendanceStore((s) => s.stats);
@@ -56,15 +84,74 @@ export function WorkDashboardView({
     return () => clearInterval(interval);
   }, [workState]);
 
-  const isWorking = workState === "working";
-  const weeklyProgressPercent = Math.min(
-    Math.round((stats.weeklyWorkedHours / stats.weeklyTargetHours) * 100),
-    100,
+  // 화면 진입 시 누적/이번주 근무시간 로드
+  useFocusEffect(
+    useCallback(() => {
+      if (partTimeJobId === undefined) {
+        // 백엔드 등록 전 (BSSID 미등록): API 호출 불가 → 0으로 표시
+        setTotalMinutes(0);
+        setWeeklyMinutes(0);
+        return;
+      }
+      setTotalMinutes(null);
+      setWeeklyMinutes(null);
+      fetchTotalMinutes(partTimeJobId)
+        .then(setTotalMinutes)
+        .catch(() => {
+          console.warn("[Dashboard] 총 근무시간 로드 실패");
+          setTotalMinutes(0);
+        });
+      fetchAttendances(String(partTimeJobId))
+        .then((records) => {
+          const mondayMs = thisWeekMondayStart().getTime();
+          const sum = records.reduce((acc, r) => {
+            const t =
+              r.actualCheckInIso !== undefined
+                ? new Date(r.actualCheckInIso).getTime()
+                : new Date(r.date).getTime();
+            return t >= mondayMs ? acc + r.workedMinutes : acc;
+          }, 0);
+          setWeeklyMinutes(sum);
+        })
+        .catch(() => {
+          console.warn("[Dashboard] 주간 근무시간 로드 실패");
+          setWeeklyMinutes(0);
+        });
+    }, [partTimeJobId]),
   );
+
+  // 출근 중이면 1분마다 라이브 세션 경과(분) 갱신
+  const clockInIso = activeSession?.actualCheckInIso;
+  useEffect(() => {
+    if (workState !== "working" || clockInIso === undefined) {
+      setSessionElapsed(0);
+      return;
+    }
+    const update = (): void => {
+      const start = new Date(clockInIso).getTime();
+      setSessionElapsed(Math.max(0, Math.floor((Date.now() - start) / 60_000)));
+    };
+    update();
+    const t = setInterval(update, 60_000);
+    return () => clearInterval(t);
+  }, [workState, clockInIso]);
+
+  const isWorking = workState === "working";
+  const displayMinutes = (totalMinutes ?? 0) + sessionElapsed;
+  const weeklyHoursDisplay =
+    weeklyMinutes !== null ? Math.round((weeklyMinutes / 60) * 10) / 10 : null;
+  const weeklyProgressPercent =
+    weeklyHoursDisplay !== null
+      ? Math.min(
+          Math.round((weeklyHoursDisplay / stats.weeklyTargetHours) * 100),
+          100,
+        )
+      : 0;
   const progressWidth: `${number}%` = `${weeklyProgressPercent}%`;
-  const remainingHours = (
-    stats.weeklyTargetHours - stats.weeklyWorkedHours
-  ).toFixed(1);
+  const remainingHours =
+    weeklyHoursDisplay !== null
+      ? Math.max(0, stats.weeklyTargetHours - weeklyHoursDisplay).toFixed(1)
+      : "—";
 
   if (showCalendar) {
     return (
@@ -159,22 +246,18 @@ export function WorkDashboardView({
                 </Text>
               </View>
             </View>
-            <Text
-              style={[
-                typography.display,
-                { textAlign: "center", marginTop: spacing.md },
-              ]}
-            >
-              {formatMinutes(activeSession.workedMinutes)}
-            </Text>
-            <Text
-              style={[
-                typography.caption,
-                { textAlign: "center", marginTop: 4 },
-              ]}
-            >
-              현재 근무 시간
-            </Text>
+            <View style={{ alignItems: "center", marginTop: spacing.md }}>
+              {totalMinutes === null ? (
+                <MinutesSkeleton />
+              ) : (
+                <Text style={typography.display}>
+                  {formatMinutes(displayMinutes)}
+                </Text>
+              )}
+              <Text style={[typography.caption, { marginTop: 4 }]}>
+                총 근무 시간
+              </Text>
+            </View>
             <View
               style={{
                 flexDirection: "row",
@@ -205,13 +288,19 @@ export function WorkDashboardView({
               alignItems: "center",
             }}
           >
-            <Text
-              style={[typography.display, { color: colors.textDisabled }]}
-            >
-              00:00
-            </Text>
+            {totalMinutes === null ? (
+              <MinutesSkeleton />
+            ) : (
+              <Text
+                style={[typography.display, { color: colors.textDisabled }]}
+              >
+                {formatMinutes(totalMinutes)}
+              </Text>
+            )}
             <Text style={[typography.label, { marginTop: 4 }]}>
-              아직 근무 시간이 아닙니다
+              {totalMinutes !== null && totalMinutes > 0
+                ? "누적 근무 시간"
+                : "아직 근무 시간이 아닙니다"}
             </Text>
             <View
               style={{
@@ -289,9 +378,11 @@ export function WorkDashboardView({
                 주간 근무시간
               </Text>
             </View>
-            <Text style={typography.title3}>
-              {`${stats.weeklyWorkedHours}시간`}
-            </Text>
+            {weeklyHoursDisplay === null ? (
+              <MinutesSkeleton />
+            ) : (
+              <Text style={typography.title3}>{`${weeklyHoursDisplay}시간`}</Text>
+            )}
             <View
               style={{
                 height: 4,

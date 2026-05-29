@@ -8,6 +8,7 @@ export {
   fetchTodayAttendance,
   checkIn,
   checkOut,
+  fetchTotalMinutes,
 } from "./api/fetch-attendances";
 export {
   MOCK_RECENT_ATTENDANCES,
