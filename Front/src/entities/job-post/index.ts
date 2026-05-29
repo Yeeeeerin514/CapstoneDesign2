@@ -23,5 +23,13 @@ export {
   MOCK_FAVORITE_WORKPLACES,
 } from "./model/mock-data";
 export { analyzeJobPost, analyzeContract } from "./api/analyze-job-post";
+export {
+  fetchContractDetail,
+  fetchContractFactSheet,
+} from "./api/contracts-api";
+export type {
+  ContractAnalysisResponse,
+  ContractFactSheet,
+} from "./api/contracts-api";
 export { HighlightedContractText } from "./ui/HighlightedContractText";
 export { IssueDetailSheet } from "./ui/IssueDetailSheet";

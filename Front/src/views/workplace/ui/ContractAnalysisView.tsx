@@ -8,7 +8,8 @@ import { ScreenHeader } from "@/shared/ui";
 interface Props {
   result: ContractAnalysisResult;
   onBack: () => void;
-  onRegister: () => void;
+  /** 사업장 등록 진입 — detail view에서는 생략 시 하단 버튼 미노출. */
+  onRegister?: () => void;
 }
 
 type TabKey = "issues" | "content" | "guide";
@@ -505,32 +506,34 @@ export function ContractAnalysisView({
         )}
       </ScrollView>
 
-      <View
-        style={{
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          backgroundColor: "#fff",
-          borderTopWidth: 0.5,
-          borderTopColor: "#E5E7EB",
-          padding: 16,
-        }}
-      >
-        <TouchableOpacity
-          onPress={onRegister}
+      {onRegister !== undefined ? (
+        <View
           style={{
-            paddingVertical: 14,
-            backgroundColor: "#111827",
-            borderRadius: 12,
-            alignItems: "center",
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: "#fff",
+            borderTopWidth: 0.5,
+            borderTopColor: "#E5E7EB",
+            padding: 16,
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
-            사업장 등록하기 →
-          </Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            onPress={onRegister}
+            style={{
+              paddingVertical: 14,
+              backgroundColor: "#111827",
+              borderRadius: 12,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
+              사업장 등록하기 →
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }

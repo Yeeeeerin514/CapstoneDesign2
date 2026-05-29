@@ -10,11 +10,6 @@ export type {
 } from "./model/types";
 export { calcMentorScore } from "./model/types";
 export { MOCK_MENTORS } from "./model/mock-data";
-export {
-  fetchRecommendedMentors,
-  fetchMentor,
-  createEscrowOrder,
-} from "./api/fetch-mentors";
 
 // Phase 1 — 실제 백엔드 매칭 시스템 (Gower + Gale-Shapley + Thompson Sampling)
 export type {

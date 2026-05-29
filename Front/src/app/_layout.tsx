@@ -21,6 +21,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="work-record/[id]" />
         <Stack.Screen name="mentor-chat/[matchId]" />
+        <Stack.Screen name="contract-detail/[contractId]" />
         <Stack.Screen name="login" />
       </Stack>
     </ActionSheetProvider>
