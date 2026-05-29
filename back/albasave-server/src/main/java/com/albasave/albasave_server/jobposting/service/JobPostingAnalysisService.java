@@ -78,6 +78,11 @@ public class JobPostingAnalysisService {
         }
 
         ExtractedJobPosting extracted = extractedResult.orElseGet(ExtractedJobPosting::empty);
+        // LLM이 동의어 가이드를 무시하고 missingInformation에 잘못 넣은 항목을
+        // 본문 추출값을 보고 코드로 후처리 정정.
+        extracted = sanitizeMissingInformation(extracted);
+        // dummy 패턴(가짜 전화/주소) 감지 후 null 처리
+        extracted = stripDummyValues(extracted);
         List<BusinessCandidate> candidates = databaseBusinessMatcher.findCandidates(extracted);
         if (candidates.isEmpty()) {
             candidates = businessMatcher.findCandidates(extracted);
@@ -250,5 +255,186 @@ public class JobPostingAnalysisService {
 
     private String valueOrUnknown(String value) {
         return value == null || value.isBlank() ? "미확인" : value;
+    }
+
+    /**
+     * LLM이 missingInformation에 잘못 넣은 항목을 본문 추출값을 보고 후처리 정정한다.
+     * (LLM이 동의어 가이드를 무시하는 경우 안전망)
+     *
+     * - "계약기간": workScheduleText/rawSummary 등에 "근무기간|개월|년" 표현이 보이면 제거
+     * - "주휴수당": benefits/rawSummary/suspiciousPhrases 에 "주휴" 포함되면 제거
+     * - "휴게시간": benefits/rawSummary 에 "휴게|휴식" 포함되면 제거
+     * - "4대보험": benefits 에 "4대보험|보험" 포함되면 제거
+     * - "근무시간": workTimeText 또는 workScheduleText 가 비어있지 않으면 제거
+     * - "근무요일": workDays 가 비어있지 않거나 workScheduleText 에 "월|화|...|일|주" 포함되면 제거
+     */
+    private ExtractedJobPosting sanitizeMissingInformation(ExtractedJobPosting extracted) {
+        if (extracted == null) return extracted;
+
+        // 1) 시급 후처리: hourlyWage가 null인데 hourlyWageText에 숫자가 있으면 파싱
+        Integer fixedHourlyWage = extracted.hourlyWage();
+        String fixedHourlyWageText = extracted.hourlyWageText();
+        if (fixedHourlyWage == null && fixedHourlyWageText != null) {
+            String digits = fixedHourlyWageText.replaceAll("[^0-9]", "");
+            if (!digits.isBlank() && digits.length() >= 4 && digits.length() <= 6) {
+                try {
+                    int parsed = Integer.parseInt(digits);
+                    if (parsed >= 5000 && parsed <= 100000) {
+                        fixedHourlyWage = parsed;
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+
+        // 2) missingInformation 후처리: 본문/추출값 보고 잘못된 항목 제거
+        List<String> missing = extracted.missingInformation();
+        List<String> filtered = missing == null ? new ArrayList<>() : new ArrayList<>(missing);
+
+        if (!filtered.isEmpty()) {
+            String corpus = buildSearchCorpus(extracted);
+            String contractPeriod = extracted.contractPeriod();
+            List<String> benefits = extracted.benefits() == null ? List.of() : extracted.benefits();
+            String benefitsCorpus = String.join(" ", benefits);
+
+            filtered.removeIf(item -> {
+                if (item == null) return true;
+                String norm = item.trim();
+                if (norm.isEmpty()) return true;
+
+                if (norm.contains("계약기간") || norm.equals("계약 기간") || norm.contains("근무기간")) {
+                    // contractPeriod 추출됐거나 본문에 기간 표현이 있으면 제거
+                    if (contractPeriod != null && !contractPeriod.isBlank()) return true;
+                    return containsAny(corpus, "근무기간", "근무 기간", "고용기간", "개월", "년 ", "년차");
+                }
+                if (norm.contains("주휴")) {
+                    return containsAny(corpus, "주휴");
+                }
+                if (norm.contains("휴게")) {
+                    return containsAny(corpus, "휴게", "휴식");
+                }
+                if (norm.contains("4대보험") || norm.contains("사회보험")) {
+                    return containsAny(benefitsCorpus, "4대보험", "보험", "국민연금", "건강보험", "고용보험", "산재보험");
+                }
+                if (norm.contains("근무시간") || norm.equals("시간")) {
+                    String wt = extracted.workTimeText();
+                    String ws = extracted.workScheduleText();
+                    return (wt != null && !wt.isBlank()) || (ws != null && !ws.isBlank());
+                }
+                if (norm.contains("근무요일") || norm.equals("요일")) {
+                    return (extracted.workDays() != null && !extracted.workDays().isEmpty())
+                            || containsAny(corpus, "월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일", "주 ");
+                }
+                return false;
+            });
+        }
+
+        // 3) 변경 없으면 그대로 반환
+        boolean unchanged = filtered.equals(missing)
+                && java.util.Objects.equals(fixedHourlyWage, extracted.hourlyWage());
+        if (unchanged) return extracted;
+
+        return new ExtractedJobPosting(
+                extracted.businessName(),
+                extracted.brandName(),
+                extracted.businessRegistrationNumber(),
+                extracted.phone(),
+                extracted.address(),
+                extracted.jobTitle(),
+                extracted.industryHint(),
+                fixedHourlyWageText,
+                fixedHourlyWage,
+                extracted.workScheduleText(),
+                extracted.workDays(),
+                extracted.workTimeText(),
+                extracted.contractPeriod(),
+                extracted.employmentType(),
+                extracted.benefits(),
+                extracted.suspiciousPhrases(),
+                filtered,
+                extracted.llmConcerns(),
+                extracted.overallAssessment(),
+                extracted.rawSummary()
+        );
+    }
+
+    private String buildSearchCorpus(ExtractedJobPosting e) {
+        StringBuilder sb = new StringBuilder();
+        appendNonBlank(sb, e.businessName());
+        appendNonBlank(sb, e.brandName());
+        appendNonBlank(sb, e.jobTitle());
+        appendNonBlank(sb, e.industryHint());
+        appendNonBlank(sb, e.hourlyWageText());
+        appendNonBlank(sb, e.workScheduleText());
+        appendNonBlank(sb, e.workTimeText());
+        appendNonBlank(sb, e.contractPeriod());
+        appendNonBlank(sb, e.employmentType());
+        appendNonBlank(sb, e.rawSummary());
+        if (e.benefits() != null) e.benefits().forEach(b -> appendNonBlank(sb, b));
+        if (e.suspiciousPhrases() != null) e.suspiciousPhrases().forEach(s -> appendNonBlank(sb, s));
+        if (e.workDays() != null) e.workDays().forEach(d -> appendNonBlank(sb, d));
+        return sb.toString();
+    }
+
+    private void appendNonBlank(StringBuilder sb, String value) {
+        if (value != null && !value.isBlank()) {
+            sb.append(value).append(' ');
+        }
+    }
+
+    private boolean containsAny(String source, String... needles) {
+        if (source == null) return false;
+        for (String n : needles) {
+            if (source.contains(n)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * LLM이 이미지를 못 읽고 dummy로 채운 명백한 가짜 값을 null로 정리.
+     */
+    private ExtractedJobPosting stripDummyValues(ExtractedJobPosting e) {
+        if (e == null) return e;
+        String phone = isDummyPhone(e.phone()) ? null : e.phone();
+        String address = isDummyAddress(e.address()) ? null : e.address();
+        if (java.util.Objects.equals(phone, e.phone())
+                && java.util.Objects.equals(address, e.address())) {
+            return e;
+        }
+        return new ExtractedJobPosting(
+                e.businessName(), e.brandName(), e.businessRegistrationNumber(),
+                phone, address, e.jobTitle(), e.industryHint(),
+                e.hourlyWageText(), e.hourlyWage(),
+                e.workScheduleText(), e.workDays(), e.workTimeText(),
+                e.contractPeriod(), e.employmentType(),
+                e.benefits(), e.suspiciousPhrases(), e.missingInformation(),
+                e.llmConcerns(), e.overallAssessment(), e.rawSummary()
+        );
+    }
+
+    private boolean isDummyPhone(String phone) {
+        if (phone == null || phone.isBlank()) return false;
+        String digits = phone.replaceAll("[^0-9]", "");
+        if (digits.length() < 7) return false;
+        // 순차 패턴 (1234-5678 등) / 동일 숫자 반복 / 흔한 더미 패턴
+        if (phone.matches(".*1234[-]?5678.*")) return true;
+        if (phone.matches(".*1234[-]?1234.*")) return true;
+        if (phone.matches(".*0000[-]?0000.*")) return true;
+        if (phone.matches(".*9876[-]?5432.*")) return true;
+        if (digits.contains("12345678")) return true;
+        if (digits.contains("00000000")) return true;
+        if (digits.contains("11111111")) return true;
+        return false;
+    }
+
+    private boolean isDummyAddress(String address) {
+        if (address == null || address.isBlank()) return false;
+        String compact = address.replaceAll("\\s+", "");
+        // 너무 자주 쓰이는 generic placeholder 주소들
+        return compact.contains("테헤란로123")
+                || compact.contains("강남대로123")
+                || compact.contains("강남구역삼동123")
+                || compact.matches(".*[가-힣]+로\\s?123[^0-9].*")
+                || compact.matches(".*[가-힣]+로\\s?123$");
     }
 }

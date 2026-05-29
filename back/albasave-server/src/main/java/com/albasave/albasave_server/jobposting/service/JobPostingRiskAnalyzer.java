@@ -4,6 +4,7 @@ import com.albasave.albasave_server.jobposting.dto.BusinessCandidate;
 import com.albasave.albasave_server.jobposting.dto.ConcernItem;
 import com.albasave.albasave_server.jobposting.dto.ExternalRiskCheck;
 import com.albasave.albasave_server.jobposting.dto.ExtractedJobPosting;
+import com.albasave.albasave_server.jobposting.dto.LlmConcern;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -13,7 +14,7 @@ import java.util.Locale;
 
 @Component
 public class JobPostingRiskAnalyzer {
-    private static final int MINIMUM_WAGE_2026 = 10_320;
+    private static final int MINIMUM_WAGE_2026 = 10_030;
 
     public List<ConcernItem> analyze(
             ExtractedJobPosting posting,
@@ -21,6 +22,7 @@ public class JobPostingRiskAnalyzer {
             List<ExternalRiskCheck> externalChecks
     ) {
         List<ConcernItem> concerns = new ArrayList<>();
+        addLlmConcerns(posting, concerns);
         addPostingConcerns(posting, concerns);
         addBusinessConcerns(candidates, concerns);
         addExternalConcerns(externalChecks, concerns);
@@ -100,13 +102,28 @@ public class JobPostingRiskAnalyzer {
         return report.toString();
     }
 
+    private void addLlmConcerns(ExtractedJobPosting posting, List<ConcernItem> concerns) {
+        for (LlmConcern c : safeList(posting.llmConcerns())) {
+            if (c == null || c.title() == null || c.description() == null) continue;
+            String type = "LLM_" + (c.category() == null ? "OTHER" : c.category());
+            String severity = c.severity() == null ? "MEDIUM" : c.severity();
+            concerns.add(new ConcernItem(
+                    type,
+                    severity,
+                    c.title(),
+                    c.description(),
+                    c.evidence()
+            ));
+        }
+    }
+
     private void addPostingConcerns(ExtractedJobPosting posting, List<ConcernItem> concerns) {
         if (posting.hourlyWage() != null && posting.hourlyWage() < MINIMUM_WAGE_2026) {
             concerns.add(new ConcernItem(
                     "WAGE",
                     "HIGH",
                     "최저임금 미달 가능성",
-                    "추출된 시급이 2026년 적용 최저임금 10,320원보다 낮습니다. 수습기간, 포괄임금, 주휴수당 포함 여부와 무관하게 실제 지급 조건을 반드시 확인해야 합니다.",
+                    "추출된 시급이 2026년 적용 최저임금 10,030원보다 낮습니다. 수습기간, 포괄임금, 주휴수당 포함 여부와 무관하게 실제 지급 조건을 반드시 확인해야 합니다.",
                     posting.hourlyWageText()
             ));
         }
@@ -244,7 +261,7 @@ public class JobPostingRiskAnalyzer {
         return false;
     }
 
-    private List<String> safeList(List<String> values) {
+    private <T> List<T> safeList(List<T> values) {
         return values == null ? List.of() : values;
     }
 

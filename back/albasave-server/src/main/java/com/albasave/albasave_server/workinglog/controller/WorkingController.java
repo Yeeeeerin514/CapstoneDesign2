@@ -1,9 +1,12 @@
 package com.albasave.albasave_server.workinglog.controller;
 
+import com.albasave.albasave_server.workinglog.domain.PartTimeJob;
 import com.albasave.albasave_server.workinglog.dto.*;
+import com.albasave.albasave_server.workinglog.repository.PartTimeJobRepository;
 import com.albasave.albasave_server.workinglog.service.WorkingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,6 +29,35 @@ import java.util.Map;
 public class WorkingController {
 
     private final WorkingService workingService;
+    private final PartTimeJobRepository partTimeJobRepository;
+
+    /**
+     * 사업장 통합 등록 — BSSID 등록 화면 완료 시 호출.
+     * PartTimeJob 자동 생성 + BSSID 영속. 응답으로 생성된 partTimeJobId 반환.
+     *
+     * Request body: { "workplaceName": "OO카페", "bssid": "aa:bb:cc:dd:ee:ff", "ssid": "OOcafe_wifi" }
+     */
+    @PostMapping("/register-workplace")
+    public ResponseEntity<Map<String, Object>> registerWorkplace(
+            @AuthenticationPrincipal Long userId,
+            @RequestBody Map<String, String> body) {
+        String workplaceName = body.getOrDefault("workplaceName", "사업장");
+        String bssid = body.get("bssid");
+        if (bssid == null || bssid.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "BSSID is required"));
+        }
+        PartTimeJob saved = partTimeJobRepository.save(PartTimeJob.builder()
+                .userId(userId)
+                .businessName(workplaceName)
+                .bssid(bssid)
+                .isActive(true)
+                .build());
+        return ResponseEntity.ok(Map.of(
+                "partTimeJobId", saved.getId(),
+                "bssid", bssid,
+                "workplaceName", workplaceName
+        ));
+    }
 
     /**
      * 업장 WiFi BSSID 등록

@@ -340,7 +340,7 @@ export function ReportDraftWizardView({
   const handleConfirmSubmitted = (): void => {
     completeStepAction(reportCase.id, "submission");
     setCurrentStepAction(reportCase.id, "investigation");
-    updateCaseStatus(reportCase.id, "inspecting");
+    updateCaseStatus(reportCase.id, "INSPECTING");
     setSubmittedAt(reportCase.id, new Date().toISOString());
     setReturnedFromBrowser(false);
     setBrowserOpened(false);

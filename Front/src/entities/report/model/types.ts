@@ -47,15 +47,12 @@ export interface Report {
  * - resolved: 해결됨 (종결 통보 + 자가확인)
  * - unresolved: 미수령 (민사 필요)
  */
-export type CaseStatus =
-  | "pending"
-  | "inspecting"
-  | "correction_ordered"
-  | "resolved"
-  | "unresolved";
-
-/** 레거시 별칭 — 점진 마이그레이션용. 새 코드는 `CaseStatus`를 사용. */
-export type ReportStatus = CaseStatus;
+export type ReportStatus =
+  | "PENDING"
+  | "INSPECTING"
+  | "CORRECTION_ORDERED"
+  | "RESOLVED"
+  | "UNRESOLVED";
 
 /**
  * 6단계 정의 (공동대응이 3번째에 위치).
@@ -150,30 +147,29 @@ export const STEP_META: Record<CaseStep, CaseStepMeta> = {
 };
 
 /**
- * 상태 배지 시맨틱 정의 (color는 앱 테마 토큰명).
- * 구체 hex/배경은 각 view에서 토큰을 해석.
+ * 상태 배지 — label · bg · 텍스트 color (hex). API-REFERENCE.md 기준.
  */
 export const STATUS_BADGE: Record<
-  CaseStatus,
-  { label: string; color: "blue" | "amber" | "green" | "red" }
+  ReportStatus,
+  { label: string; bg: string; color: string }
 > = {
-  pending: { label: "진행 중", color: "blue" },
-  inspecting: { label: "진행 중", color: "blue" },
-  correction_ordered: { label: "시정지시 완료", color: "amber" },
-  resolved: { label: "해결됨", color: "green" },
-  unresolved: { label: "미수령", color: "red" },
+  PENDING:            { label: "접수 대기", bg: "#F1F5F9", color: "#475569" }, // 회색
+  INSPECTING:         { label: "조사 중",   bg: "#E8F2FF", color: "#1B64DA" }, // 파랑
+  CORRECTION_ORDERED: { label: "시정 명령", bg: "#FEF3C7", color: "#92400E" }, // 주황
+  RESOLVED:           { label: "해결 완료", bg: "#DCFCE7", color: "#15803D" }, // 초록
+  UNRESOLVED:         { label: "미해결",    bg: "#FEE2E2", color: "#991B1B" }, // 빨강
 };
 
 /** 사건 status에서 현재 활성 step 도출. */
-export function getCurrentStep(status: CaseStatus): CaseStep {
+export function getCurrentStep(status: ReportStatus): CaseStep {
   switch (status) {
-    case "pending":
+    case "PENDING":
       return "evidence_collection";
-    case "inspecting":
+    case "INSPECTING":
       return "complaint_draft";
-    case "correction_ordered":
-    case "resolved":
-    case "unresolved":
+    case "CORRECTION_ORDERED":
+    case "RESOLVED":
+    case "UNRESOLVED":
       return "investigation";
   }
 }

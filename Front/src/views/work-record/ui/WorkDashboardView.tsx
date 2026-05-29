@@ -45,7 +45,7 @@ export function WorkDashboardView({
   const allCases = useReportStore((s) => s.cases);
   // workplaceId 제거 후 사건은 workplaceName으로 매핑.
   const hasActiveReport = allCases.some(
-    (c) => c.workplaceName === workplace?.name && c.status !== "resolved",
+    (c) => c.workplaceName === workplace?.name && c.status !== "RESOLVED",
   );
 
   useEffect(() => {

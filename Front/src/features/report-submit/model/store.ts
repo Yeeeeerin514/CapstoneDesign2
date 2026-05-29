@@ -186,7 +186,7 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
       industry,
       region,
       damageTypes,
-      status: "pending",
+      status: "PENDING",
       currentStep: "evidence_collection",
       highestStep: "evidence_collection",
       completedSteps: [],
@@ -281,7 +281,7 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
               ...c,
               status,
               resolvedAt:
-                status === "resolved"
+                status === "RESOLVED"
                   ? new Date().toISOString()
                   : c.resolvedAt,
             }
@@ -444,7 +444,7 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
   closeCase: (caseId) =>
     set((s) => ({
       cases: s.cases.map((c) =>
-        c.id === caseId ? { ...c, status: "unresolved" } : c,
+        c.id === caseId ? { ...c, status: "UNRESOLVED" } : c,
       ),
     })),
 

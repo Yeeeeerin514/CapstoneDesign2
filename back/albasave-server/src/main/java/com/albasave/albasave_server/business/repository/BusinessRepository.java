@@ -13,13 +13,17 @@ import java.util.Optional;
 public interface BusinessRepository extends JpaRepository<Business, Long> {
     Optional<Business> findBySourceFileAndManagementNumber(String sourceFile, String managementNumber);
 
+    /**
+     * Null 대신 빈 문자열을 받는다. JPQL 파라미터의 PostgreSQL 타입 추론 실패를
+     * 막기 위함. 빈 문자열은 "조건 미적용"으로 해석된다.
+     */
     @Query("""
             select b
             from Business b
-            where (:name is not null and b.name like concat('%', :name, '%'))
-               or (:address is not null and b.roadAddress like concat('%', :address, '%'))
-               or (:address is not null and b.localAddress like concat('%', :address, '%'))
-               or (:phone is not null and b.phone like concat('%', :phone, '%'))
+            where (:name <> '' and b.name like concat('%', :name, '%'))
+               or (:address <> '' and b.roadAddress like concat('%', :address, '%'))
+               or (:address <> '' and b.localAddress like concat('%', :address, '%'))
+               or (:phone <> '' and b.phone like concat('%', :phone, '%'))
             """)
     List<Business> searchCandidates(
             @Param("name") String name,
@@ -29,7 +33,12 @@ public interface BusinessRepository extends JpaRepository<Business, Long> {
     );
 
     default List<Business> searchCandidates(String name, String address, String phone) {
-        return searchCandidates(name, address, phone, Pageable.ofSize(200));
+        return searchCandidates(
+                name == null ? "" : name,
+                address == null ? "" : address,
+                phone == null ? "" : phone,
+                Pageable.ofSize(200)
+        );
     }
 
     long countBySourceFileIn(Collection<String> sourceFiles);

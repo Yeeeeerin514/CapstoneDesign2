@@ -16,6 +16,13 @@ import { useAuthStore } from "@/entities/user/model/auth-store";
 import { GroupJoinView } from "./GroupJoinView";
 import { router } from "expo-router";
 import { MentorRecommendView } from "./MentorRecommendView";
+import { SmartMentorRecommendView } from "./SmartMentorRecommendView";
+import {
+  inferBusinessSize,
+  mapDamageTypeLabelsToCode,
+  mapIndustryLabelToCode,
+  mapRegionLabelToCode,
+} from "./report-case-mapper";
 import { GroupChatView } from "./GroupChatView";
 import { useMentorMatchStore } from "@/features/mentor-match";
 import { ReportDraftWizardView } from "./ReportDraftWizardView";
@@ -46,15 +53,15 @@ const STATUS_BADGE: Record<
   ReportStatus,
   { label: string; bg: string; color: string }
 > = {
-  pending: { label: "🔵 진행 중", bg: "#E8F2FF", color: "#1B64DA" },
-  inspecting: { label: "🔵 진행 중", bg: "#E8F2FF", color: "#1B64DA" },
-  correction_ordered: {
-    label: "🟡 시정지시 완료",
+  PENDING: { label: "접수 대기", bg: "#F1F5F9", color: "#475569" },
+  INSPECTING: { label: "조사 중", bg: "#E8F2FF", color: "#1B64DA" },
+  CORRECTION_ORDERED: {
+    label: "시정 명령",
     bg: "#FEF3C7",
     color: "#92400E",
   },
-  resolved: { label: "✅ 해결됨", bg: "#DCFCE7", color: "#15803D" },
-  unresolved: { label: "🔴 미수령", bg: "#FEE2E2", color: "#991B1B" },
+  RESOLVED: { label: "해결 완료", bg: "#DCFCE7", color: "#15803D" },
+  UNRESOLVED: { label: "미해결", bg: "#FEE2E2", color: "#991B1B" },
 };
 
 interface TaskAction {
@@ -232,6 +239,7 @@ export function ReportDetailView({
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [showGroupJoin, setShowGroupJoin] = useState(false);
   const [showMentorRecommend, setShowMentorRecommend] = useState(false);
+  const [showSmartMentor, setShowSmartMentor] = useState(false);
   const [showDraftWizard, setShowDraftWizard] = useState(false);
   const [showResolveConfirm, setShowResolveConfirm] = useState(false);
   const [showSubmissionResult, setShowSubmissionResult] = useState(false);
@@ -284,6 +292,29 @@ export function ReportDetailView({
     );
   }
 
+  if (showSmartMentor) {
+    const industryCode = mapIndustryLabelToCode(reportCase.industry);
+    return (
+      <SmartMentorRecommendView
+        caseId={Number(reportCase.id) || null}
+        industry={industryCode}
+        damageTypes={mapDamageTypeLabelsToCode(reportCase.damageTypes)}
+        businessSize={inferBusinessSize(industryCode)}
+        region={mapRegionLabelToCode(reportCase.region)}
+        description={
+          reportCase.calculatedUnpaid !== null && reportCase.calculatedUnpaid > 0
+            ? `${reportCase.workplaceName} - 미지급 ${reportCase.calculatedUnpaid.toLocaleString()}원`
+            : reportCase.workplaceName
+        }
+        onBack={() => setShowSmartMentor(false)}
+        onMatched={(_matchId, _mentorNickname) => {
+          setShowSmartMentor(false);
+          // 채팅 진입은 SmartMentorRecommendView 내부에서 router.push로 직접 처리
+        }}
+      />
+    );
+  }
+
   if (showMentorRecommend) {
     return (
       <MentorRecommendView
@@ -330,7 +361,7 @@ export function ReportDetailView({
         onGoCaseDetail={() => setShowSubmissionResult(false)}
         onConnectMentor={() => {
           setShowSubmissionResult(false);
-          setShowMentorRecommend(true);
+          setShowSmartMentor(true); // AI 매칭 시스템 진입
         }}
       />
     );
@@ -414,7 +445,8 @@ export function ReportDetailView({
   };
 
   const handleConnectMentor = (): void => {
-    setShowMentorRecommend(true);
+    // 메인 매칭 흐름은 AI 시스템 (Gower + Gale-Shapley + Thompson Sampling)
+    setShowSmartMentor(true);
   };
 
   const handleFindCoAction = (): void => {
@@ -835,7 +867,7 @@ export function ReportDetailView({
             </Pressable>
           </View>
         ) : currentStep === "investigation" &&
-          reportCase.status === "resolved" ? (
+          reportCase.status === "RESOLVED" ? (
           <View
             style={{
               backgroundColor: "#EAF3DE",
@@ -913,7 +945,7 @@ export function ReportDetailView({
             )}
           </View>
         ) : currentStep === "investigation" &&
-          reportCase.status === "unresolved" ? (
+          reportCase.status === "UNRESOLVED" ? (
           <View
             style={{
               backgroundColor: "#FEECEC",
@@ -1091,8 +1123,8 @@ export function ReportDetailView({
 
         {/* Step 6 (investigation) 수동 상태 업데이트 — 종결된 사건은 숨김 */}
         {currentStep === "investigation" &&
-        reportCase.status !== "resolved" &&
-        reportCase.status !== "unresolved" ? (
+        reportCase.status !== "RESOLVED" &&
+        reportCase.status !== "UNRESOLVED" ? (
           <View
             style={{
               backgroundColor: "#FFFFFF",
@@ -1160,7 +1192,7 @@ export function ReportDetailView({
                       reportCase.id,
                       "under_correction",
                     );
-                    updateCaseStatus(reportCase.id, "correction_ordered");
+                    updateCaseStatus(reportCase.id, "CORRECTION_ORDERED");
                   },
                 },
                 {
@@ -2192,8 +2224,8 @@ export function ReportDetailView({
         ) : null}
 
         {/* 사건 해결 확인 진입점 — 노동청 시정지시 이후 단계에서만 노출 */}
-        {reportCase.status === "inspecting" ||
-        reportCase.status === "correction_ordered" ? (
+        {reportCase.status === "INSPECTING" ||
+        reportCase.status === "CORRECTION_ORDERED" ? (
           <Pressable
             onPress={() => setShowResolveConfirm(true)}
             style={{
@@ -2496,107 +2528,54 @@ export function ReportDetailView({
             지금 단계에서도 멘토를 찾아볼 수 있어요
           </Text>
 
-          {/* 멘토 카드 미리보기 */}
-          <View
+          {/* AI 매칭 진입 버튼 — 사건 컨텍스트로 적합한 멘토를 찾아 추천 */}
+          <Pressable
+            onPress={handleConnectMentor}
             style={{
-              backgroundColor: "#F8FAFC",
+              backgroundColor: "#3182F6",
               borderRadius: 12,
               padding: 14,
               marginBottom: 10,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
             }}
           >
             <View
               style={{
-                flexDirection: "row",
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: "rgba(255,255,255,0.2)",
                 alignItems: "center",
-                gap: 8,
-                marginBottom: 8,
+                justifyContent: "center",
               }}
             >
-              <View
-                style={{
-                  backgroundColor: "#E8F2FF",
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 4,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 10,
-                    color: "#1B64DA",
-                    fontWeight: "600",
-                  }}
-                >
-                  🛡 인증멘토
-                </Text>
-              </View>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 2,
-                }}
-              >
-                <Ionicons name="star" size={11} color="#F59E0B" />
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: "#0F172A",
-                    fontWeight: "700",
-                  }}
-                >
-                  4.8
-                </Text>
-              </View>
-              <Text style={{ fontSize: 12, color: "#CBD5E1" }}>·</Text>
-              <Text style={{ fontSize: 12, color: "#64748B" }}>
-                카페·음식점
-              </Text>
+              <Ionicons name="search" size={20} color="#FFFFFF" />
             </View>
-
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: "600",
-                color: "#0F172A",
-                lineHeight: 20,
-                marginBottom: 6,
-              }}
-            >
-              "진정서 핵심은 날짜와 금액이에요"
-            </Text>
-
-            <Text
-              style={{
-                fontSize: 11,
-                color: "#64748B",
-                marginBottom: 12,
-              }}
-            >
-              해결까지 18일 · 후기 12개
-            </Text>
-
-            <Pressable
-              onPress={handleConnectMentor}
-              style={{
-                backgroundColor: "#3182F6",
-                paddingVertical: 11,
-                borderRadius: 8,
-                alignItems: "center",
-              }}
-            >
+            <View style={{ flex: 1 }}>
               <Text
                 style={{
                   color: "#FFFFFF",
-                  fontSize: 13,
-                  fontWeight: "600",
+                  fontSize: 14,
+                  fontWeight: "700",
                 }}
               >
-                이 멘토와 연결하기 · ₩10,000
+                연결할 멘토 찾기
               </Text>
-            </Pressable>
-          </View>
+              <Text
+                style={{
+                  color: "#DBEAFE",
+                  fontSize: 11,
+                  marginTop: 2,
+                  lineHeight: 15,
+                }}
+              >
+                사건과 가장 비슷한 경험을 가진 멘토 Top-3 추천
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+          </Pressable>
 
           {/* 면책 문구 */}
           <View

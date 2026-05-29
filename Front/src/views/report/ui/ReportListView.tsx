@@ -24,15 +24,15 @@ const STATUS_BADGE: Record<
   ReportStatus,
   { label: string; bg: string; color: string }
 > = {
-  pending: { label: "🔵 진행 중", bg: "#E8F2FF", color: "#1B64DA" },
-  inspecting: { label: "🔵 진행 중", bg: "#E8F2FF", color: "#1B64DA" },
-  correction_ordered: {
-    label: "🟡 시정지시 완료",
+  PENDING: { label: "접수 대기", bg: "#F1F5F9", color: "#475569" },
+  INSPECTING: { label: "조사 중", bg: "#E8F2FF", color: "#1B64DA" },
+  CORRECTION_ORDERED: {
+    label: "시정 명령",
     bg: "#FEF3C7",
     color: "#92400E",
   },
-  resolved: { label: "✅ 해결됨", bg: "#DCFCE7", color: "#15803D" },
-  unresolved: { label: "🔴 미수령", bg: "#FEE2E2", color: "#991B1B" },
+  RESOLVED: { label: "해결 완료", bg: "#DCFCE7", color: "#15803D" },
+  UNRESOLVED: { label: "미해결", bg: "#FEE2E2", color: "#991B1B" },
 };
 
 type ReviewFilter = "all" | "same-industry" | "same-region";
@@ -95,18 +95,18 @@ export function ReportListView({
   const [viewingReviewId, setViewingReviewId] = useState<string | null>(null);
   const [showClosedCases, setShowClosedCases] = useState(false);
   const hasResolvedCase = cases.some(
-    (c) => c.status === "resolved" && c.hasWrittenReview !== true,
+    (c) => c.status === "RESOLVED" && c.hasWrittenReview !== true,
   );
   const firstResolvedNotReviewed = cases.find(
-    (c) => c.status === "resolved" && c.hasWrittenReview !== true,
+    (c) => c.status === "RESOLVED" && c.hasWrittenReview !== true,
   );
 
   // 진행 중 vs 종료(해결됨/미수령) 분리
   const activeCases = cases.filter(
-    (c) => c.status !== "resolved" && c.status !== "unresolved",
+    (c) => c.status !== "RESOLVED" && c.status !== "UNRESOLVED",
   );
   const closedCases = cases.filter(
-    (c) => c.status === "resolved" || c.status === "unresolved",
+    (c) => c.status === "RESOLVED" || c.status === "UNRESOLVED",
   );
 
   if (showReviewList) {
@@ -285,7 +285,7 @@ export function ReportListView({
                     dimmed
                     onPress={() => onCasePress(c.id)}
                     onWriteReview={
-                      c.status === "resolved" && c.hasWrittenReview !== true
+                      c.status === "RESOLVED" && c.hasWrittenReview !== true
                         ? () => setReviewWriteCaseId(c.id)
                         : undefined
                     }
@@ -655,7 +655,7 @@ function CaseCard({
           <View
             style={{
               backgroundColor:
-                c.status === "resolved" ? "#EAF3DE" : "#FEECEC",
+                c.status === "RESOLVED" ? "#EAF3DE" : "#FEECEC",
               padding: 10,
               borderRadius: 8,
               marginBottom: 12,
@@ -665,10 +665,10 @@ function CaseCard({
               style={{
                 fontSize: 13,
                 fontWeight: "600",
-                color: c.status === "resolved" ? "#3B6D11" : "#C0392B",
+                color: c.status === "RESOLVED" ? "#3B6D11" : "#C0392B",
               }}
             >
-              {c.status === "resolved"
+              {c.status === "RESOLVED"
                 ? `✅ ${c.resolvedAt?.slice(0, 10) ?? ""} 해결`
                 : "🔴 미수령 — 민사 진행 필요"}
             </Text>

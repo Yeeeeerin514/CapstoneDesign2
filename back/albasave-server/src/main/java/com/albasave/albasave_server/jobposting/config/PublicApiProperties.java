@@ -4,16 +4,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "albasave.public-api")
 public record PublicApiProperties(
-        Work24 work24,
         Nts nts,
         Sbiz sbiz
 ) {
-    public record Work24(String authKey, String wageArrearsUrl) {
-        public boolean isConfigured() {
-            return authKey != null && !authKey.isBlank();
-        }
-    }
-
     public record Nts(String serviceKey, String statusUrl) {
         public boolean isConfigured() {
             return serviceKey != null && !serviceKey.isBlank();

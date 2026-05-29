@@ -4,7 +4,6 @@ export type {
   EvidenceType,
   ReportCase,
   ReportStatus,
-  CaseStatus,
   CaseStep,
   CaseStepMeta,
   InvestigationSubStatus,

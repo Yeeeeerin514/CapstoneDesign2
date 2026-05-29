@@ -29,7 +29,7 @@ interface Props {
 
 export function ContractUploadView({
   workplaceId: _workplaceId,
-  workplaceName: _workplaceName,
+  workplaceName,
   onBack,
   onAnalysisComplete,
 }: Props): JSX.Element {
@@ -88,7 +88,7 @@ export function ContractUploadView({
     const firstFile = files[0];
     setAnalyzing(true);
     try {
-      const result = await analyzeContract(firstFile.uri);
+      const result = await analyzeContract(firstFile.uri, workplaceName);
       onAnalysisComplete(firstFile.uri, result);
       clearFiles();
     } catch {

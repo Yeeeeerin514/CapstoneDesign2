@@ -72,6 +72,10 @@ export interface MentorMatch {
   /** 목록 카드에 노출할 메시지 30자 prefix. */
   lastMessagePreview?: string;
   chatMessages: MentorChatMessage[];
+  /** 백엔드 mentorship_match.id — 피드백 제출 시 사용. SmartMentor 매칭만 보유. */
+  backendMatchId?: number;
+  /** 피드백 제출 여부 — 중복 평가 방지. */
+  feedbackSubmitted?: boolean;
 }
 
 export type EscrowStatus = "pending" | "paid" | "released" | "refunded";

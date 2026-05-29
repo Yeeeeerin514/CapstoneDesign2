@@ -5,7 +5,6 @@ import {
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -17,8 +16,6 @@ import {
   type ContractAnalysisResult,
 } from "@/entities/job-post";
 import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
-
-type Mode = "menu" | "edit-text";
 
 interface ContractEditViewProps {
   workplaceId: string;
@@ -40,12 +37,7 @@ export function ContractEditView({
   const markContractUploaded = useFavoriteWorkplaceStore(
     (s) => s.markContractUploaded,
   );
-  const updateContractAnalysis = useFavoriteWorkplaceStore(
-    (s) => s.updateContractAnalysis,
-  );
 
-  const [mode, setMode] = useState<Mode>("menu");
-  const [editedText, setEditedText] = useState<string>(analysis?.fullText ?? "");
   const [isProcessing, setIsProcessing] = useState(false);
 
   const handleRetakePhoto = async (): Promise<void> => {
@@ -57,7 +49,7 @@ export function ContractEditView({
     const newUri = result.assets[0].uri;
     setIsProcessing(true);
     try {
-      const newAnalysis = await analyzeContract(newUri);
+      const newAnalysis = await analyzeContract(newUri, workplaceName);
       markContractUploaded(workplaceId, newUri, newAnalysis);
       Alert.alert("분석 완료", "새로운 계약서로 분석이 완료되었습니다.", [
         { text: "확인", onPress: onBack },
@@ -68,95 +60,6 @@ export function ContractEditView({
       setIsProcessing(false);
     }
   };
-
-  const handleSaveEditedText = (): void => {
-    if (analysis === undefined) return;
-    if (editedText.trim() === analysis.fullText.trim()) {
-      Alert.alert("변경사항 없음", "수정된 내용이 없습니다.");
-      return;
-    }
-    const updated: ContractAnalysisResult = {
-      ...analysis,
-      fullText: editedText,
-    };
-    updateContractAnalysis(workplaceId, updated);
-    Alert.alert(
-      "저장됨",
-      "텍스트가 수정되었습니다. 새로운 위험 요소를 분석하려면 사진을 다시 업로드해주세요.",
-      [{ text: "확인", onPress: () => setMode("menu") }],
-    );
-  };
-
-  if (mode === "edit-text") {
-    return (
-      <SafeAreaView
-        edges={["left", "right", "bottom"]}
-        style={{ flex: 1, backgroundColor: "#F8FAFC" }}
-      >
-        <ScreenHeader showLogo />
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            padding: 16,
-            gap: 8,
-          }}
-        >
-          <Pressable onPress={() => setMode("menu")}>
-            <Ionicons name="arrow-back" size={24} color="#0F172A" />
-          </Pressable>
-          <Text style={{ fontSize: 18, fontWeight: "600", color: "#0F172A" }}>
-            계약서 텍스트 수정
-          </Text>
-        </View>
-
-        <ScrollView
-          style={{ flex: 1, padding: 16 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Text style={{ fontSize: 13, color: "#64748B", marginBottom: 12 }}>
-            OCR로 추출한 텍스트를 직접 수정할 수 있습니다.{"\n"}
-            잘못 인식된 글자나 누락된 조항을 보완해주세요.
-          </Text>
-
-          <TextInput
-            value={editedText}
-            onChangeText={setEditedText}
-            multiline
-            textAlignVertical="top"
-            style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: 12,
-              padding: 16,
-              minHeight: 320,
-              fontSize: 14,
-              lineHeight: 22,
-              color: "#0F172A",
-              borderWidth: 1,
-              borderColor: "#E2E8F0",
-            }}
-          />
-
-          <Pressable
-            onPress={handleSaveEditedText}
-            style={{
-              marginTop: 16,
-              backgroundColor: "#3182F6",
-              paddingVertical: 14,
-              borderRadius: 12,
-              alignItems: "center",
-            }}
-          >
-            <Text
-              style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}
-            >
-              수정 내용 저장
-            </Text>
-          </Pressable>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
 
   const dangerCount =
     analysis?.issues.filter((i) => i.level === "danger").length ?? 0;
@@ -320,47 +223,7 @@ export function ContractEditView({
           <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
         </Pressable>
 
-        {/* 옵션 2: 텍스트 직접 수정 */}
-        <Pressable
-          onPress={() => setMode("edit-text")}
-          disabled={analysis === undefined}
-          style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: 12,
-            padding: 16,
-            marginBottom: 8,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 12,
-            opacity: analysis !== undefined ? 1 : 0.5,
-          }}
-        >
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              backgroundColor: "#E8F2FF",
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <Ionicons name="create" size={20} color="#3182F6" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{ fontSize: 15, fontWeight: "600", color: "#0F172A" }}
-            >
-              텍스트 직접 수정
-            </Text>
-            <Text style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
-              OCR로 추출된 텍스트를 직접 편집합니다
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
-        </Pressable>
-
-        {/* 옵션 3: 분석 결과 다시 보기 */}
+        {/* 옵션 2: 분석 결과 다시 보기 */}
         <Pressable
           onPress={onViewAnalysisResult}
           disabled={analysis === undefined}
@@ -393,7 +256,7 @@ export function ContractEditView({
               분석 결과 다시 보기
             </Text>
             <Text style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
-              형광펜과 이슈 상세를 다시 확인합니다
+              이슈 상세를 다시 확인합니다
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#94A3B8" />

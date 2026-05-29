@@ -8,6 +8,7 @@ import {
   type FavoriteWorkplace,
 } from "@/features/favorite-workplace";
 import { ScreenHeader, colors } from "@/shared/ui";
+import { registerWorkplace } from "@/entities/workplace";
 import { ContractUploadView } from "./ContractUploadView";
 import { ContractAnalysisView } from "./ContractAnalysisView";
 import { ContractEditView } from "./ContractEditView";
@@ -70,7 +71,9 @@ interface CardButtonStates {
 }
 
 function getCardButtonStates(workplace: FavoriteWorkplace): CardButtonStates {
-  const isContractUploaded = workplace.contractStatus === "uploaded";
+  const isContractUploaded =
+    workplace.contractStatus === "uploaded" ||
+    workplace.contractStatus === "analyzed";
   const isRegistered = workplace.registrationStatus === "registered";
 
   let stage: CardStage = "initial";
@@ -125,8 +128,15 @@ interface PendingRegistration {
 }
 
 export function WorkplaceView(): JSX.Element {
-  const { workplaces, removeWorkplace, markContractUploaded, markRegistered } =
-    useFavoriteWorkplaceStore();
+  const {
+    workplaces,
+    removeWorkplace,
+    markContractUploaded,
+    updateContractStatus,
+    setContractId,
+    setPartTimeJobId,
+    markRegistered,
+  } = useFavoriteWorkplaceStore();
   const [currentScreen, setCurrentScreen] = useState<Screen>("list");
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string | null>(
     null,
@@ -148,6 +158,12 @@ export function WorkplaceView(): JSX.Element {
         onAnalysisComplete={(imageUri, result) => {
           setPendingImageUri(imageUri);
           setAnalysisResult(result);
+          // 백엔드 contractId 저장 (분석 응답에 포함된 경우)
+          if (result.contractId !== null) {
+            setContractId(selectedWorkplace.id, result.contractId);
+          }
+          // 분석 완료 status 갱신 (analyzed 단계)
+          updateContractStatus(selectedWorkplace.id, "analyzed");
           setCurrentScreen("analysis");
         }}
       />
@@ -155,7 +171,9 @@ export function WorkplaceView(): JSX.Element {
   }
 
   if (currentScreen === "analysis" && selectedWorkplace) {
-    const fromEdit = selectedWorkplace.contractStatus === "uploaded";
+    const fromEdit =
+      selectedWorkplace.contractStatus === "uploaded" ||
+      selectedWorkplace.contractStatus === "analyzed";
     const result = fromEdit
       ? (selectedWorkplace.contractAnalysis ?? analysisResult)
       : analysisResult;
@@ -176,7 +194,11 @@ export function WorkplaceView(): JSX.Element {
             );
           }
           setPendingImageUri(null);
-          setCurrentScreen("list");
+          setPendingRegistration({
+            workplaceId: selectedWorkplace.id,
+            workplaceName: selectedWorkplace.name,
+          });
+          setCurrentScreen("bssid-register");
         }}
       />
     );
@@ -196,17 +218,32 @@ export function WorkplaceView(): JSX.Element {
   }
 
   if (currentScreen === "bssid-register" && pendingRegistration) {
+    const registration = pendingRegistration;
     return (
       <BssidRegisterView
-        workplaceName={pendingRegistration.workplaceName}
+        workplaceName={registration.workplaceName}
         onBack={() => {
           setPendingRegistration(null);
           setCurrentScreen("list");
         }}
         onRegisterComplete={(bssid, ssid) => {
-          markRegistered(pendingRegistration.workplaceId, bssid, ssid);
-          setPendingRegistration({ ...pendingRegistration, bssid, ssid });
+          // 1) 로컬 store 즉시 반영
+          markRegistered(registration.workplaceId, bssid, ssid);
+          setPendingRegistration({ ...registration, bssid, ssid });
           setCurrentScreen("register-complete");
+
+          // 2) 백엔드 part_time_job 자동 생성 + BSSID 영속 (실패해도 UX 끊김 X)
+          registerWorkplace({
+            workplaceName: registration.workplaceName,
+            bssid,
+            ssid,
+          })
+            .then((res) => {
+              setPartTimeJobId(registration.workplaceId, res.partTimeJobId);
+            })
+            .catch(() => {
+              // 네트워크 실패 시 로컬 store는 유지 (재진입 시 재시도 가능)
+            });
         }}
       />
     );
@@ -307,7 +344,7 @@ export function WorkplaceView(): JSX.Element {
                 onUploadContract={() => {
                   setSelectedWorkplaceId(wp.id);
                   setCurrentScreen(
-                    wp.contractStatus === "uploaded" ? "edit" : "upload",
+                    wp.contractStatus === "none" ? "upload" : "edit",
                   );
                 }}
                 onRegisterWorkplace={() => {

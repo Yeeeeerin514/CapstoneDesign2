@@ -1,6 +1,17 @@
 import { apiClient } from "@/shared/api/axios-instance";
 import type { AttendanceRecord } from "../model/types";
 
+/**
+ * /api/working/** 인증 정책 (2026-05-29 기준):
+ * - SecurityConfig permitAll 목록에 명시되지 않음 → JWT 검증 대상
+ * - 다만 현재 컨트롤러들이 @AuthenticationPrincipal을 미사용 → 토큰 없어도 403 안 남
+ * - 현재 코드는 apiClient(JWT 자동 첨부) 경유라 양쪽 모두 안전
+ *
+ * TODO: /api/working/** 인증 정책 변경 시 axios 인스턴스 점검 필요
+ *   - 백엔드가 @AuthenticationPrincipal 도입 → apiClient 그대로 OK (토큰 자동 첨부됨)
+ *   - SecurityConfig가 permitAll로 명시 → 변경 없음 (현재 동작과 동일)
+ */
+
 interface WorkingResponse {
   id: number;
   partTimeJobId: number;
