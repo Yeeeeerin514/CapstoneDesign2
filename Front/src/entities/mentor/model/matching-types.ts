@@ -22,7 +22,7 @@ export type EmploymentType =
 
 export type BusinessSize = "UNDER_5" | "SIZE_5_TO_30" | "OVER_30" | "UNKNOWN";
 
-export type RegionCode =
+export type Region =
   | "SEOUL" | "BUSAN" | "DAEGU" | "INCHEON" | "GWANGJU" | "DAEJEON" | "ULSAN"
   | "SEJONG" | "GYEONGGI" | "GANGWON" | "CHUNGBUK" | "CHUNGNAM" | "JEONBUK"
   | "JEONNAM" | "GYEONGBUK" | "GYEONGNAM" | "JEJU" | "OTHER";
@@ -81,7 +81,7 @@ export const BUSINESS_SIZE_LABEL: Record<BusinessSize, string> = {
   UNKNOWN: "확인불가",
 };
 
-export const REGION_LABEL: Record<RegionCode, string> = {
+export const REGION_LABEL: Record<Region, string> = {
   SEOUL: "서울특별시", BUSAN: "부산광역시", DAEGU: "대구광역시",
   INCHEON: "인천광역시", GWANGJU: "광주광역시", DAEJEON: "대전광역시",
   ULSAN: "울산광역시", SEJONG: "세종특별자치시",
@@ -115,6 +115,9 @@ export const DAMAGE_AMOUNT_LABEL: Record<DamageAmountRange, string> = {
 
 export type VerificationMethod = "RESOLVED_CASE" | "EVIDENCE_UPLOAD" | "ADMIN_VERIFIED";
 
+/** 백엔드 mentorship_match.status 컬럼 enum. */
+export type MatchStatus = "PROPOSED" | "ACTIVE" | "COMPLETED" | "CANCELED";
+
 export const VERIFICATION_METHOD_LABEL: Record<VerificationMethod, string> = {
   RESOLVED_CASE: "앱 내 해결 경험",
   EVIDENCE_UPLOAD: "증빙 자료 업로드",
@@ -122,36 +125,35 @@ export const VERIFICATION_METHOD_LABEL: Record<VerificationMethod, string> = {
 };
 
 export interface MentorRegistrationRequest {
-  nickname?: string;
+  nickname: string;
   industry: Industry;
   damageTypes: DamageType[];
-  employmentType?: EmploymentType;
+  employmentType: EmploymentType;
   businessSize: BusinessSize;
-  region?: RegionCode;
-  resolutionMethods?: ResolutionMethod[];
-  resolutionDays?: number;
-  damageAmountRange?: DamageAmountRange;
-  bio?: string;
-  capacity?: number;
-  consultingFee?: number;
-
-  // 자격 검증 — 필수 (둘 중 하나 충족)
+  region: Region;
+  resolutionMethods: ResolutionMethod[];
+  resolutionDays: number;
+  damageAmountRange: DamageAmountRange;
+  bio: string;
+  capacity: number;
+  consultingFee: number;
+  /** null이면 백엔드 400. RESOLVED_CASE / EVIDENCE_UPLOAD / ADMIN_VERIFIED 중 하나. */
   verificationMethod: VerificationMethod;
-  /** RESOLVED_CASE: 해결된 신고 사건 ID 목록 */
-  verifiedCaseIds?: number[];
-  /** EVIDENCE_UPLOAD: S3 업로드된 증빙 자료 URL */
-  evidenceUrls?: string[];
+  /** RESOLVED_CASE: 해결된 신고 사건 ID 목록. 미해당 시 null. */
+  verifiedCaseIds: number[] | null;
+  /** EVIDENCE_UPLOAD: S3 업로드된 증빙 자료 URL. 미해당 시 null. */
+  evidenceUrls: string[] | null;
 }
 
 export interface MatchRequestPayload {
-  caseId?: number | null;
+  caseId: number;
   industry: Industry;
   damageTypes: DamageType[];
-  employmentType?: EmploymentType;
+  employmentType: EmploymentType;
   businessSize: BusinessSize;
-  region?: RegionCode;
-  damageAmountRange?: DamageAmountRange;
-  description?: string;
+  region: Region;
+  damageAmountRange: DamageAmountRange;
+  description: string;
   topK?: number;
 }
 
@@ -212,7 +214,7 @@ export interface BackendMentorProfile {
   damageTypes: DamageType[];
   employmentType: EmploymentType | null;
   businessSize: BusinessSize;
-  region: RegionCode | null;
+  region: Region | null;
   resolutionMethods: ResolutionMethod[];
   resolutionDuration: string | null;
   damageAmountRange: DamageAmountRange | null;

@@ -18,6 +18,7 @@ import { router } from "expo-router";
 import { MentorRecommendView } from "./MentorRecommendView";
 import { SmartMentorRecommendView } from "./SmartMentorRecommendView";
 import {
+  amountToRange,
   inferBusinessSize,
   mapDamageTypeLabelsToCode,
   mapIndustryLabelToCode,
@@ -301,6 +302,7 @@ export function ReportDetailView({
         damageTypes={mapDamageTypeLabelsToCode(reportCase.damageTypes)}
         businessSize={inferBusinessSize(industryCode)}
         region={mapRegionLabelToCode(reportCase.region)}
+        damageAmountRange={amountToRange(reportCase.calculatedUnpaid ?? 0)}
         description={
           reportCase.calculatedUnpaid !== null && reportCase.calculatedUnpaid > 0
             ? `${reportCase.workplaceName} - 미지급 ${reportCase.calculatedUnpaid.toLocaleString()}원`

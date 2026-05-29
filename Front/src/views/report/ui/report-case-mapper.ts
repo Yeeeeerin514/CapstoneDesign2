@@ -6,7 +6,7 @@ import type {
   BusinessSize,
   DamageType,
   Industry,
-  RegionCode,
+  Region,
 } from "@/entities/mentor";
 
 const INDUSTRY_MAP: Record<string, Industry> = {
@@ -89,7 +89,7 @@ export function mapDamageTypeLabelsToCode(labels: string[]): DamageType[] {
   return Array.from(result);
 }
 
-const REGION_PREFIX: { prefix: string; code: RegionCode }[] = [
+const REGION_PREFIX: { prefix: string; code: Region }[] = [
   { prefix: "서울", code: "SEOUL" },
   { prefix: "부산", code: "BUSAN" },
   { prefix: "대구", code: "DAEGU" },
@@ -109,7 +109,7 @@ const REGION_PREFIX: { prefix: string; code: RegionCode }[] = [
   { prefix: "제주", code: "JEJU" },
 ];
 
-export function mapRegionLabelToCode(label: string): RegionCode {
+export function mapRegionLabelToCode(label: string): Region {
   if (label === null || label === undefined || label === "") return "OTHER";
   for (const { prefix, code } of REGION_PREFIX) {
     if (label.startsWith(prefix)) return code;

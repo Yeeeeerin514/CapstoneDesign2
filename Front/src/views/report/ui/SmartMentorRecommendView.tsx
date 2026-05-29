@@ -14,12 +14,13 @@ import {
   confirmMatch,
   requestMatch,
   type BusinessSize,
+  type DamageAmountRange,
   type DamageType,
   type EmploymentType,
   type Industry,
   type MatchRecommendation,
   type MatchResponseEnvelope,
-  type RegionCode,
+  type Region,
 } from "@/entities/mentor";
 import { useMentorMatchStore } from "@/features/mentor-match";
 import { useAuthStore } from "@/entities/user/model/auth-store";
@@ -41,7 +42,8 @@ interface Props {
   damageTypes: DamageType[];
   businessSize: BusinessSize;
   employmentType?: EmploymentType;
-  region?: RegionCode;
+  region?: Region;
+  damageAmountRange?: DamageAmountRange;
   description?: string;
   onBack: () => void;
   onMatched?: (matchId: number, mentorNickname: string) => void;
@@ -54,6 +56,7 @@ export function SmartMentorRecommendView({
   businessSize,
   employmentType,
   region,
+  damageAmountRange,
   description,
   onBack,
   onMatched,
@@ -74,14 +77,17 @@ export function SmartMentorRecommendView({
         setStage("필터");
         await delay(600);
         setStage("매칭");
+        // 백엔드 contract: MatchRequestPayload 모든 필드 required.
+        // 호출 측에서 optional로 들어온 값을 합당한 enum 기본값/0/""로 메운다.
         const result = await requestMatch({
-          caseId,
+          caseId: caseId ?? 0,
           industry,
           damageTypes,
-          employmentType,
+          employmentType: employmentType ?? "OTHER",
           businessSize,
-          region,
-          description,
+          region: region ?? "OTHER",
+          damageAmountRange: damageAmountRange ?? "UNDER_100K",
+          description: description ?? "",
           topK: 3,
         });
         setEnvelope(result);

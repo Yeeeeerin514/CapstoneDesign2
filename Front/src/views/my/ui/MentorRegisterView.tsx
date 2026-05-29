@@ -18,7 +18,7 @@ import {
   type DamageType,
   type EmploymentType,
   type Industry,
-  type RegionCode,
+  type Region,
   type ResolutionMethod,
   type VerificationMethod,
 } from "@/entities/mentor";
@@ -49,7 +49,7 @@ export function MentorRegisterView({ onBack, onSaved, verification }: Props): JS
 
   // 선택 항목
   const [employmentType, setEmploymentType] = useState<EmploymentType | undefined>();
-  const [region, setRegion] = useState<RegionCode | undefined>();
+  const [region, setRegion] = useState<Region | undefined>();
   const [resolutionMethods, setResolutionMethods] = useState<ResolutionMethod[]>([]);
   const [resolutionDays, setResolutionDays] = useState<string>("");
   const [damageAmountRange, setDamageAmountRange] = useState<DamageAmountRange | undefined>();
@@ -92,23 +92,25 @@ export function MentorRegisterView({ onBack, onSaved, verification }: Props): JS
     }
     setSaving(true);
     try {
+      // 백엔드 contract: MentorRegistrationRequest 모든 필드 required.
+      // 미입력 시 합당한 enum 기본값/0/""을 채워 보낸다.
       await registerMentor({
-        nickname: nickname.trim() || undefined,
+        nickname: nickname.trim(),
         industry,
         damageTypes,
-        employmentType,
+        employmentType: employmentType ?? "OTHER",
         businessSize,
-        region,
+        region: region ?? "OTHER",
         resolutionMethods,
-        resolutionDays: resolutionDays ? Number(resolutionDays) : undefined,
-        damageAmountRange,
-        bio: bio.trim() || undefined,
+        resolutionDays: resolutionDays ? Number(resolutionDays) : 0,
+        damageAmountRange: damageAmountRange ?? "UNDER_100K",
+        bio: bio.trim(),
         capacity: Number(capacity) || 3,
         consultingFee: Number(consultingFee) || 10000,
         // 자격 검증 정보 (게이트에서 자동 전달)
         verificationMethod: verification?.method ?? "RESOLVED_CASE",
-        verifiedCaseIds: verification?.verifiedCaseIds,
-        evidenceUrls: verification?.evidenceUrls,
+        verifiedCaseIds: verification?.verifiedCaseIds ?? null,
+        evidenceUrls: verification?.evidenceUrls ?? null,
       });
       Alert.alert("등록 완료", "멘토 프로필이 저장되었습니다.");
       onSaved?.();
@@ -190,7 +192,7 @@ export function MentorRegisterView({ onBack, onSaved, verification }: Props): JS
 
         <Section title="지역 (시·도)">
           <ChipGrid
-            options={Object.entries(REGION_LABEL) as [RegionCode, string][]}
+            options={Object.entries(REGION_LABEL) as [Region, string][]}
             isSelected={(v) => region === v}
             onPress={(v) => setRegion(region === v ? undefined : v)}
           />
