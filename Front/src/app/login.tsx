@@ -23,7 +23,7 @@ interface ParsedAuth {
 }
 
 /**
- * 백엔드 응답이 token/userId/name/email 필드명을 쓰는 것을 VERIFY-1로 확인했지만,
+ * 백엔드 응답 캐논: { token, userId, name, email } (API-REFERENCE.md §1 기준).
  * 향후 백엔드가 accessToken·id·username 등으로 바뀌어도 클라이언트가 안전하게
  * 동작하도록 fallback 체인을 둔다. token이나 userId가 둘 다 null이면 호출부에서 거부.
  */
