@@ -11,6 +11,7 @@ import {
 import { router } from "expo-router";
 import { apiClient } from "@/shared/api/axios-instance";
 import { useAuthStore } from "@/entities/user/model/auth-store";
+import { syncFcmToken } from "@/entities/user";
 
 type Mode = "login" | "signup";
 
@@ -83,6 +84,8 @@ export default function LoginScreen() {
         return;
       }
       setAuth(parsed.token, parsed.userId, parsed.name, parsed.email);
+      // FCM 토큰 백그라운드 동기화 — 실패해도 로그인 플로우 블로킹 없음
+      void syncFcmToken();
       router.replace("/(tabs)");
     } catch (e) {
       const msg =
