@@ -1,6 +1,6 @@
-package com.albasave.albasave_server.workinglog.repository;
+package com.albasave.albasave_server.userinfo.repository;
 
-import com.albasave.albasave_server.workinglog.domain.User;
+import com.albasave.albasave_server.userinfo.domain.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

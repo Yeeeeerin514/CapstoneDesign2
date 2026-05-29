@@ -1,5 +1,8 @@
 package com.albasave.albasave_server.workinglog.domain;
 
+import com.albasave.albasave_server.business.domain.Business;
+
+import com.albasave.albasave_server.userinfo.domain.User;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -25,21 +28,21 @@ public class PartTimeJob {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** Business.registration_num FK */
-    @Column(name = "business_id")
-    private Long businessId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;                      // User → PartTimeJob : 1:N 관계의 N쪽
 
-    /** User.id FK */
-    @Column(name = "user_id")
-    private Long userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "business_id", nullable = false)   // DB 컬럼명 오타 그대로 유지
+    private Business business;              // Business → PartTimeJob : 1:N 관계의 N쪽
+
 
     /**
-     * 근무 요일 (쉼표 구분 문자열)
-     * 예: "MON,WED,FRI" / "MON,TUE,WED,THU,FRI"
-     * DayOfWeek.name() 기준
+     * 근무 요일 bitmask (MON=1, TUE=2, WED=4, THU=8, FRI=16, SAT=32, SUN=64)
+     * 예: 월·수·금 → 1 | 4 | 16 = 21
      */
-    @Column(name = "day")
-    private String day;
+    @Column(name = "days", nullable = false)
+    private Integer days;
 
     /** 예정 출근 시각 */
     @Column(name = "start_time")
@@ -76,4 +79,9 @@ public class PartTimeJob {
     /** 시급 (원) */
     @Column(name = "hourly_wage")
     private Integer hourlyWage;
+
+    public void quit(LocalDate endDay) {
+        this.isActive = false;
+        this.endDay   = endDay;
+ }
 }
