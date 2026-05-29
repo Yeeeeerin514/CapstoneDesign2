@@ -23,7 +23,7 @@ export interface DailyShift {
   nightWorkedMinutes: number;
 }
 
-export interface WageBreakdown {
+export interface DailyWageBreakdown {
   basePay: number;
   overtimePay: number;
   nightPay: number;
@@ -40,7 +40,7 @@ export interface WageBreakdown {
 export function calcDailyWage(
   hourlyWage: number,
   shift: DailyShift,
-): WageBreakdown {
+): DailyWageBreakdown {
   const baseMinutes = Math.min(shift.workedMinutes, DAILY_LEGAL_MINUTES);
   const overtimeMinutes = Math.max(0, shift.workedMinutes - DAILY_LEGAL_MINUTES);
   const nightMinutes = Math.max(

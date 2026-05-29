@@ -1,3 +1,5 @@
+import type { WageBreakdown } from "../api/wage-calc";
+
 export type EvidenceType =
   | "bssid-log"
   | "contract"
@@ -436,6 +438,15 @@ export interface ReportCase {
   calculatedPaidAmount: number | null;
   /** 미지급금 = Owed - Paid. 양쪽 다 있을 때만. */
   calculatedUnpaid: number | null;
+
+  /** 백엔드 wage-calc 결과 캐싱 — Step 2 done 이후 채워짐. */
+  wageBreakdown: WageBreakdown | null;
+  /** 사용자 지정 시급. null이면 백엔드가 contract/최저시급 자동 선택. */
+  hourlyWage: number | null;
+  /** 실제 수령액 — 사용자 입력. null = 미입력. */
+  actualReceivedAmount: number | null;
+  /** 사용자가 breakdown 편집 후 저장한 미지급 총액. 우선순위: manual > (totalShouldReceive - actualReceived). */
+  manualUnpaidAmount: number | null;
 
   /** 사건 생성 시각 (ISO). */
   createdAt: string;

@@ -46,17 +46,23 @@ export interface CreateReportInput {
   workplaceId: string;
   businessName?: string;
   description?: string;
-  hourlyWage?: number;
+  hourlyWage?: number | null;
   violationType?: string;
+  /** 실제 수령액 — 사용자 입력. */
+  actualReceivedAmount?: number | null;
+  /** 사용자가 breakdown 편집 후 저장한 미지급 총액. */
+  manualUnpaidAmount?: number | null;
 }
 
-export async function createReport(workplaceId: string): Promise<Report> {
+export async function createReport(input: CreateReportInput): Promise<Report> {
   const { data } = await apiClient.post<BackendReport>("/reports", {
-    partTimeJobId: Number(workplaceId),
-    businessName: "미입력",
-    description: "신고 내용을 입력해주세요.",
-    violationType: "MINIMUM_WAGE",
-    hourlyWage: 10030,
+    partTimeJobId: Number(input.workplaceId),
+    businessName: input.businessName ?? "미입력",
+    description: input.description ?? "신고 내용을 입력해주세요.",
+    violationType: input.violationType ?? "MINIMUM_WAGE",
+    hourlyWage: input.hourlyWage ?? null,
+    actualReceivedAmount: input.actualReceivedAmount ?? null,
+    manualUnpaidAmount: input.manualUnpaidAmount ?? null,
   });
   return toReport(data);
 }

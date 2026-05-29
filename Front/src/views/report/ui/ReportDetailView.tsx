@@ -32,11 +32,13 @@ import { SubmissionResultView } from "./SubmissionResultView";
 import { CaseAmountHeader } from "./CaseAmountHeader";
 import { EvidenceTodoBox } from "./EvidenceTodoBox";
 import { AmountCalcTodoBox } from "./AmountCalcTodoBox";
+import { WageBreakdownCard } from "./WageBreakdownCard";
 import { EvidenceSection } from "./EvidenceSection";
 import { ManualWageInputModal } from "./ManualWageInputModal";
 import { ResolveSuccessView } from "./ResolveSuccessView";
 import { ReviewWriteView } from "./ReviewWriteView";
 import {
+  fetchWageCalc,
   STEP_ORDER,
   STEP_META,
   type CaseStep,
@@ -44,6 +46,7 @@ import {
   type InvestigationSubStatus,
   type ReportStatus,
 } from "@/entities/report";
+import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
 
 interface ReportDetailViewProps {
   caseId: string;
@@ -232,6 +235,20 @@ export function ReportDetailView({
   const setManualWageInput = useReportStore((s) => s.setManualWageInput);
   const startAmountCalc = useReportStore((s) => s.startAmountCalc);
   const finishAmountCalc = useReportStore((s) => s.finishAmountCalc);
+  const setWageBreakdown = useReportStore((s) => s.setWageBreakdown);
+  const setActualReceivedAmount = useReportStore(
+    (s) => s.setActualReceivedAmount,
+  );
+  const setManualUnpaidAmount = useReportStore((s) => s.setManualUnpaidAmount);
+  const resetAmountCalcState = useReportStore((s) => s.resetAmountCalcState);
+  const reportWorkplaceName = useReportStore(
+    (s) => s.cases.find((c) => c.id === caseId)?.workplaceName,
+  );
+  const partTimeJobId = useFavoriteWorkplaceStore((s) =>
+    reportWorkplaceName !== undefined
+      ? s.workplaces.find((w) => w.name === reportWorkplaceName)?.partTimeJobId
+      : undefined,
+  );
   const confirmAmountCalc = useReportStore((s) => s.confirmAmountCalc);
   const navigateToStep = useReportStore((s) => s.navigateToStep);
   const findGroupByWorkplace = useGroupStore((s) => s.findGroupByWorkplace);
@@ -745,18 +762,50 @@ export function ReportDetailView({
             onEvidenceComplete={handleEvidenceComplete}
           />
         ) : currentStep === "amount_calculation" ? (
-          <AmountCalcTodoBox
-            reportCase={reportCase}
-            onStartCalc={() => {
-              startAmountCalc(reportCase.id);
-              // Phase A mock: 1.2초 지연 후 계산 완료 처리. Phase B에선 실제 백엔드 호출.
-              setTimeout(() => {
-                finishAmountCalc(reportCase.id);
-              }, 1200);
-            }}
-            onConfirm={() => confirmAmountCalc(reportCase.id)}
-            onEdit={() => setShowWageModal(true)}
-          />
+          <>
+            {reportCase.amountCalcState === "done" &&
+            reportCase.wageBreakdown !== null ? (
+              <WageBreakdownCard
+                breakdown={reportCase.wageBreakdown}
+                actualReceivedAmount={reportCase.actualReceivedAmount}
+                manualUnpaidAmount={reportCase.manualUnpaidAmount}
+                onChangeReceived={(v) =>
+                  setActualReceivedAmount(reportCase.id, v)
+                }
+                onSaveManualTotal={(v) =>
+                  setManualUnpaidAmount(reportCase.id, v)
+                }
+              />
+            ) : null}
+            <AmountCalcTodoBox
+              reportCase={reportCase}
+              onStartCalc={() => {
+                if (partTimeJobId === undefined) {
+                  // 알바 미등록 → 로컬 수동 입력 모달
+                  setShowWageModal(true);
+                  return;
+                }
+                startAmountCalc(reportCase.id);
+                fetchWageCalc(
+                  partTimeJobId,
+                  reportCase.hourlyWage ?? undefined,
+                )
+                  .then((breakdown) => {
+                    setWageBreakdown(reportCase.id, breakdown);
+                    finishAmountCalc(reportCase.id);
+                  })
+                  .catch(() => {
+                    Alert.alert(
+                      "계산 실패",
+                      "계산에 실패했습니다. 다시 시도해주세요.",
+                    );
+                    resetAmountCalcState(reportCase.id);
+                  });
+              }}
+              onConfirm={() => confirmAmountCalc(reportCase.id)}
+              onEdit={() => setShowWageModal(true)}
+            />
+          </>
         ) : currentStep === "group_decision" &&
           isAlreadyMember &&
           sameWorkplaceGroup !== undefined ? (

@@ -35,3 +35,5 @@ export {
   createReport,
   generateReportDraft,
 } from "./api/create-report";
+export { fetchWageCalc } from "./api/wage-calc";
+export type { WageBreakdown } from "./api/wage-calc";

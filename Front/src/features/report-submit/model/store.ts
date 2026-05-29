@@ -10,7 +10,25 @@ import {
   type InvestigationSubStatus,
   type ReportCase,
   type ReportStatus,
+  type WageBreakdown,
 } from "@/entities/report";
+
+/**
+ * 미지급 금액 derive — 우선순위:
+ *   1. manualUnpaidAmount (사용자가 breakdown 편집 후 저장한 값)
+ *   2. wageBreakdown.totalShouldReceive - actualReceivedAmount (양쪽 다 있을 때)
+ *   3. 기존 calculatedUnpaid 보존 (mock 흐름 호환)
+ */
+function deriveUnpaid(c: ReportCase): number | null {
+  if (c.manualUnpaidAmount !== null) return c.manualUnpaidAmount;
+  if (c.wageBreakdown !== null && c.actualReceivedAmount !== null) {
+    return Math.max(
+      0,
+      c.wageBreakdown.totalShouldReceive - c.actualReceivedAmount,
+    );
+  }
+  return c.calculatedUnpaid;
+}
 
 // ──────────────────────────────────────
 // 금액 계산 헬퍼 (Phase A — mock 고정값, Phase B에서 실제 파싱으로 교체)
@@ -160,6 +178,15 @@ interface ReportStoreState {
   /** Step 2 — 사용자가 금액 확인. step 2 완료 처리 + step 3 (group_decision)으로 진행. */
   confirmAmountCalc: (caseId: string) => void;
 
+  /** Step 2 — 백엔드 wage-calc 결과 캐싱. */
+  setWageBreakdown: (caseId: string, breakdown: WageBreakdown | null) => void;
+  /** 사용자 지정 시급 입력 (wage-calc 재호출용). */
+  setReportHourlyWage: (caseId: string, hourlyWage: number | null) => void;
+  /** 실제 수령액 입력 — 미지급 추정액 derive 즉시 갱신. */
+  setActualReceivedAmount: (caseId: string, amount: number | null) => void;
+  /** 수동 미지급 총액 (편집 폼 결과) — derive 우선순위 최상위. */
+  setManualUnpaidAmount: (caseId: string, amount: number | null) => void;
+
   closeCase: (caseId: string) => void;
   deleteCase: (caseId: string) => void;
 }
@@ -195,6 +222,10 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
       calculatedWageOwed: null,
       calculatedPaidAmount: null,
       calculatedUnpaid: null,
+      wageBreakdown: null,
+      hourlyWage: null,
+      actualReceivedAmount: null,
+      manualUnpaidAmount: null,
       amountCalcState: "idle",
       createdAt: new Date().toISOString(),
     };
@@ -426,6 +457,40 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
         if (c.id !== caseId) return c;
         const amounts = recalculateAmounts(c, c.evidence);
         return { ...c, ...amounts, amountCalcState: "done" };
+      }),
+    })),
+
+  setWageBreakdown: (caseId, breakdown) =>
+    set((s) => ({
+      cases: s.cases.map((c) => {
+        if (c.id !== caseId) return c;
+        const updated = { ...c, wageBreakdown: breakdown };
+        return { ...updated, calculatedUnpaid: deriveUnpaid(updated) };
+      }),
+    })),
+
+  setReportHourlyWage: (caseId, hourlyWage) =>
+    set((s) => ({
+      cases: s.cases.map((c) =>
+        c.id === caseId ? { ...c, hourlyWage } : c,
+      ),
+    })),
+
+  setActualReceivedAmount: (caseId, amount) =>
+    set((s) => ({
+      cases: s.cases.map((c) => {
+        if (c.id !== caseId) return c;
+        const updated = { ...c, actualReceivedAmount: amount };
+        return { ...updated, calculatedUnpaid: deriveUnpaid(updated) };
+      }),
+    })),
+
+  setManualUnpaidAmount: (caseId, amount) =>
+    set((s) => ({
+      cases: s.cases.map((c) => {
+        if (c.id !== caseId) return c;
+        const updated = { ...c, manualUnpaidAmount: amount };
+        return { ...updated, calculatedUnpaid: deriveUnpaid(updated) };
       }),
     })),
 
