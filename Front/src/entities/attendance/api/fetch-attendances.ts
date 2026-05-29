@@ -54,6 +54,7 @@ function toAttendance(r: WorkingResponse): AttendanceRecord {
 export async function fetchAttendances(
   workplaceId: string,
 ): Promise<AttendanceRecord[]> {
+  // TODO: /api/working/** 인증 정책 변경 시 apiClient로 교체 필요
   const { data } = await apiClient.get<WorkingResponse[]>(
     `/working/history/${workplaceId}`,
   );
@@ -63,6 +64,7 @@ export async function fetchAttendances(
 export async function fetchTodayAttendance(
   workplaceId: string,
 ): Promise<AttendanceRecord | null> {
+  // TODO: /api/working/** 인증 정책 변경 시 apiClient로 교체 필요
   const { data } = await apiClient.get<WorkingResponse | null>(
     `/working/current/${workplaceId}`,
   );
@@ -73,6 +75,7 @@ export async function checkIn(
   workplaceId: string,
   bssid?: string,
 ): Promise<AttendanceRecord> {
+  // TODO: /api/working/** 인증 정책 변경 시 apiClient로 교체 필요
   const { data } = await apiClient.post<WorkingResponse>("/working/clock-in", {
     partTimeJobId: Number(workplaceId),
     bssid: bssid ?? "",
@@ -84,6 +87,7 @@ export async function checkOut(
   attendanceId: string,
   bssid?: string,
 ): Promise<AttendanceRecord> {
+  // TODO: /api/working/** 인증 정책 변경 시 apiClient로 교체 필요
   const { data } = await apiClient.post<WorkingResponse>("/working/clock-out", {
     workingId: Number(attendanceId),
     bssid: bssid ?? "",
