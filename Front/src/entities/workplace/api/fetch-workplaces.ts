@@ -64,3 +64,15 @@ export async function createWorkplace(input: CreateWorkplaceInput): Promise<Work
   });
   return toWorkplace(data);
 }
+
+/**
+ * 알바(part-time-job) 삭제.
+ * - 200 OK / 204 No Content: 삭제 성공 (빈 응답)
+ * - 404: 이미 삭제됨 — 호출 측에서 로컬도 정리
+ * - 403: 권한 없음 (타 사용자의 알바)
+ *
+ * 인증: JWT 필요 (apiClient 인터셉터에서 자동 첨부)
+ */
+export async function deletePartTimeJob(id: number): Promise<void> {
+  await apiClient.delete(`/part-time-jobs/${id}`);
+}

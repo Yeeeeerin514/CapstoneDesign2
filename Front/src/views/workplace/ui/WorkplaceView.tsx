@@ -1,14 +1,22 @@
 import { useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View, Alert } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { Star } from "lucide-react-native";
 import { router } from "expo-router";
+import { isAxiosError } from "axios";
 import type { ContractAnalysisResult } from "@/entities/job-post";
 import {
   useFavoriteWorkplaceStore,
   type FavoriteWorkplace,
 } from "@/features/favorite-workplace";
 import { ScreenHeader, colors } from "@/shared/ui";
-import { registerWorkplace } from "@/entities/workplace";
+import { deletePartTimeJob, registerWorkplace } from "@/entities/workplace";
 import { ContractUploadView } from "./ContractUploadView";
 import { ContractAnalysisView } from "./ContractAnalysisView";
 import { ContractEditView } from "./ContractEditView";
@@ -137,6 +145,7 @@ export function WorkplaceView(): JSX.Element {
     setPartTimeJobId,
     markRegistered,
   } = useFavoriteWorkplaceStore();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [currentScreen, setCurrentScreen] = useState<Screen>("list");
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string | null>(
     null,
@@ -148,6 +157,63 @@ export function WorkplaceView(): JSX.Element {
     useState<PendingRegistration | null>(null);
 
   const selectedWorkplace = workplaces.find((w) => w.id === selectedWorkplaceId);
+
+  /**
+   * 관심업장 삭제 — 백엔드 part_time_job 동시 정리.
+   * - partTimeJobId가 없으면 (BSSID 미등록 단계) 로컬만 제거
+   * - 있으면 DELETE /api/part-time-jobs/{id} 호출 후 로컬 제거
+   * - 404는 이미 삭제된 것으로 간주하고 로컬도 정리, 그 외 status는 로컬 보존
+   */
+  const performDelete = async (wp: FavoriteWorkplace): Promise<void> => {
+    if (wp.partTimeJobId === undefined) {
+      removeWorkplace(wp.id);
+      return;
+    }
+    setDeletingId(wp.id);
+    try {
+      await deletePartTimeJob(wp.partTimeJobId);
+      removeWorkplace(wp.id);
+      Alert.alert("삭제됨", "삭제되었습니다");
+      // TODO: 서버 기준 동기화 — 추후 fetchWorkplaces() 결과로 store 재구축 함수 도입 시 여기서 호출.
+    } catch (err) {
+      if (isAxiosError(err)) {
+        const status = err.response?.status;
+        if (status === 404) {
+          removeWorkplace(wp.id);
+          Alert.alert("이미 삭제됨", "이미 삭제된 알바입니다.");
+          return;
+        }
+        if (status === 403) {
+          Alert.alert("권한 없음", "삭제 권한이 없습니다.");
+          return;
+        }
+        if (err.response === undefined) {
+          Alert.alert("연결 오류", "인터넷 연결을 확인해주세요.");
+          return;
+        }
+      }
+      Alert.alert("삭제 실패", "삭제에 실패했습니다. 다시 시도해주세요.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDelete = (wp: FavoriteWorkplace): void => {
+    Alert.alert(
+      "알바를 삭제하시겠어요?",
+      "삭제 후에는 복구할 수 없습니다.",
+      [
+        { text: "취소", style: "cancel" },
+        {
+          text: "삭제하기",
+          style: "destructive",
+          onPress: () => {
+            void performDelete(wp);
+          },
+        },
+      ],
+    );
+  };
 
   if (currentScreen === "upload" && selectedWorkplace) {
     return (
@@ -327,20 +393,8 @@ export function WorkplaceView(): JSX.Element {
                 key={wp.id}
                 workplace={wp}
                 isLast={idx === workplaces.length - 1}
-                onRemove={() =>
-                  Alert.alert(
-                    "관심업장 삭제",
-                    `${wp.name}을(를) 삭제하시겠어요?`,
-                    [
-                      { text: "취소", style: "cancel" },
-                      {
-                        text: "삭제",
-                        style: "destructive",
-                        onPress: () => removeWorkplace(wp.id),
-                      },
-                    ],
-                  )
-                }
+                isDeleting={deletingId === wp.id}
+                onRemove={() => handleDelete(wp)}
                 onUploadContract={() => {
                   setSelectedWorkplaceId(wp.id);
                   setCurrentScreen(
@@ -366,6 +420,7 @@ export function WorkplaceView(): JSX.Element {
 interface RowProps {
   workplace: FavoriteWorkplace;
   isLast: boolean;
+  isDeleting: boolean;
   onRemove: () => void;
   onUploadContract: () => void;
   onRegisterWorkplace: () => void;
@@ -374,6 +429,7 @@ interface RowProps {
 function WorkplaceRow({
   workplace: wp,
   isLast,
+  isDeleting,
   onRemove,
   onUploadContract,
   onRegisterWorkplace,
@@ -411,8 +467,16 @@ function WorkplaceRow({
         <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
           {wp.name}
         </Text>
-        <TouchableOpacity onPress={onRemove} hitSlop={8}>
-          <Star size={18} color={colors.primary} fill={colors.primary} />
+        <TouchableOpacity
+          onPress={onRemove}
+          hitSlop={8}
+          disabled={isDeleting}
+        >
+          {isDeleting ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Star size={18} color={colors.primary} fill={colors.primary} />
+          )}
         </TouchableOpacity>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>

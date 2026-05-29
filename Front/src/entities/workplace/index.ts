@@ -3,6 +3,7 @@ export {
   fetchWorkplaces,
   fetchWorkplace,
   createWorkplace,
+  deletePartTimeJob,
   type CreateWorkplaceInput,
 } from "./api/fetch-workplaces";
 export {
