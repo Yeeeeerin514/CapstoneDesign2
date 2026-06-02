@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
@@ -12,6 +12,8 @@ import {
 import { ReviewListView } from "./ReviewListView";
 import { ReviewDetailView } from "./ReviewDetailView";
 import { ReviewWriteView } from "./ReviewWriteView";
+import { ResolveReviewCard } from "./ResolveReviewCard";
+import { useReviewStore } from "@/entities/review";
 
 interface ReportListViewProps {
   cases: ReportCase[];
@@ -24,15 +26,15 @@ const STATUS_BADGE: Record<
   ReportStatus,
   { label: string; bg: string; color: string }
 > = {
-  pending: { label: "🔵 진행 중", bg: "#E8F2FF", color: "#1B64DA" },
-  inspecting: { label: "🔵 진행 중", bg: "#E8F2FF", color: "#1B64DA" },
-  correction_ordered: {
-    label: "🟡 시정지시 완료",
+  PENDING: { label: "접수 대기", bg: "#F1F5F9", color: "#475569" },
+  INSPECTING: { label: "조사 중", bg: "#E8F2FF", color: "#1B64DA" },
+  CORRECTION_ORDERED: {
+    label: "시정 명령",
     bg: "#FEF3C7",
     color: "#92400E",
   },
-  resolved: { label: "✅ 해결됨", bg: "#DCFCE7", color: "#15803D" },
-  unresolved: { label: "🔴 미수령", bg: "#FEE2E2", color: "#991B1B" },
+  RESOLVED: { label: "해결 완료", bg: "#DCFCE7", color: "#15803D" },
+  UNRESOLVED: { label: "미해결", bg: "#FEE2E2", color: "#991B1B" },
 };
 
 type ReviewFilter = "all" | "same-industry" | "same-region";
@@ -41,44 +43,6 @@ const FILTER_CHIPS: Array<{ key: ReviewFilter; label: string }> = [
   { key: "all", label: "전체" },
   { key: "same-industry", label: "같은 업종" },
   { key: "same-region", label: "같은 지역" },
-];
-
-interface MockReview {
-  id: string;
-  rating: number;
-  industry: string;
-  region: string;
-  title: string;
-  nickname: string;
-  badge: string;
-  resolvedDays: number;
-  /** 작성자가 멘토 등록된 경우 true — false면 후기 상세 보기 링크. */
-  isAuthorMentor: boolean;
-}
-
-const MOCK_REVIEWS: MockReview[] = [
-  {
-    id: "review-1",
-    rating: 4.8,
-    industry: "카페·음식점",
-    region: "서울",
-    title: "2주만에 해결했어요, 진정서 이렇게 쓰세요",
-    nickname: "닉네임A",
-    badge: "🛡 인증멘토",
-    resolvedDays: 18,
-    isAuthorMentor: true,
-  },
-  {
-    id: "review-2",
-    rating: 5.0,
-    industry: "편의점",
-    region: "경기",
-    title: "5명 공동대응으로 3주 만에 전액 수령",
-    nickname: "닉네임B",
-    badge: "🏆 공동대응대표",
-    resolvedDays: 21,
-    isAuthorMentor: false,
-  },
 ];
 
 export function ReportListView({
@@ -94,19 +58,23 @@ export function ReportListView({
   );
   const [viewingReviewId, setViewingReviewId] = useState<string | null>(null);
   const [showClosedCases, setShowClosedCases] = useState(false);
+  /** 자유 작성 모드 — 사건 없이 해결 경험 공유. */
+  const [showFreeReviewWrite, setShowFreeReviewWrite] = useState(false);
+  /** 실제 후기 데이터 — HomeView/ReportEmptyView와 동일한 소스 (useReviewStore). */
+  const reviews = useReviewStore((s) => s.reviews);
   const hasResolvedCase = cases.some(
-    (c) => c.status === "resolved" && c.hasWrittenReview !== true,
+    (c) => c.status === "RESOLVED" && c.hasWrittenReview !== true,
   );
   const firstResolvedNotReviewed = cases.find(
-    (c) => c.status === "resolved" && c.hasWrittenReview !== true,
+    (c) => c.status === "RESOLVED" && c.hasWrittenReview !== true,
   );
 
   // 진행 중 vs 종료(해결됨/미수령) 분리
   const activeCases = cases.filter(
-    (c) => c.status !== "resolved" && c.status !== "unresolved",
+    (c) => c.status !== "RESOLVED" && c.status !== "UNRESOLVED",
   );
   const closedCases = cases.filter(
-    (c) => c.status === "resolved" || c.status === "unresolved",
+    (c) => c.status === "RESOLVED" || c.status === "UNRESOLVED",
   );
 
   if (showReviewList) {
@@ -129,6 +97,10 @@ export function ReportListView({
       />
     );
   }
+  if (showFreeReviewWrite) {
+    // resolvedCase 없이 진입 → ReviewWriteView 자유 작성 모드
+    return <ReviewWriteView onBack={() => setShowFreeReviewWrite(false)} />;
+  }
 
   // PoC 단계: ReportCase에 industry/region 필드가 없으므로 현재 사용자 컨텍스트 mock.
   // 실제 구현 시 cases[0].industry / cases[0].region 으로 교체.
@@ -138,13 +110,13 @@ export function ReportListView({
       : undefined;
 
   const filteredReviews = (() => {
-    if (activeFilter === "all") return MOCK_REVIEWS;
+    if (activeFilter === "all") return reviews;
     if (activeFilter === "same-industry") {
-      return MOCK_REVIEWS.filter(
+      return reviews.filter(
         (r) => r.industry === currentContext?.industry,
       );
     }
-    return MOCK_REVIEWS.filter((r) => r.region === currentContext?.region);
+    return reviews.filter((r) => r.region === currentContext?.region);
   })();
 
   const handleNewReport = onNewReport;
@@ -153,13 +125,6 @@ export function ReportListView({
     setShowReviewList(true);
   };
 
-  const handleConnectMentor = (): void => {
-    // 인라인 미리보기 카드에서는 후기 상세로 이동 (멘토 매칭 결제는 detail에서)
-    Alert.alert(
-      "안내",
-      "멘토 연결은 후기 상세에서 진행할 수 있습니다.",
-    );
-  };
 
   const handleReadReview = (reviewId: string): void => {
     setViewingReviewId(reviewId);
@@ -285,7 +250,7 @@ export function ReportListView({
                     dimmed
                     onPress={() => onCasePress(c.id)}
                     onWriteReview={
-                      c.status === "resolved" && c.hasWrittenReview !== true
+                      c.status === "RESOLVED" && c.hasWrittenReview !== true
                         ? () => setReviewWriteCaseId(c.id)
                         : undefined
                     }
@@ -373,142 +338,36 @@ export function ReportListView({
           </View>
         ) : (
           filteredReviews.slice(0, 2).map((review) => (
-            <View
+            <ResolveReviewCard
               key={review.id}
-              style={{
-                backgroundColor: "#FFFFFF",
-                borderRadius: 14,
-                padding: 16,
-                marginBottom: 10,
-              }}
-            >
-              {/* 상단 메타 */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 8,
-                  marginBottom: 8,
-                }}
-              >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 2,
-                  }}
-                >
-                  <Ionicons name="star" size={13} color="#F59E0B" />
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "700",
-                      color: "#0F172A",
-                    }}
-                  >
-                    {review.rating.toFixed(1)}
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 12, color: "#CBD5E1" }}>·</Text>
-                <Text style={{ fontSize: 12, color: "#64748B" }}>
-                  {review.industry}
-                </Text>
-                <Text style={{ fontSize: 12, color: "#CBD5E1" }}>·</Text>
-                <Text style={{ fontSize: 12, color: "#64748B" }}>
-                  {review.region}
-                </Text>
-              </View>
-
-              {/* 제목 (최대 2줄 말줄임) */}
-              <Text
-                numberOfLines={2}
-                style={{
-                  fontSize: 15,
-                  fontWeight: "600",
-                  color: "#0F172A",
-                  lineHeight: 21,
-                  marginBottom: 8,
-                }}
-              >
-                {review.title}
-              </Text>
-
-              {/* by + 닉네임 + 배지 + 해결 일수 */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  marginBottom: 12,
-                }}
-              >
-                <Text style={{ fontSize: 12, color: "#475569" }}>
-                  {`by ${review.nickname} ${review.badge}`}
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: "#CBD5E1",
-                    marginHorizontal: 6,
-                  }}
-                >
-                  ·
-                </Text>
-                <Text style={{ fontSize: 12, color: "#64748B" }}>
-                  {`해결까지 ${review.resolvedDays}일`}
-                </Text>
-              </View>
-
-              {/* 조건부 CTA: 작성자가 멘토면 결제 버튼, 아니면 후기 자세히 링크 */}
-              {review.isAuthorMentor ? (
-                <Pressable
-                  onPress={handleConnectMentor}
-                  style={{
-                    backgroundColor: "#3182F6",
-                    paddingVertical: 11,
-                    borderRadius: 10,
-                    alignItems: "center",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: "#FFFFFF",
-                      fontSize: 13,
-                      fontWeight: "600",
-                    }}
-                  >
-                    멘토 연결하기 · ₩10,000
-                  </Text>
-                </Pressable>
-              ) : (
-                <Pressable
-                  onPress={() => handleReadReview(review.id)}
-                  style={{
-                    paddingVertical: 6,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "flex-end",
-                    gap: 4,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: "#3182F6",
-                      fontWeight: "600",
-                    }}
-                  >
-                    후기 자세히 보기
-                  </Text>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={14}
-                    color="#3182F6"
-                  />
-                </Pressable>
-              )}
-            </View>
+              review={review}
+              onPressDetail={() => handleReadReview(review.id)}
+            />
           ))
         )}
+
+        {/* "+ 내 해결 경험 공유하기" — 사건 무관 자유 작성 진입점 */}
+        <Pressable
+          onPress={() => setShowFreeReviewWrite(true)}
+          style={{
+            marginTop: 12,
+            backgroundColor: "#FFFFFF",
+            borderRadius: 12,
+            paddingVertical: 14,
+            alignItems: "center",
+            borderWidth: 1,
+            borderColor: "#3182F6",
+            borderStyle: "dashed",
+            flexDirection: "row",
+            justifyContent: "center",
+            gap: 6,
+          }}
+        >
+          <Ionicons name="pencil" size={14} color="#3182F6" />
+          <Text style={{ fontSize: 13, fontWeight: "700", color: "#3182F6" }}>
+            + 내 해결 경험 공유하기
+          </Text>
+        </Pressable>
 
         {/* ───── 섹션 3: 내 후기 쓰기 (해결된 사건이 있을 때만) ───── */}
         {hasResolvedCase ? (
@@ -655,7 +514,7 @@ function CaseCard({
           <View
             style={{
               backgroundColor:
-                c.status === "resolved" ? "#EAF3DE" : "#FEECEC",
+                c.status === "RESOLVED" ? "#EAF3DE" : "#FEECEC",
               padding: 10,
               borderRadius: 8,
               marginBottom: 12,
@@ -665,10 +524,10 @@ function CaseCard({
               style={{
                 fontSize: 13,
                 fontWeight: "600",
-                color: c.status === "resolved" ? "#3B6D11" : "#C0392B",
+                color: c.status === "RESOLVED" ? "#3B6D11" : "#C0392B",
               }}
             >
-              {c.status === "resolved"
+              {c.status === "RESOLVED"
                 ? `✅ ${c.resolvedAt?.slice(0, 10) ?? ""} 해결`
                 : "🔴 미수령 — 민사 진행 필요"}
             </Text>

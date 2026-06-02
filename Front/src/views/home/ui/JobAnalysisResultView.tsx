@@ -8,8 +8,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { ScreenHeader } from "@/shared/ui";
+import { ScreenHeader, Snackbar } from "@/shared/ui";
 import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
 import type {
   ExternalCheck,
@@ -23,6 +22,7 @@ interface Props {
   uploadedImageUri?: string | null;
   onBack: () => void;
   onFavoriteAdded: () => void;
+  onNavigateToWorkplace?: () => void;
 }
 
 const LEVEL_COLOR: Record<
@@ -71,25 +71,37 @@ export function JobAnalysisResultView({
   uploadedImageUri,
   onBack,
   onFavoriteAdded: _onFavoriteAdded,
+  onNavigateToWorkplace,
 }: Props) {
+  const workplaces = useFavoriteWorkplaceStore((s) => s.workplaces);
   const previewUri = uploadedImageUri ?? result.imageUrl;
-  const router = useRouter();
   const addWorkplace = useFavoriteWorkplaceStore((s) => s.addWorkplace);
-  const [isFavoriteAdded, setIsFavoriteAdded] = useState(false);
+  const removeWorkplace = useFavoriteWorkplaceStore((s) => s.removeWorkplace);
+  const existingWorkplace = workplaces.find(
+    (w) => w.name === result.workplaceName,
+  );
+  const isFavorited = existingWorkplace !== undefined;
 
+  const [isRegistered, setIsRegistered] = useState(false);
   const dangerCount = result.issues.filter((i) => i.level === "danger").length;
   const warningCount = result.issues.filter((i) => i.level === "warning").length;
   const hasDanger = dangerCount > 0;
   const isBelowMinWage =
     result.hourlyWage > 0 && result.hourlyWage < result.minimumWage2026;
 
-  function handleAddFavorite() {
-    if (isFavoriteAdded) {
-      onBack();
-      router.push("/(tabs)/workplace");
+  function handleToggleFavorite(): void {
+    if (isFavorited && existingWorkplace !== undefined) {
+      removeWorkplace(existingWorkplace.id);
+      setIsRegistered(false);
     } else {
       addWorkplace(result.workplaceName);
-      setIsFavoriteAdded(true);
+      setIsRegistered(true);
+    }
+  }
+
+  function handleNavigate() {
+    if (onNavigateToWorkplace !== undefined) {
+      onNavigateToWorkplace();
     }
   }
 
@@ -221,11 +233,15 @@ export function JobAnalysisResultView({
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#1E3A8A", flex: 1 }}>
               {result.workplaceName}
             </Text>
-            <Pressable onPress={handleAddFavorite} hitSlop={8} style={{ padding: 4 }}>
+            <Pressable
+              onPress={handleToggleFavorite}
+              hitSlop={10}
+              style={{ padding: 4 }}
+            >
               <Ionicons
-                name={isFavoriteAdded ? "star" : "star-outline"}
+                name={isFavorited ? "star" : "star-outline"}
                 size={22}
-                color="#2563EB"
+                color={isFavorited ? "#2563EB" : "#94A3B8"}
               />
             </Pressable>
           </View>
@@ -563,26 +579,46 @@ export function JobAnalysisResultView({
       {/* 하단 고정 버튼 */}
       <View style={{ position: "absolute", left: 16, right: 16, bottom: 24 }}>
         <TouchableOpacity
-          onPress={handleAddFavorite}
+          onPress={isFavorited ? handleNavigate : handleToggleFavorite}
           activeOpacity={0.85}
           style={{
+            flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: isFavoriteAdded ? "#10B981" : "#2563EB",
+            gap: 6,
+            backgroundColor: "#2563EB",
             paddingVertical: 16,
             borderRadius: 14,
-            shadowColor: isFavoriteAdded ? "#10B981" : "#2563EB",
+            shadowColor: "#2563EB",
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.2,
             shadowRadius: 8,
             elevation: 4,
           }}
         >
-          <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}>
-            {isFavoriteAdded ? "관심업장 보러가기 →" : "☆ 관심업장으로 등록"}
-          </Text>
+          {isFavorited ? (
+            <>
+              <Text
+                style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}
+              >
+                관심업장 보러가기
+              </Text>
+              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+            </>
+          ) : (
+            <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}>
+              ☆ 관심업장으로 등록
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
+
+      <Snackbar
+        visible={isRegistered}
+        message="관심업장으로 등록되었습니다 ✓"
+        onHide={() => setIsRegistered(false)}
+        bottomOffset={96}
+      />
     </View>
   );
 }

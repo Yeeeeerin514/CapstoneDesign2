@@ -22,7 +22,7 @@ export type EmploymentType =
 
 export type BusinessSize = "UNDER_5" | "SIZE_5_TO_30" | "OVER_30" | "UNKNOWN";
 
-export type RegionCode =
+export type Region =
   | "SEOUL" | "BUSAN" | "DAEGU" | "INCHEON" | "GWANGJU" | "DAEJEON" | "ULSAN"
   | "SEJONG" | "GYEONGGI" | "GANGWON" | "CHUNGBUK" | "CHUNGNAM" | "JEONBUK"
   | "JEONNAM" | "GYEONGBUK" | "GYEONGNAM" | "JEJU" | "OTHER";
@@ -81,7 +81,7 @@ export const BUSINESS_SIZE_LABEL: Record<BusinessSize, string> = {
   UNKNOWN: "확인불가",
 };
 
-export const REGION_LABEL: Record<RegionCode, string> = {
+export const REGION_LABEL: Record<Region, string> = {
   SEOUL: "서울특별시", BUSAN: "부산광역시", DAEGU: "대구광역시",
   INCHEON: "인천광역시", GWANGJU: "광주광역시", DAEJEON: "대전광역시",
   ULSAN: "울산광역시", SEJONG: "세종특별자치시",
@@ -115,43 +115,19 @@ export const DAMAGE_AMOUNT_LABEL: Record<DamageAmountRange, string> = {
 
 export type VerificationMethod = "RESOLVED_CASE" | "EVIDENCE_UPLOAD" | "ADMIN_VERIFIED";
 
-export const VERIFICATION_METHOD_LABEL: Record<VerificationMethod, string> = {
-  RESOLVED_CASE: "앱 내 해결 경험",
-  EVIDENCE_UPLOAD: "증빙 자료 업로드",
-  ADMIN_VERIFIED: "관리자 승인",
-};
+/** 백엔드 mentorship_match.status 컬럼 enum. */
+export type MatchStatus = "PROPOSED" | "ACTIVE" | "COMPLETED" | "CANCELED";
 
-export interface MentorRegistrationRequest {
-  nickname?: string;
-  industry: Industry;
-  damageTypes: DamageType[];
-  employmentType?: EmploymentType;
-  businessSize: BusinessSize;
-  region?: RegionCode;
-  resolutionMethods?: ResolutionMethod[];
-  resolutionDays?: number;
-  damageAmountRange?: DamageAmountRange;
-  bio?: string;
-  capacity?: number;
-  consultingFee?: number;
-
-  // 자격 검증 — 필수 (둘 중 하나 충족)
-  verificationMethod: VerificationMethod;
-  /** RESOLVED_CASE: 해결된 신고 사건 ID 목록 */
-  verifiedCaseIds?: number[];
-  /** EVIDENCE_UPLOAD: S3 업로드된 증빙 자료 URL */
-  evidenceUrls?: string[];
-}
-
+/** POST /api/mentoring/match-request 요청 본문. */
 export interface MatchRequestPayload {
-  caseId?: number | null;
+  caseId: number;
   industry: Industry;
   damageTypes: DamageType[];
-  employmentType?: EmploymentType;
+  employmentType: EmploymentType;
   businessSize: BusinessSize;
-  region?: RegionCode;
-  damageAmountRange?: DamageAmountRange;
-  description?: string;
+  region: Region;
+  damageAmountRange: DamageAmountRange;
+  description: string;
   topK?: number;
 }
 
@@ -195,24 +171,45 @@ export interface MatchResponseEnvelope {
   algorithm: string;
 }
 
-export interface FeedbackPayload {
+/**
+ * GET /api/mentoring/my-matches 응답 단일 엔트리.
+ * API-REFERENCE.md §7 MentorshipMatch.
+ * MatchRecommendation과 유사하나 status·matchReasons·neural/rule score 모두 non-nullable.
+ */
+export interface MentorshipMatch {
   matchId: number;
-  rating: number;       // 1~5
-  chatDays: number;
-  resolved: boolean;
-  comment?: string;
+  mentorProfileId: number;
+  mentorUserId: number;
+  mentorNickname: string;
+  industry: string;
+  damageTypes: string[];
+  businessSize: string;
+  region: string;
+  resolutionMethods: string[];
+  isVerified: boolean;
+  averageRating: number;
+  reviewCount: number;
+  consultingFee: number;
+  bio: string;
+  matchScore: number;
+  ruleBasedScore: number;
+  neuralScore: number;
+  contributions: Record<string, number>;
+  matchReasons: string[];
+  rank: number;
+  status: MatchStatus;
 }
 
-/** 백엔드 MentorProfile 엔티티 응답. */
+/** GET /api/mentoring/mentors/{userId} — 백엔드 멘토 프로필 풀 응답. */
 export interface BackendMentorProfile {
   id: number;
   userId: number;
   nickname: string;
   industry: Industry;
   damageTypes: DamageType[];
-  employmentType: EmploymentType | null;
+  employmentType: EmploymentType;
   businessSize: BusinessSize;
-  region: RegionCode | null;
+  region: Region;
   resolutionMethods: ResolutionMethod[];
   resolutionDuration: string | null;
   damageAmountRange: DamageAmountRange | null;
@@ -230,4 +227,34 @@ export interface BackendMentorProfile {
   verifiedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** POST /api/mentoring/match/{matchId}/feedback — 매칭 종료 후 별점/감사 메시지. */
+export interface FeedbackPayload {
+  rating: number;
+  comment?: string;
+  resolved?: boolean;
+}
+
+/** POST /api/mentoring/mentors — 멘토 신규 등록. */
+export interface MentorRegistrationRequest {
+  nickname: string;
+  industry: Industry;
+  damageTypes: DamageType[];
+  employmentType: EmploymentType;
+  businessSize: BusinessSize;
+  region: Region;
+  resolutionMethods: ResolutionMethod[];
+  /** 평균 해결 소요 일수. */
+  resolutionDays: number;
+  damageAmountRange: DamageAmountRange;
+  bio: string;
+  /** 동시 매칭 가능한 멘티 수. */
+  capacity: number;
+  consultingFee: number;
+  verificationMethod: VerificationMethod;
+  /** RESOLVED_CASE 자격 검증 시 — 본인 해결 사건 ID 목록. */
+  verifiedCaseIds?: number[];
+  /** EVIDENCE_UPLOAD 자격 검증 시 — S3 업로드 URL 목록. */
+  evidenceUrls?: string[];
 }

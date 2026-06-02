@@ -1,65 +1,99 @@
 import { useState } from "react";
-import { SafeAreaView, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { ArrowLeft } from "lucide-react-native";
-import type { ContractAnalysisResult, ContractIssue } from "@/entities/job-post";
+import type { ContractAnalysisResult } from "@/entities/job-post";
 import { ScreenHeader } from "@/shared/ui";
-
-type TabKey = "issues" | "content" | "guide";
 
 interface Props {
   result: ContractAnalysisResult;
   onBack: () => void;
-  onRegister: () => void;
+  /** 하단 CTA 진입 — detail view에서는 생략 시 하단 버튼 미노출. */
+  onRegister?: () => void;
+  /**
+   * 하단 CTA 라벨 — 미지정 시 "사업장 등록하기 →".
+   * 이미 등록된 업장에서 계약서만 추가하는 경우 "계약서 업로드 완료" 등으로 override.
+   */
+  submitLabel?: string;
 }
 
-const ISSUE_STYLES: Record<
-  ContractIssue["level"],
-  { bg: string; border: string; titleColor: string; descColor: string }
+type TabKey = "issues" | "content" | "guide";
+
+const RISK_BANNER: Record<
+  "high" | "medium" | "low",
+  {
+    label: string;
+    bg: string;
+    color: string;
+    icon: string;
+    text: string;
+    desc: string;
+    border: string;
+  }
 > = {
-  danger: {
-    bg: "#FEF2F2",
-    border: "#EF4444",
-    titleColor: "#991B1B",
-    descColor: "#B91C1C",
+  high: {
+    label: "위험",
+    bg: "#FEE2E2",
+    color: "#B91C1C",
+    icon: "❗",
+    text: "위험 항목 다수 발견",
+    desc: "이 계약서는 즉시 수정이 필요한 항목이 여러 개 있습니다.",
+    border: "#B91C1C",
   },
-  warning: {
-    bg: "#FEF9F0",
-    border: "#F59E0B",
-    titleColor: "#92400E",
-    descColor: "#B45309",
+  medium: {
+    label: "주의",
+    bg: "#FEF3C7",
+    color: "#92400E",
+    icon: "⚠️",
+    text: "확인이 필요한 부분",
+    desc: "조건 일부가 명시되지 않았거나 검토가 필요합니다.",
+    border: "#92400E",
   },
-  info: {
-    bg: "#EFF6FF",
-    border: "#60A5FA",
-    titleColor: "#1E40AF",
-    descColor: "#1D4ED8",
+  low: {
+    label: "양호",
+    bg: "#DCFCE7",
+    color: "#15803D",
+    icon: "✓",
+    text: "주요 위험 없음",
+    desc: "현재 계약서에서 위험 신호가 발견되지 않았습니다.",
+    border: "#15803D",
   },
 };
 
-const RISK_BANNER: Record<
-  ContractAnalysisResult["overallRisk"],
-  { bg: string; border: string; text: string; label: string; desc: string }
+const ISSUE_STYLES: Record<
+  "danger" | "warning" | "info",
+  {
+    bg: string;
+    color: string;
+    label: string;
+    border: string;
+    titleColor: string;
+    descColor: string;
+  }
 > = {
-  high: {
-    bg: "#FEF2F2",
-    border: "#FCA5A5",
-    text: "#991B1B",
+  danger: {
+    bg: "#FEE2E2",
+    color: "#B91C1C",
     label: "위험",
-    desc: "심각한 위법 소지가 발견되어 계약 전 확인이 필요해요",
+    border: "#FCA5A5",
+    titleColor: "#B91C1C",
+    descColor: "#7F1D1D",
   },
-  medium: {
-    bg: "#FFFBEB",
-    border: "#FCD34D",
-    text: "#92400E",
+  warning: {
+    bg: "#FEF3C7",
+    color: "#92400E",
     label: "주의",
-    desc: "주의가 필요한 항목이 있어요",
+    border: "#FDE68A",
+    titleColor: "#92400E",
+    descColor: "#78350F",
   },
-  low: {
-    bg: "#F0FDF4",
-    border: "#86EFAC",
-    text: "#166534",
-    label: "양호",
-    desc: "특별히 발견된 위법 사항이 없어요",
+  info: {
+    bg: "#EBF3FF",
+    color: "#1B64DA",
+    label: "정보",
+    border: "#BFDBFE",
+    titleColor: "#1B64DA",
+    descColor: "#1E3A8A",
   },
 };
 
@@ -67,6 +101,7 @@ export function ContractAnalysisView({
   result,
   onBack,
   onRegister,
+  submitLabel,
 }: Props): JSX.Element {
   const [activeTab, setActiveTab] = useState<TabKey>("issues");
   const banner = RISK_BANNER[result.overallRisk];
@@ -74,7 +109,10 @@ export function ContractAnalysisView({
     result.hourlyWage > 0 && result.hourlyWage < result.minimumWage;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
+    <SafeAreaView
+      edges={["left", "right", "bottom"]}
+      style={{ flex: 1, backgroundColor: "#F8FAFC" }}
+    >
       <ScreenHeader showLogo />
       <View
         style={{
@@ -181,6 +219,11 @@ export function ContractAnalysisView({
               </Text>
             </View>
           </View>
+          {banner.desc !== "" && (
+            <Text style={{ fontSize: 11, color: banner.text, marginTop: 8, opacity: 0.85 }}>
+              {banner.desc}
+            </Text>
+          )}
         </View>
 
         {/* 탭 */}
@@ -289,7 +332,10 @@ export function ContractAnalysisView({
                       {issue.description}
                     </Text>
                     <Text style={{ fontSize: 11, color: "#6B7280" }}>
-                      관련 법률: {issue.legalBasis}
+                      관련 법률:{" "}
+                      {typeof issue.legalBasis === "string"
+                        ? issue.legalBasis
+                        : (issue.legalBasis?.law ?? "")}
                     </Text>
                     {issue.legalBasisExcerpt !== null && issue.legalBasisExcerpt !== "" && (
                       <View
@@ -407,121 +453,56 @@ export function ContractAnalysisView({
               }
             />
             <ContentRow label="근무 시작일" value={result.extracted.startDate ?? "미확인"} />
-            <ContentRow label="근무 장소" value={result.extracted.workPlace ?? "미확인"} />
             <ContentRow
-              label="업무 내용"
-              value={result.extracted.jobDescription ?? "미확인"}
+              label="계약 종료일"
+              value={result.extracted.contractEndDate ?? "미확인"}
             />
             <ContentRow
               label="고용주(상호)"
               value={result.extracted.employerName ?? "미확인"}
             />
             <ContentRow
-              label="사업자등록번호"
-              value={result.extracted.businessRegistrationNumber ?? "미확인"}
+              label="대표자명"
+              value={result.extracted.employerRepresentative ?? "미확인"}
             />
-
-            <View
-              style={{
-                marginTop: 10,
-                paddingTop: 10,
-                borderTopWidth: 0.5,
-                borderTopColor: "#E5E7EB",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: "700",
-                  color: "#0F172A",
-                  marginBottom: 6,
-                }}
-              >
-                계약서 기재 여부
-              </Text>
-              <CheckRow
-                label="휴게시간 명시"
-                value={result.extracted.breakTimeMentioned}
-              />
-              <CheckRow
-                label="주휴수당 명시"
-                value={result.extracted.weeklyHolidayAllowanceMentioned}
-              />
-              <CheckRow
-                label="연장·야간수당 명시"
-                value={result.extracted.overtimeAllowanceMentioned}
-              />
-              <CheckRow
-                label="연차유급휴가 명시"
-                value={result.extracted.annualLeaveMentioned}
-              />
-            </View>
-          </View>
-        )}
-
-        {/* 법률 가이드 탭 */}
-        {activeTab === "guide" && (
-          <View style={{ gap: 8 }}>
-            <GuideCard
-              title="최저임금"
-              law="최저임금법 제6조"
-              body={`2026년 적용 최저시급은 ${result.minimumWage.toLocaleString()}원입니다. 수습기간, 포괄임금, 주휴수당 포함 여부와 무관하게 시간당 실지급액이 이보다 낮으면 위법입니다.`}
+            <ContentRow
+              label="고용주 주소"
+              value={result.extracted.employerAddress ?? "미확인"}
             />
-            <GuideCard
-              title="주휴수당"
-              law="근로기준법 제55조"
-              body="1주 소정근로시간이 15시간 이상이고 그 주의 소정근로일을 모두 개근한 근로자에게는 1일분의 유급휴일(주휴일) 임금을 추가로 지급해야 합니다."
-            />
-            <GuideCard
-              title="연장·야간·휴일 가산수당"
-              law="근로기준법 제56조"
-              body="1일 8시간 또는 1주 40시간을 초과한 근로(연장), 22:00~06:00의 야간근로, 휴일근로에 대해서는 통상임금의 50% 이상을 가산하여 지급해야 합니다."
-            />
-            <GuideCard
-              title="연차유급휴가"
-              law="근로기준법 제60조"
-              body="1년간 80% 이상 출근한 근로자에게는 15일의 유급휴가를 줘야 합니다. 1년 미만 또는 80% 미만 출근자는 1개월 개근 시마다 1일의 유급휴가가 발생합니다."
-            />
-            <GuideCard
-              title="근로계약서 필수 기재사항"
-              law="근로기준법 제17조"
-              body="임금, 소정근로시간, 휴일, 연차유급휴가, 취업장소, 업무내용은 반드시 서면으로 작성해 근로자에게 교부해야 합니다. 어길 시 500만원 이하의 벌금."
-            />
-            <GuideCard
-              title="휴게시간"
-              law="근로기준법 제54조"
-              body="근로시간이 4시간이면 30분 이상, 8시간이면 1시간 이상의 휴게시간을 근로시간 도중에 줘야 합니다."
+            <ContentRow
+              label="고용주 전화"
+              value={result.extracted.employerPhone ?? "미확인"}
             />
           </View>
         )}
       </ScrollView>
 
-      <View
-        style={{
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          backgroundColor: "#fff",
-          borderTopWidth: 0.5,
-          borderTopColor: "#E5E7EB",
-          padding: 16,
-        }}
-      >
-        <TouchableOpacity
-          onPress={onRegister}
+      {onRegister !== undefined ? (
+        <View
           style={{
-            paddingVertical: 14,
-            backgroundColor: "#111827",
-            borderRadius: 12,
-            alignItems: "center",
+            padding: 16,
+            backgroundColor: "#FFFFFF",
+            borderTopWidth: 1,
+            borderTopColor: "#E2E8F0",
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
-            사업장 등록하기 →
-          </Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            onPress={onRegister}
+            style={{
+              backgroundColor: "#3182F6",
+              paddingVertical: 14,
+              borderRadius: 12,
+              alignItems: "center",
+            }}
+          >
+            <Text
+              style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}
+            >
+              {submitLabel ?? "사업장 등록하기 →"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -537,7 +518,8 @@ function ContentRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CheckRow({ label, value }: { label: string; value: boolean | null }) {
+// 향후 "계약 내용" 탭 등에서 재사용될 helper — 현재 미사용 상태 보존.
+export function CheckRow({ label, value }: { label: string; value: boolean | null }) {
   const status =
     value === true ? { color: "#16A34A", text: "✓ 명시됨" } :
     value === false ? { color: "#DC2626", text: "✗ 누락" } :
@@ -552,7 +534,7 @@ function CheckRow({ label, value }: { label: string; value: boolean | null }) {
   );
 }
 
-function GuideCard({
+export function GuideCard({
   title,
   law,
   body,
@@ -560,7 +542,7 @@ function GuideCard({
   title: string;
   law: string;
   body: string;
-}) {
+}): JSX.Element {
   return (
     <View
       style={{

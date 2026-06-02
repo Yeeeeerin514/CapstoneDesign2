@@ -10,11 +10,6 @@ export type {
 } from "./model/types";
 export { calcMentorScore } from "./model/types";
 export { MOCK_MENTORS } from "./model/mock-data";
-export {
-  fetchRecommendedMentors,
-  fetchMentor,
-  createEscrowOrder,
-} from "./api/fetch-mentors";
 
 // Phase 1 — 실제 백엔드 매칭 시스템 (Gower + Gale-Shapley + Thompson Sampling)
 export type {
@@ -22,10 +17,11 @@ export type {
   DamageType,
   EmploymentType,
   BusinessSize,
-  RegionCode,
+  Region,
   ResolutionMethod,
   DamageAmountRange,
   VerificationMethod,
+  MatchStatus,
   MentorRegistrationRequest,
   MatchRequestPayload,
   MatchContribution,
@@ -33,6 +29,7 @@ export type {
   MatchResponseEnvelope,
   FeedbackPayload,
   BackendMentorProfile,
+  MentorshipMatch,
 } from "./model/matching-types";
 export {
   INDUSTRY_LABEL,
@@ -42,18 +39,22 @@ export {
   REGION_LABEL,
   RESOLUTION_METHOD_LABEL,
   DAMAGE_AMOUNT_LABEL,
-  VERIFICATION_METHOD_LABEL,
 } from "./model/matching-types";
 export {
   registerMentor,
-  fetchMyMentorProfile,
+  fetchMentorProfileById as fetchMyMentorProfile,
   requestMatch,
   confirmMatch,
-  submitMatchingFeedback,
-  fetchMyMatches,
+  submitMatchFeedback as submitMatchingFeedback,
   fetchMatchingWeights,
   uploadMentorEvidence,
   fetchChatMessages,
   sendChatMessage,
 } from "./api/matching-api";
 export type { BackendChatMessage } from "./api/matching-api";
+
+export {
+  browseMentors,
+  type BrowseMentorsParams,
+  type BrowseMentorsResponse,
+} from "./api/browse-mentors";

@@ -1,6 +1,17 @@
 import { apiClient } from "@/shared/api/axios-instance";
 import type { AttendanceRecord } from "../model/types";
 
+/**
+ * /api/working/** 인증 정책 (2026-05-29 기준):
+ * - SecurityConfig permitAll 목록에 명시되지 않음 → JWT 검증 대상
+ * - 다만 현재 컨트롤러들이 @AuthenticationPrincipal을 미사용 → 토큰 없어도 403 안 남
+ * - 현재 코드는 apiClient(JWT 자동 첨부) 경유라 양쪽 모두 안전
+ *
+ * TODO: /api/working/** 인증 정책 변경 시 axios 인스턴스 점검 필요
+ *   - 백엔드가 @AuthenticationPrincipal 도입 → apiClient 그대로 OK (토큰 자동 첨부됨)
+ *   - SecurityConfig가 permitAll로 명시 → 변경 없음 (현재 동작과 동일)
+ */
+
 interface WorkingResponse {
   id: number;
   partTimeJobId: number;
@@ -30,38 +41,43 @@ function toAttendance(r: WorkingResponse): AttendanceRecord {
     scheduledStart: "09:00", // 백엔드 응답에 미포함 — Phase 2에서 schedule join 필요
     scheduledEnd: "18:00",
     actualCheckIn: toTimeLabel(r.realStartTime),
+    actualCheckInIso: r.realStartTime ?? undefined,
     actualCheckOut: toTimeLabel(r.realEndTime),
     extendedMinutes: 0,
     workedMinutes,
     overtimeMinutes: Math.max(0, workedMinutes - 480),
     nightWorkedMinutes: 0,
     estimatedWage: 0,
-    status: r.inProgress ? "working" : "checked-out",
+    status: r.inProgress
+      ? "working"
+      : r.realEndTime !== null
+        ? "checked-out"
+        : "checked-in",
   };
 }
 
+/**
+ * GET /api/working/history/{partTimeJobId}
+ * 출퇴근 히스토리 조회.
+ */
 export async function fetchAttendances(
   workplaceId: string,
 ): Promise<AttendanceRecord[]> {
+  // TODO: /api/working/** 인증 정책 변경 시 apiClient로 교체 필요
   const { data } = await apiClient.get<WorkingResponse[]>(
     `/working/history/${workplaceId}`,
   );
   return data.map(toAttendance);
 }
 
-export async function fetchTodayAttendance(
-  workplaceId: string,
-): Promise<AttendanceRecord | null> {
-  const { data } = await apiClient.get<WorkingResponse | null>(
-    `/working/current/${workplaceId}`,
-  );
-  return data ? toAttendance(data) : null;
-}
-
+/**
+ * POST /api/working/clock-in — 출근 처리.
+ */
 export async function checkIn(
   workplaceId: string,
   bssid?: string,
-): Promise<AttendanceRecord> {
+): Promise<AttendanceRecord | null> {
+  // TODO: /api/working/** 인증 정책 변경 시 apiClient로 교체 필요
   const { data } = await apiClient.post<WorkingResponse>("/working/clock-in", {
     partTimeJobId: Number(workplaceId),
     bssid: bssid ?? "",
@@ -73,9 +89,22 @@ export async function checkOut(
   attendanceId: string,
   bssid?: string,
 ): Promise<AttendanceRecord> {
+  // TODO: /api/working/** 인증 정책 변경 시 apiClient로 교체 필요
   const { data } = await apiClient.post<WorkingResponse>("/working/clock-out", {
     workingId: Number(attendanceId),
     bssid: bssid ?? "",
   });
   return toAttendance(data);
+}
+
+/**
+ * GET /api/working/total-minutes/{partTimeJobId}
+ * 인증 불필요. 누적 근무시간(분) 반환.
+ */
+// TODO: /api/working/** 인증 정책 변경 시 apiClient로 교체 필요
+export async function fetchTotalMinutes(partTimeJobId: number): Promise<number> {
+  const { data } = await apiClient.get<{ totalMinutes: number }>(
+    `/working/total-minutes/${partTimeJobId}`,
+  );
+  return data.totalMinutes;
 }

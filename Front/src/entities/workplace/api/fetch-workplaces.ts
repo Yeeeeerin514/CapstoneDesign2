@@ -1,4 +1,5 @@
 import { apiClient } from "@/shared/api/axios-instance";
+import { getMinimumWage } from "@/shared/lib/minimum-wage-store";
 import type { Workplace } from "../model/types";
 
 interface PartTimeJobResponse {
@@ -25,7 +26,7 @@ function toWorkplace(r: PartTimeJobResponse): Workplace {
   return {
     id: String(r.id),
     name: r.businessName ?? `알바 ${r.id}`,
-    hourlyWage: r.hourlyWage ?? 10030,
+    hourlyWage: r.hourlyWage ?? getMinimumWage().wage,
     status,
     createdAt: r.startDay ?? new Date().toISOString(),
     bssid: r.bssid,
@@ -52,15 +53,47 @@ export interface CreateWorkplaceInput {
   contractId?: string;
 }
 
+/**
+ * POST /api/part-time-jobs 요청 body.
+ * API-REFERENCE.md §3 PartTimeJobRequest 스펙 준수.
+ */
+export interface PartTimeJobRequest {
+  /** 사업체 DB 연결 — 현재는 null, 추후 사업장 검색 연결 시 활용. */
+  businessId: number | null;
+  businessName: string;
+  day: string;
+  startTime: string;
+  endTime: string;
+  startDay: string;
+  /** 계약 종료일 — 현재는 null, 추후 계약서 extractedInfo.contractEndDate 연결. */
+  endDay: string | null;
+  hourlyWage: number;
+}
+
 export async function createWorkplace(input: CreateWorkplaceInput): Promise<Workplace> {
   const today = new Date().toISOString().split("T")[0];
-  const { data } = await apiClient.post<PartTimeJobResponse>("/part-time-jobs", {
+  const body: PartTimeJobRequest = {
+    businessId: null,
     businessName: input.name,
-    hourlyWage: input.hourlyWage,
     day: "MON,TUE,WED,THU,FRI",
     startTime: "09:00:00",
     endTime: "18:00:00",
     startDay: today,
-  });
+    endDay: null,
+    hourlyWage: input.hourlyWage,
+  };
+  const { data } = await apiClient.post<PartTimeJobResponse>("/part-time-jobs", body);
   return toWorkplace(data);
+}
+
+/**
+ * 알바(part-time-job) 삭제.
+ * - 200 OK / 204 No Content: 삭제 성공 (빈 응답)
+ * - 404: 이미 삭제됨 — 호출 측에서 로컬도 정리
+ * - 403: 권한 없음 (타 사용자의 알바)
+ *
+ * 인증: JWT 필요 (apiClient 인터셉터에서 자동 첨부)
+ */
+export async function deletePartTimeJob(id: number): Promise<void> {
+  await apiClient.delete(`/part-time-jobs/${id}`);
 }

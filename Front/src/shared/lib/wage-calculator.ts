@@ -5,11 +5,10 @@
  *  - 연장수당: 8시간 초과분 × 시급 × 1.5
  *  - 야간수당: 22:00~06:00 근무분 × 시급 × 0.5 추가
  *  - 주휴수당: 주 15시간 이상 근무 시 1일치 임금 자동 추가
- *  - 최저임금 미달 시 경고 (2026년 기준: 10,030원/시)
+ *  - 최저임금 미달 시 경고 — 최저시급은 호출처가 store에서 주입
  */
 
-/** 2026년 최저시급 (원/시). 매년 갱신 필요. */
-export const MINIMUM_WAGE_2026 = 10_030;
+import { getMinimumWage } from "./minimum-wage-store";
 
 /** 1일 법정근로시간 (분). */
 const DAILY_LEGAL_MINUTES = 8 * 60;
@@ -23,7 +22,7 @@ export interface DailyShift {
   nightWorkedMinutes: number;
 }
 
-export interface WageBreakdown {
+export interface DailyWageBreakdown {
   basePay: number;
   overtimePay: number;
   nightPay: number;
@@ -40,7 +39,7 @@ export interface WageBreakdown {
 export function calcDailyWage(
   hourlyWage: number,
   shift: DailyShift,
-): WageBreakdown {
+): DailyWageBreakdown {
   const baseMinutes = Math.min(shift.workedMinutes, DAILY_LEGAL_MINUTES);
   const overtimeMinutes = Math.max(0, shift.workedMinutes - DAILY_LEGAL_MINUTES);
   const nightMinutes = Math.max(
@@ -57,7 +56,7 @@ export function calcDailyWage(
     overtimePay,
     nightPay,
     total: basePay + overtimePay + nightPay,
-    isBelowMinimum: hourlyWage < MINIMUM_WAGE_2026,
+    isBelowMinimum: hourlyWage < getMinimumWage().wage,
   };
 }
 

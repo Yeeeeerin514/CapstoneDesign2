@@ -113,14 +113,14 @@ export const useMentorMatchStore = create<MentorMatchState>((set, get) => ({
       ),
     ),
 
-  setBackendMatchId: (matchId, backendMatchId) =>
+  setBackendMatchId: (matchId: string, backendMatchId: number) =>
     set((state) => ({
       matches: state.matches.map((m) =>
         m.id === matchId ? { ...m, backendMatchId } : m,
       ),
     })),
 
-  markFeedbackSubmitted: (matchId) =>
+  markFeedbackSubmitted: (matchId: string) =>
     set((state) => ({
       matches: state.matches.map((m) =>
         m.id === matchId ? { ...m, feedbackSubmitted: true } : m,

@@ -1,4 +1,5 @@
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -8,6 +9,7 @@ import {
   type FavoriteWorkplace,
 } from "@/features/favorite-workplace";
 import { useReportStore } from "@/features/report-submit";
+import { fetchContractFactSheet } from "@/entities/job-post";
 
 interface WorkplaceSelectForReportViewProps {
   /** 뒤로가기 — Empty 상태로 복귀. */
@@ -18,8 +20,7 @@ interface WorkplaceSelectForReportViewProps {
 
 /**
  * 신고 탭 인라인 — 신고 가능한 내 업장 리스트.
- * 등록 완료된(workplaceRegistered) 관심업장만 표시. 카드에서 "신고하기" 누르면
- * 새 ReportCase 생성 후 onCaseCreated 콜백으로 상위에 caseId 전달.
+ * 등록 완료된(workplaceRegistered) 관심업장만 표시.
  */
 export function WorkplaceSelectForReportView({
   onBack,
@@ -27,21 +28,46 @@ export function WorkplaceSelectForReportView({
 }: WorkplaceSelectForReportViewProps): JSX.Element {
   const workplaces = useFavoriteWorkplaceStore((s) => s.workplaces);
   const startReport = useReportStore((s) => s.startReport);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
   const eligibleWorkplaces = workplaces.filter(
     (w) => w.registrationStatus === "registered",
   );
 
   const handleReport = (wp: FavoriteWorkplace): void => {
-    const caseId = startReport({
-      workplaceName: wp.name,
-      industry: "카페·음식점",
-      region: "서울 강남구",
-      damageTypes: ["임금체불"],
-      initialEvidence:
-        wp.contractStatus === "uploaded" ? { contracts: 1 } : {},
-    });
-    onCaseCreated(caseId);
+    const hasContract = wp.contractStatus === "uploaded";
+    const initialEvidence = hasContract ? { contracts: 1 } : {};
+
+    const createCase = (
+      override?: { name?: string; brn?: string | null },
+    ): void => {
+      const caseId = startReport({
+        workplaceName: override?.name ?? wp.name,
+        businessRegistrationNumber: override?.brn ?? null,
+        industry: "카페·음식점",
+        region: "서울 강남구",
+        damageTypes: ["임금체불"],
+        initialEvidence,
+      });
+      onCaseCreated(caseId);
+    };
+
+    if (wp.contractId === undefined) {
+      createCase();
+      return;
+    }
+    setLoadingId(wp.id);
+    void fetchContractFactSheet(wp.contractId)
+      .then((fs) => {
+        createCase({
+          name: fs.employerName ?? wp.name,
+          brn: fs.businessRegistrationNumber ?? null,
+        });
+      })
+      .catch(() => {
+        createCase();
+      })
+      .finally(() => setLoadingId(null));
   };
 
   return (
@@ -145,6 +171,7 @@ export function WorkplaceSelectForReportView({
             <WorkplaceReportCard
               key={wp.id}
               workplace={wp}
+              isLoading={loadingId === wp.id}
               onReport={() => handleReport(wp)}
             />
           ))
@@ -156,11 +183,13 @@ export function WorkplaceSelectForReportView({
 
 interface WorkplaceReportCardProps {
   workplace: FavoriteWorkplace;
+  isLoading: boolean;
   onReport: () => void;
 }
 
 function WorkplaceReportCard({
   workplace,
+  isLoading,
   onReport,
 }: WorkplaceReportCardProps): JSX.Element {
   return (
@@ -202,13 +231,21 @@ function WorkplaceReportCard({
       </View>
       <Pressable
         onPress={onReport}
+        disabled={isLoading}
         style={{
           backgroundColor: "#1A5FAF",
           borderRadius: 8,
           paddingHorizontal: 14,
           paddingVertical: 9,
+          opacity: isLoading ? 0.6 : 1,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
         }}
       >
+        {isLoading ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : null}
         <Text style={{ color: "#FFFFFF", fontSize: 13, fontWeight: "600" }}>
           신고하기
         </Text>

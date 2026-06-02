@@ -3,25 +3,31 @@ import { persist } from "zustand/middleware";
 import { persistStorage } from "@/shared/lib/zustand-storage";
 
 /**
- * 인증 상태.
- *
- * - userId / name / email: 원본 필드
- * - userIdString / nickname: UI에서 쉽게 쓰는 파생 필드
- *   (zustand computed가 표준 아니라서 setAuth에서 함께 채움)
+ * 통합 인증 스토어.
+ * - 백엔드 토큰/숫자 userId: `token`/`userId`/`name`/`email` (apiClient 인터셉터 + login 화면)
+ * - 앱 도메인 사용자 식별 (멘토 매칭/그룹/결제/후기 등): `userIdString`/`nickname`/`isLoggedIn`
+ *   Phase A에서는 mock 기본값으로 시작 (`current-user-mock` / "나" / true).
+ * - AsyncStorage(네이티브)/localStorage(웹) 영속화.
  */
 interface AuthState {
+  // 백엔드 인증
   token: string | null;
   userId: number | null;
   name: string | null;
   email: string | null;
 
-  /** 파생 — UI 코드 호환성용. userId를 string으로. 비로그인 시 "". */
+  // 앱 도메인 사용자 식별 (Phase A: mock)
   userIdString: string;
-  /** 파생 — UI 코드 호환성용. name과 동일. 비로그인 시 "". */
   nickname: string;
+  isLoggedIn: boolean;
 
   setAuth: (token: string, userId: number, name: string, email: string) => void;
   clearAuth: () => void;
+
+  /** Phase A mock 로그인 — userIdString/nickname/isLoggedIn 갱신. */
+  login: (userIdString: string, nickname: string) => void;
+  /** 모든 인증 상태 초기화 (백엔드/도메인 동시). */
+  logout: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -31,18 +37,36 @@ export const useAuthStore = create<AuthState>()(
       userId: null,
       name: null,
       email: null,
-      userIdString: "",
-      nickname: "",
+
+      userIdString: "current-user-mock",
+      nickname: "나",
+      isLoggedIn: true,
+
       setAuth: (token, userId, name, email) =>
         set({
           token,
           userId,
           name,
           email,
+          // 백엔드 로그인 성공 시 도메인 ID도 갱신
           userIdString: String(userId),
           nickname: name ?? "",
+          isLoggedIn: true,
         }),
+
       clearAuth: () =>
+        set({
+          token: null,
+          userId: null,
+          name: null,
+          email: null,
+          isLoggedIn: false,
+        }),
+
+      login: (userIdString, nickname) =>
+        set({ userIdString, nickname, isLoggedIn: true }),
+
+      logout: () =>
         set({
           token: null,
           userId: null,
@@ -50,6 +74,7 @@ export const useAuthStore = create<AuthState>()(
           email: null,
           userIdString: "",
           nickname: "",
+          isLoggedIn: false,
         }),
     }),
     {
@@ -57,7 +82,7 @@ export const useAuthStore = create<AuthState>()(
       storage: persistStorage,
       version: 2,
       migrate: (persisted: unknown, version) => {
-        // v1 → v2: userIdString/nickname 파생 필드 추가
+        // v1 → v2: userIdString/nickname/isLoggedIn 파생 필드 추가
         if (
           persisted !== null &&
           typeof persisted === "object" &&
@@ -69,6 +94,9 @@ export const useAuthStore = create<AuthState>()(
           }
           if (state.nickname === undefined) {
             state.nickname = (state.name as string | null) ?? "";
+          }
+          if (state.isLoggedIn === undefined) {
+            state.isLoggedIn = state.token != null;
           }
         }
         return persisted as AuthState;

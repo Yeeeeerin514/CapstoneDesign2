@@ -1,25 +1,17 @@
-export type EvidenceType =
-  | "bssid-log"
-  | "contract"
-  | "bankbook"
-  | "payslip"
-  | "etc";
+import type { WageBreakdown } from "../api/wage-calc";
+
+// ──────────────────────────────────────
+// 레거시 Report — 옛 신고 모델 (api/create-report.ts 호환). 새 코드는 ReportCase 사용.
+// ──────────────────────────────────────
+export type EvidenceType = "attendance" | "contract" | "chat" | "photo";
 
 export interface ReportEvidence {
   id: string;
   type: EvidenceType;
-  /** 로컬 URI 또는 서버 URL. */
   uri: string;
-  /** 사용자에게 보여줄 라벨 (예: "1월 BSSID 기록"). */
-  label: string;
-  /** 자동 수집 여부 — UI에서 ✓ 표시. */
-  autoCollected: boolean;
+  capturedAt: string;
 }
 
-/**
- * 레거시 신고 모델 — `entities/report/api/create-report.ts`가 사용.
- * 새 신고 코치 흐름은 `ReportCase`를 사용한다.
- */
 export interface Report {
   id: string;
   workplaceId: string;
@@ -27,46 +19,33 @@ export interface Report {
   estimatedUnpaidAmount: number;
   status: "draft" | "submitted" | "resolved";
   evidences: ReportEvidence[];
-  /** 연대 신고 여부. */
   isSolidarity: boolean;
-  /** 연대 참여자 수 (본인 포함). */
   participantCount: number;
-  /** ISO 생성 시각. */
   createdAt: string;
 }
 
-// ───────────────────────────────────────────────
-// 신고 코치 흐름 — ReportCase 기반
-// ───────────────────────────────────────────────
+// ──────────────────────────────────────
+// V2 ReportCase 모델 — 신고 사건 단위.
+// ──────────────────────────────────────
+
+/** 사건 상태 — 진행 흐름의 메인 축. */
+export type ReportStatus =
+  | "PENDING"
+  | "INSPECTING"
+  | "CORRECTION_ORDERED"
+  | "RESOLVED"
+  | "UNRESOLVED";
 
 /**
- * 사건 상태 (앱 전체 통일) — docs/REPORT_SPEC.md 5-val 모델 기준.
- * - pending: 진정 접수 전 (증거수집/금액계산 단계)
- * - inspecting: 진정 제출 후 감독관 조사 중
- * - correction_ordered: 시정지시 완료
- * - resolved: 해결됨 (종결 통보 + 자가확인)
- * - unresolved: 미수령 (민사 필요)
- */
-export type CaseStatus =
-  | "pending"
-  | "inspecting"
-  | "correction_ordered"
-  | "resolved"
-  | "unresolved";
-
-/** 레거시 별칭 — 점진 마이그레이션용. 새 코드는 `CaseStatus`를 사용. */
-export type ReportStatus = CaseStatus;
-
-/**
- * 6단계 정의 (공동대응이 3번째에 위치).
- * 1: evidence_collection, 2: amount_calculation, 3: group_decision,
- * 4: complaint_draft (멘토 주 진입점),
- * 5: submission, 6: investigation (멘토 보조 진입점)
+ * 4단계 정의 — V2 신고 흐름. 금액 계산/공동대응 단계는 evidence/complaint_draft 안으로
+ * 흡수되어 별도 step에서 제거됨.
+ * 1: evidence_collection (1-A 피해유형 → 1-B 자유서술 → 1-C 진정내용 폼)
+ * 2: complaint_draft     (진정서 PDF 생성 — 멘토 주 진입점)
+ * 3: submission          (고용24 또는 노동지청 접수)
+ * 4: investigation       (출석조사 → 시정지시 → 해결 — 멘토 보조 진입점)
  */
 export type CaseStep =
   | "evidence_collection"
-  | "amount_calculation"
-  | "group_decision"
   | "complaint_draft"
   | "submission"
   | "investigation";
@@ -84,23 +63,8 @@ export type InvestigationSubStatus =
   | "under_correction"
   | "resolved_confirm";
 
-/**
- * Step 2 (amount_calculation) 내부 4단계 서브 상태.
- * - idle: 계산 시작 전 (헤더 금액 숨김, "금액 계산 시작" 버튼만 노출)
- * - calculating: 계산 중 (로딩)
- * - done: 계산 완료 → 사용자 확인 대기 (금액 표시 + "이 금액이 맞나요?" 확인 버튼)
- * - confirmed: 사용자 확인 완료 → 다음 단계 진행 (이후엔 일반 ready 상태로 표시)
- */
-export type AmountCalcState =
-  | "idle"
-  | "calculating"
-  | "done"
-  | "confirmed";
-
 export const STEP_ORDER: readonly CaseStep[] = [
   "evidence_collection",
-  "amount_calculation",
-  "group_decision",
   "complaint_draft",
   "submission",
   "investigation",
@@ -115,18 +79,8 @@ export interface CaseStepMeta {
 
 export const STEP_META: Record<CaseStep, CaseStepMeta> = {
   evidence_collection: {
-    label: "증거 수집",
-    description: "근무기록과 계약서가 자동 수집되었습니다",
-    hasMentorEntry: false,
-  },
-  amount_calculation: {
-    label: "미지급 금액 계산",
-    description: "근무시간과 시급을 계산해 미지급금을 산정합니다",
-    hasMentorEntry: false,
-  },
-  group_decision: {
-    label: "공동대응 여부 결정",
-    description: "같은 업장 피해자와 함께 신고하면 더 강한 압박이 됩니다",
+    label: "신고 정보 입력",
+    description: "피해 유형, 상황, 진정 내용을 차례대로 작성합니다",
     hasMentorEntry: false,
   },
   complaint_draft: {
@@ -150,30 +104,29 @@ export const STEP_META: Record<CaseStep, CaseStepMeta> = {
 };
 
 /**
- * 상태 배지 시맨틱 정의 (color는 앱 테마 토큰명).
- * 구체 hex/배경은 각 view에서 토큰을 해석.
+ * 상태 배지 — label · bg · 텍스트 color (hex). API-REFERENCE.md 기준.
  */
 export const STATUS_BADGE: Record<
-  CaseStatus,
-  { label: string; color: "blue" | "amber" | "green" | "red" }
+  ReportStatus,
+  { label: string; bg: string; color: string }
 > = {
-  pending: { label: "진행 중", color: "blue" },
-  inspecting: { label: "진행 중", color: "blue" },
-  correction_ordered: { label: "시정지시 완료", color: "amber" },
-  resolved: { label: "해결됨", color: "green" },
-  unresolved: { label: "미수령", color: "red" },
+  PENDING:            { label: "접수 대기", bg: "#F1F5F9", color: "#475569" }, // 회색
+  INSPECTING:         { label: "조사 중",   bg: "#E8F2FF", color: "#1B64DA" }, // 파랑
+  CORRECTION_ORDERED: { label: "시정 명령", bg: "#FEF3C7", color: "#92400E" }, // 주황
+  RESOLVED:           { label: "해결 완료", bg: "#DCFCE7", color: "#15803D" }, // 초록
+  UNRESOLVED:         { label: "미해결",    bg: "#FEE2E2", color: "#991B1B" }, // 빨강
 };
 
 /** 사건 status에서 현재 활성 step 도출. */
-export function getCurrentStep(status: CaseStatus): CaseStep {
+export function getCurrentStep(status: ReportStatus): CaseStep {
   switch (status) {
-    case "pending":
+    case "PENDING":
       return "evidence_collection";
-    case "inspecting":
+    case "INSPECTING":
       return "complaint_draft";
-    case "correction_ordered":
-    case "resolved":
-    case "unresolved":
+    case "CORRECTION_ORDERED":
+    case "RESOLVED":
+    case "UNRESOLVED":
       return "investigation";
   }
 }
@@ -408,30 +361,35 @@ export interface ReportCase {
   workplaceName: string;
   /** 사업자등록번호. 자동 검출 실패 시 null. */
   businessRegistrationNumber: string | null;
-  /** 업종 — 멘토 매칭 / 후기 필터링 기준 (예: "카페·음식점"). */
+  /** 백엔드 business 테이블 ID. 사업장 검색 연결 시 채워짐. 미연결이면 null. */
+  businessId: number | null;
+  /** 업종 (카페·음식점 등) — UI 필터·후기 매칭용. */
   industry: string;
-  /** 지역 — 후기 필터 / 표시용 (예: "서울 강남구"). */
+  /** 지역 (서울 강남구 등). */
   region: string;
-  /** 피해 유형 — 멘토 매칭 기준 (예: ["임금체불", "주휴수당"]). */
+  /** 피해 유형 라벨 배열 — V2에서는 damageTypeEnums가 정식이지만 호환을 위해 보존. */
   damageTypes: string[];
 
+  /** 사건 상태 — 신고 흐름의 메인 축. */
   status: ReportStatus;
-  /** 현재 진행 중인 단계 ID. 수정 모드에선 highestStep보다 작을 수 있음. */
+  /** 현재 활성 step. */
   currentStep: CaseStep;
-  /**
-   * 진행한 적이 있는 가장 마지막 단계.
-   * 사용자가 이전 단계로 되돌아가 수정해도 줄어들지 않음.
-   *   - currentStep === highestStep: 신규 진행 중
-   *   - currentStep < highestStep:    수정 모드
-   */
+  /** 도달한 최고 step — 수정 모드에서도 줄지 않음. */
   highestStep: CaseStep;
-  /** 완료된 단계 ID 목록. completeStep 액션이 push, 중복 방지. */
+  /** 완료된 step 목록. */
   completedSteps: CaseStep[];
 
-  /** 증거 상태 — EvidenceState (카운트 + 사용자 직접 입력값). */
+  /** 증거 상태 (레거시 V1). */
   evidence: EvidenceState;
-  /** 실제 업로드된 증거 파일 목록 — evidence 카운트와 동기 갱신. */
   evidenceFiles: EvidenceFile[];
+  evidenceTexts: string[];
+
+  /** ISO 생성 시각. */
+  createdAt: string;
+  /** ISO resolved 전환 시각. */
+  resolvedAt?: string;
+  /** ISO 노동청 제출 시각. */
+  submittedAt?: string;
 
   // 금액 (모두 null 시작 — 증거 없이는 금액 표시 안 함)
   /** 받아야 할 금액 (시급 × 근무시간). 계약서 + 근무기록 또는 사용자 입력 있을 때만. */
@@ -441,15 +399,14 @@ export interface ReportCase {
   /** 미지급금 = Owed - Paid. 양쪽 다 있을 때만. */
   calculatedUnpaid: number | null;
 
-  /** 사건 생성 시각 (ISO). */
-  createdAt: string;
-  /** status가 resolved로 전환된 시각 (ISO). updateCaseStatus가 자동 채움. */
-  resolvedAt?: string;
-  /** 노동청 제출 시각 (ISO). setSubmittedAt이 채움. */
-  submittedAt?: string;
-
-  /** 공동대응 그룹 ID — 참여 시. */
-  groupId?: string;
+  /** 백엔드 wage-calc 결과 캐싱 — Step 2 done 이후 채워짐. */
+  wageBreakdown: WageBreakdown | null;
+  /** 사용자 지정 시급. null이면 백엔드가 contract/최저시급 자동 선택. */
+  hourlyWage: number | null;
+  /** 실제 수령액 — 사용자 입력. null = 미입력. */
+  actualReceivedAmount: number | null;
+  /** 사용자가 breakdown 편집 후 저장한 미지급 총액. 우선순위: manual > (totalShouldReceive - actualReceived). */
+  manualUnpaidAmount: number | null;
 
   /** 진정서 초안 ID — ReportDraft entity 도입 시 사용. */
   draftId?: string;
@@ -461,14 +418,101 @@ export interface ReportCase {
   investigationStatus?: InvestigationSubStatus;
 
   /**
-   * Step 2 (amount_calculation) 서브 상태. 사건 생성 시 'idle'로 초기화.
-   * 사용자가 "금액 계산 시작" 누르면 calculating → done(확인 대기) → confirmed(다음 단계).
-   */
-  amountCalcState: AmountCalcState;
-
-  /**
    * 후기 작성 완료 여부. ReviewWriteView가 addReview 직후 true로 갱신.
    * 사건 상세/리스트 카드에서 "후기 쓰기" 버튼을 숨길지 결정하는 단일 기준.
    */
   hasWrittenReview?: boolean;
+
+  // ──────────────────────────────────────
+  // V2 신규 — 백엔드 통신 문서(2026-05-30)에 정의된 필드.
+  // 기존 V1 (calculatedUnpaid/evidence.bankRecords 등)은 deprecated이며
+  // ReportDetailView 등 화면이 새 흐름으로 마이그레이션될 때 제거 예정.
+  // ──────────────────────────────────────
+
+  /** 사업장 검색/등록 결과로 채워진 사업장 정보 — POST /reports/draft 응답에서 받음. */
+  business?: BusinessInfo;
+  /** 어떤 경로로 신고 생성되었는지. */
+  draftSource?: ReportDraftSource;
+
+  /** 1단계 1-A 다중 선택 결과 (백엔드 enum). */
+  damageTypeEnums?: DamageTypeEnum[];
+  /** 1단계 1-B 자유 서술 — 멘토 매칭 description으로도 그대로 사용. */
+  freeFormDescription?: string;
+  /** 1단계 1-C 피진정인 폼 — 계약서 있으면 자동 채움. */
+  respondent?: ComplaintRespondent;
+  /** 1단계 1-C 진정 내용 폼. */
+  facts?: ComplaintFacts;
+}
+
+// ──────────────────────────────────────
+// V2 신규 타입 (백엔드 enum/shape와 1:1 매칭)
+// ──────────────────────────────────────
+
+/** 사업장 정보 — POST /reports/draft 응답의 business 블록과 1:1. */
+export interface BusinessInfo {
+  name: string;
+  registrationNumber: string | null;
+  category: string | null;
+  address: string | null;
+  phone: string | null;
+  representativeName: string | null;
+  laborOffice: string | null;
+}
+
+/** 신고 사건 생성 경로. */
+export type ReportDraftSource = "search" | "registered" | "manual";
+
+/** 피해 유형 (백엔드 enum). 다중 선택 가능. */
+export type DamageTypeEnum =
+  | "BASE_WAGE"
+  | "WEEKLY_HOLIDAY"
+  | "OVERTIME"
+  | "NIGHT"
+  | "SEVERANCE";
+
+/** 사업체 구분 — 진정서 PDF 항목과 1:1. */
+export type BusinessType = "WORKPLACE" | "CONSTRUCTION_SITE";
+/** 퇴직 여부. */
+export type EmploymentStatusEnum = "CURRENT" | "FORMER";
+/** 근로계약 방법. */
+export type ContractMethod = "WRITTEN" | "ORAL";
+
+/** 진정서 PDF "2. 피진정인" 항목과 1:1. */
+export interface ComplaintRespondent {
+  representativeName: string | null;
+  phone: string | null;
+  address: string | null;
+  businessType: BusinessType;
+  workplaceName: string;
+  workplacePhone: string | null;
+  employeeCount: number | null;
+}
+
+/** 진정서 PDF "3. 진정 내용" 항목과 1:1. 사용자가 단계별로 채움. */
+export interface ComplaintFacts {
+  employmentStartDate: string | null;
+  employmentEndDate: string | null;
+  totalUnpaidWage: number | null;
+  employmentStatus: EmploymentStatusEnum | null;
+  unpaidSeverance: number | null;
+  otherUnpaid: number | null;
+  jobDescription: string | null;
+  wagePaymentDate: string | null;
+  contractMethod: ContractMethod | null;
+}
+
+/**
+ * 진정인(사용자 본인) 정보 — **프론트 로컬에만 저장**, 백엔드 절대 전송 X.
+ * AsyncStorage 키 "applicant_info_v1" 권장.
+ * PDF 생성 시점에만 ComplaintFacts/Respondent와 합쳐서 사용.
+ */
+export interface ApplicantInfo {
+  fullName: string;
+  rrn: string;
+  address: string;
+  phone: string;
+  email: string;
+  mobile: string;
+  wantsResultNotice: boolean;
+  wantsLaborOfficeNotice: boolean;
 }

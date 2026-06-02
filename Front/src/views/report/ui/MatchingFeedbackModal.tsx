@@ -51,10 +51,8 @@ export function MatchingFeedbackModal({
     }
     setSubmitting(true);
     try {
-      await submitMatchingFeedback({
-        matchId,
+      await submitMatchingFeedback(matchId, {
         rating,
-        chatDays: Number(chatDays) || 1,
         resolved,
         comment: comment.trim() || undefined,
       });

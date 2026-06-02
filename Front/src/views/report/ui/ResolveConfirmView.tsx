@@ -23,7 +23,7 @@ export function ResolveConfirmView({
 
   const handleConfirmResolved = async (): Promise<void> => {
     // 1. 사건 상태 resolved로 변경 (resolvedAt 자동 채움)
-    updateCaseStatus(caseId, "resolved");
+    updateCaseStatus(caseId, "RESOLVED");
 
     // 2. 이 사건에 연결된 결제 기록 찾기
     const payments = usePaymentStore.getState().records;

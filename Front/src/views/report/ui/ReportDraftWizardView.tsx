@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,19 +13,20 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { ScreenHeader } from "@/shared/ui";
 import { useReportStore } from "@/features/report-submit";
-import type { ReportCase } from "@/entities/report";
+import type {
+  ApplicantInfo,
+  DamageTypeEnum,
+  ReportCase,
+} from "@/entities/report";
 import {
   buildComplaintHtml,
-  type NegotiationStatus as DraftNegotiation,
-  type ReportDraft,
+  type NegotiationStatus,
 } from "@/features/report-submit/lib/buildComplaintHtml";
+import { loadApplicantInfo } from "@/features/applicant-info";
 
 interface ReportDraftWizardViewProps {
   reportCase: ReportCase;
@@ -34,32 +35,8 @@ interface ReportDraftWizardViewProps {
   onSubmitted?: () => void;
 }
 
-type StepKey =
-  | "damage-types"
-  | "period"
-  | "amount"
-  | "negotiation"
-  | "preview";
-
-const STEPS: StepKey[] = [
-  "damage-types",
-  "period",
-  "amount",
-  "negotiation",
-  "preview",
-];
-
-const DAMAGE_OPTIONS = [
-  { id: "base", label: "임금(기본급) 미지급" },
-  { id: "weekly", label: "주휴수당 미지급" },
-  { id: "overtime", label: "연장근로수당 미지급" },
-  { id: "night", label: "야간근로수당 미지급" },
-  { id: "severance", label: "퇴직금 미지급" },
-] as const;
-
-type DamageId = (typeof DAMAGE_OPTIONS)[number]["id"];
-
-type NegotiationStatus = "refused" | "not-tried" | "no-response";
+type StepKey = "negotiation" | "preview";
+const STEPS: StepKey[] = ["negotiation", "preview"];
 
 const NEGOTIATION_OPTIONS: Array<{
   id: NegotiationStatus;
@@ -86,26 +63,13 @@ const NEGOTIATION_OPTIONS: Array<{
   },
 ];
 
-interface AmountBreakdown {
-  base: number;
-  weekly: number;
-  overtime: number;
-  night: number;
-}
-
-function formatDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = (d.getMonth() + 1).toString().padStart(2, "0");
-  const day = d.getDate().toString().padStart(2, "0");
-  return `${y}.${m}.${day}`;
-}
-
-function diffDays(start: Date, end: Date): number {
-  return Math.max(
-    0,
-    Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
-  );
-}
+const DAMAGE_LABEL: Record<DamageTypeEnum, string> = {
+  BASE_WAGE: "기본 임금 미지급",
+  WEEKLY_HOLIDAY: "주휴수당 미지급",
+  OVERTIME: "연장근로수당 미지급",
+  NIGHT: "야간근로수당 미지급",
+  SEVERANCE: "퇴직금 미지급",
+};
 
 export function ReportDraftWizardView({
   reportCase,
@@ -113,143 +77,30 @@ export function ReportDraftWizardView({
   onSubmitted,
 }: ReportDraftWizardViewProps): JSX.Element {
   const [stepIdx, setStepIdx] = useState(0);
-
-  // Step 1
-  const [damageTypes, setDamageTypes] = useState<DamageId[]>([
-    "base",
-    "weekly",
-  ]);
-
-  // Step 2 — 피해 기간 (사건 생성 시각 ~ 오늘을 기본값으로)
-  const [periodStart, setPeriodStart] = useState<Date>(
-    new Date(reportCase.createdAt),
-  );
-  const [periodEnd, setPeriodEnd] = useState<Date>(new Date());
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-
-  // Step 3 — 자동 산정값 (PoC: calculatedUnpaid 우선, 없으면 wageOwed, 둘 다 없으면 0)
-  const baseAmount =
-    reportCase.calculatedUnpaid ?? reportCase.calculatedWageOwed ?? 0;
-  const autoBreakdown = useMemo<AmountBreakdown>(() => {
-    const total = baseAmount;
-    return {
-      base: Math.round(total * 0.6),
-      weekly: Math.round(total * 0.2),
-      overtime: Math.round(total * 0.15),
-      night: Math.round(total * 0.05),
-    };
-  }, [baseAmount]);
-  const [manualEdit, setManualEdit] = useState(false);
-  const [breakdown, setBreakdown] = useState<AmountBreakdown>(autoBreakdown);
-  const total =
-    breakdown.base + breakdown.weekly + breakdown.overtime + breakdown.night;
-
-  // Step 4
   const [negotiation, setNegotiation] = useState<NegotiationStatus>("refused");
+  const [isGenerating, setIsGenerating] = useState(false);
+  /** 진정인 정보 — AsyncStorage에서 로드 (로컬 전용, 백엔드 미전송). */
+  const [applicant, setApplicant] = useState<ApplicantInfo | null>(null);
 
-  const currentStep = STEPS[stepIdx];
-  const isLast = stepIdx === STEPS.length - 1;
-  const canNext = (() => {
-    if (currentStep === "damage-types") return damageTypes.length > 0;
-    return true;
-  })();
-
-  const toggleDamage = (id: DamageId): void => {
-    setDamageTypes((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  };
-
-  const handlePrev = (): void => {
-    if (stepIdx === 0) {
-      onBack();
-      return;
-    }
-    setStepIdx(stepIdx - 1);
-  };
-
-  const handleNext = (): void => {
-    if (isLast) return;
-    setStepIdx(stepIdx + 1);
-  };
-
-  const buildDraft = (): ReportDraft => ({
-    damageTypes,
-    workPeriod: {
-      start: formatDate(periodStart),
-      end: formatDate(periodEnd),
-    },
-    unpaidBreakdown: breakdown,
-    unpaidAmount: total,
-    employerNegotiation: negotiation as DraftNegotiation,
-  });
-
-  /**
-   * 미리보기 + 직접 수정용 — 구조화된 본문을 단일 plain text로 직렬화.
-   * 사용자가 "직접 수정하기" 누르면 이 텍스트를 TextInput에 채워서 편집 시작.
-   */
-  const buildDefaultBodyText = (): string => {
-    const today = formatDate(new Date());
-    const evidenceLines: string[] = [
-      `  - 근로계약서: ${reportCase.evidence.contracts}건`,
-      `  - 출퇴근 기록: ${reportCase.evidence.workLogs}건`,
-    ];
-    if (reportCase.evidence.paystubs > 0) {
-      evidenceLines.push(
-        `  - 급여 명세서: ${reportCase.evidence.paystubs}건`,
-      );
-    }
-    if (reportCase.evidence.bankRecords > 0) {
-      evidenceLines.push(
-        `  - 통장 내역: ${reportCase.evidence.bankRecords}건`,
-      );
-    }
-    const negText =
-      NEGOTIATION_OPTIONS.find((o) => o.id === negotiation)?.draftText ?? "";
-
-    return [
-      `진정인:    [본인 성함] ([연락처])`,
-      `피진정인:  ${reportCase.workplaceName} (사업주: [사업주명])`,
-      `           주소: [사업장 주소]`,
-      ``,
-      `[진정 취지]`,
-      `  진정인은 피진정인이 운영하는 사업장에서`,
-      `  ${formatDate(periodStart)}부터 ${formatDate(periodEnd)}까지 근로하였으며,`,
-      `  근로기준법 제43조에 따라 지급받아야 할 임금`,
-      `  총 ₩${total.toLocaleString()}원을 지급받지 못하여 진정합니다.`,
-      ``,
-      `[진정 사유]`,
-      `  1. 미지급 항목 및 금액`,
-      `     - 기본 임금: ₩${breakdown.base.toLocaleString()}`,
-      `     - 주휴수당: ₩${breakdown.weekly.toLocaleString()}  (근로기준법 제55조)`,
-      `     - 연장근로수당: ₩${breakdown.overtime.toLocaleString()}  (근로기준법 제56조)`,
-      `     - 야간근로수당: ₩${breakdown.night.toLocaleString()}  (근로기준법 제56조)`,
-      `     - 합계: ₩${total.toLocaleString()}`,
-      `  2. 협의 시도 여부`,
-      `     ${negText}`,
-      ``,
-      `[증거 자료]`,
-      ...evidenceLines,
-      ``,
-      `위와 같이 진정합니다.`,
-      `${today}`,
-      `진정인: [본인 성함] (서명)`,
-      ``,
-      `[관할 고용노동청] 귀하`,
-    ].join("\n");
-  };
-
+  useEffect(() => {
+    void (async () => {
+      const loaded = await loadApplicantInfo();
+      setApplicant(loaded);
+    })();
+  }, []);
   /** 사용자가 직접 편집한 본문. null이면 구조화 미리보기 사용. */
   const [customBodyText, setCustomBodyText] = useState<string | null>(null);
 
+  const currentStep = STEPS[stepIdx];
+  const isLast = stepIdx === STEPS.length - 1;
+
   const generatePdfUri = async (): Promise<string> => {
-    const html = buildComplaintHtml(
-      buildDraft(),
+    const html = buildComplaintHtml({
       reportCase,
-      customBodyText ?? undefined,
-    );
+      negotiation,
+      applicant,
+      customBody: customBodyText ?? undefined,
+    });
     const { uri } = await Print.printToFileAsync({ html, base64: false });
     return uri;
   };
@@ -311,7 +162,6 @@ export function ReportDraftWizardView({
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
       const prev = appStateRef.current;
-      // background/inactive → active 전환 + 브라우저로 보낸 적이 있으면 복귀 처리
       if (
         (prev === "background" || prev === "inactive") &&
         next === "active" &&
@@ -340,11 +190,23 @@ export function ReportDraftWizardView({
   const handleConfirmSubmitted = (): void => {
     completeStepAction(reportCase.id, "submission");
     setCurrentStepAction(reportCase.id, "investigation");
-    updateCaseStatus(reportCase.id, "inspecting");
+    updateCaseStatus(reportCase.id, "INSPECTING");
     setSubmittedAt(reportCase.id, new Date().toISOString());
     setReturnedFromBrowser(false);
     setBrowserOpened(false);
     if (onSubmitted !== undefined) onSubmitted();
+  };
+
+  const handlePrev = (): void => {
+    if (stepIdx === 0) {
+      onBack();
+      return;
+    }
+    setStepIdx(stepIdx - 1);
+  };
+
+  const handleNext = (): void => {
+    if (!isLast) setStepIdx(stepIdx + 1);
   };
 
   return (
@@ -353,7 +215,6 @@ export function ReportDraftWizardView({
       style={{ flex: 1, backgroundColor: "#F8FAFC" }}
     >
       <ScreenHeader showLogo />
-
       <View
         style={{
           flexDirection: "row",
@@ -384,20 +245,17 @@ export function ReportDraftWizardView({
           borderBottomColor: "#F1F5F9",
         }}
       >
-        {STEPS.map((_, i) => {
-          const filled = i <= stepIdx;
-          return (
-            <View
-              key={i}
-              style={{
-                width: i === stepIdx ? 24 : 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: filled ? "#3182F6" : "#E2E8F0",
-              }}
-            />
-          );
-        })}
+        {STEPS.map((_, i) => (
+          <View
+            key={i}
+            style={{
+              width: i === stepIdx ? 24 : 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: i <= stepIdx ? "#3182F6" : "#E2E8F0",
+            }}
+          />
+        ))}
         <Text
           style={{
             fontSize: 12,
@@ -412,359 +270,13 @@ export function ReportDraftWizardView({
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{
-          padding: 16,
-          paddingBottom: 100,
-        }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
       >
-        {currentStep === "damage-types" ? (
-          <View>
-            <Text
-              style={{
-                fontSize: 20,
-                fontWeight: "700",
-                color: "#0F172A",
-                marginBottom: 6,
-              }}
-            >
-              피해 유형을 선택하세요
-            </Text>
-            <Text
-              style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}
-            >
-              해당하는 항목을 모두 선택해주세요 (다중 선택)
-            </Text>
-            {DAMAGE_OPTIONS.map((opt) => {
-              const checked = damageTypes.includes(opt.id);
-              return (
-                <Pressable
-                  key={opt.id}
-                  onPress={() => toggleDamage(opt.id)}
-                  style={{
-                    backgroundColor: "#FFFFFF",
-                    borderRadius: 12,
-                    padding: 14,
-                    marginBottom: 8,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 12,
-                    borderWidth: checked ? 1.5 : 1,
-                    borderColor: checked ? "#3182F6" : "#E2E8F0",
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 4,
-                      borderWidth: 1.5,
-                      borderColor: checked ? "#3182F6" : "#CBD5E1",
-                      backgroundColor: checked ? "#3182F6" : "#FFFFFF",
-                      justifyContent: "center",
-                      alignItems: "center",
-                    }}
-                  >
-                    {checked ? (
-                      <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                    ) : null}
-                  </View>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      color: "#0F172A",
-                      fontWeight: checked ? "600" : "500",
-                    }}
-                  >
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-
-        {currentStep === "period" ? (
-          <View>
-            <Text
-              style={{
-                fontSize: 20,
-                fontWeight: "700",
-                color: "#0F172A",
-                marginBottom: 6,
-              }}
-            >
-              피해 기간을 확인하세요
-            </Text>
-            <Text
-              style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}
-            >
-              자동 입력된 기간을 확인하고 필요 시 수정하세요
-            </Text>
-
-            <View
-              style={{
-                backgroundColor: "#FFFFFF",
-                borderRadius: 12,
-                padding: 16,
-              }}
-            >
-              <Text
-                style={{ fontSize: 11, color: "#64748B", marginBottom: 4 }}
-              >
-                근무 시작일 ~ 종료일
-              </Text>
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontWeight: "700",
-                  color: "#0F172A",
-                  marginBottom: 4,
-                }}
-              >
-                {`${formatDate(periodStart)} ~ ${formatDate(periodEnd)}`}
-              </Text>
-              <Text style={{ fontSize: 13, color: "#3182F6" }}>
-                {`총 ${diffDays(periodStart, periodEnd)}일`}
-              </Text>
-
-              <View
-                style={{ flexDirection: "row", gap: 8, marginTop: 14 }}
-              >
-                <Pressable
-                  onPress={() => setShowStartPicker(true)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 11,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: "#E2E8F0",
-                    backgroundColor: "#F8FAFC",
-                    alignItems: "center",
-                  }}
-                >
-                  <Text
-                    style={{ fontSize: 10, color: "#94A3B8", marginBottom: 2 }}
-                  >
-                    시작일
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: "#0F172A",
-                      fontWeight: "600",
-                    }}
-                  >
-                    {periodStart.toLocaleDateString("ko-KR")}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setShowEndPicker(true)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 11,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: "#E2E8F0",
-                    backgroundColor: "#F8FAFC",
-                    alignItems: "center",
-                  }}
-                >
-                  <Text
-                    style={{ fontSize: 10, color: "#94A3B8", marginBottom: 2 }}
-                  >
-                    종료일
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: "#0F172A",
-                      fontWeight: "600",
-                    }}
-                  >
-                    {periodEnd.toLocaleDateString("ko-KR")}
-                  </Text>
-                </Pressable>
-              </View>
-
-              {showStartPicker ? (
-                <DateTimePicker
-                  value={periodStart}
-                  mode="date"
-                  display="spinner"
-                  locale="ko-KR"
-                  maximumDate={periodEnd}
-                  onChange={(_e: DateTimePickerEvent, selected?: Date) => {
-                    setShowStartPicker(false);
-                    if (selected !== undefined) setPeriodStart(selected);
-                  }}
-                />
-              ) : null}
-              {showEndPicker ? (
-                <DateTimePicker
-                  value={periodEnd}
-                  mode="date"
-                  display="spinner"
-                  locale="ko-KR"
-                  minimumDate={periodStart}
-                  maximumDate={new Date()}
-                  onChange={(_e: DateTimePickerEvent, selected?: Date) => {
-                    setShowEndPicker(false);
-                    if (selected !== undefined) setPeriodEnd(selected);
-                  }}
-                />
-              ) : null}
-            </View>
-          </View>
-        ) : null}
-
-        {currentStep === "amount" ? (
-          <View>
-            <Text
-              style={{
-                fontSize: 20,
-                fontWeight: "700",
-                color: "#0F172A",
-                marginBottom: 6,
-              }}
-            >
-              미지급 금액을 확인하세요
-            </Text>
-            <Text
-              style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}
-            >
-              자동 계산된 금액을 확인하고 필요 시 수정하세요
-            </Text>
-
-            <View
-              style={{
-                backgroundColor: "#FFFFFF",
-                borderRadius: 12,
-                padding: 16,
-                marginBottom: 12,
-              }}
-            >
-              {[
-                { label: "기본 임금", key: "base" as const },
-                { label: "주휴수당", key: "weekly" as const },
-                { label: "연장수당", key: "overtime" as const },
-                { label: "야간수당", key: "night" as const },
-              ].map((row, idx, arr) => (
-                <View
-                  key={row.key}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    paddingVertical: 10,
-                    borderBottomWidth: idx === arr.length - 1 ? 0 : 1,
-                    borderBottomColor: "#F1F5F9",
-                  }}
-                >
-                  <Text
-                    style={{ fontSize: 13, color: "#475569", flex: 1 }}
-                  >
-                    {row.label}
-                  </Text>
-                  {manualEdit ? (
-                    <TextInput
-                      value={String(breakdown[row.key])}
-                      onChangeText={(v) => {
-                        const n = parseInt(v.replace(/[^0-9]/g, ""), 10);
-                        setBreakdown({
-                          ...breakdown,
-                          [row.key]: Number.isFinite(n) ? n : 0,
-                        });
-                      }}
-                      keyboardType="number-pad"
-                      style={{
-                        fontSize: 14,
-                        fontWeight: "600",
-                        color: "#0F172A",
-                        borderWidth: 1,
-                        borderColor: "#E2E8F0",
-                        borderRadius: 6,
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
-                        minWidth: 120,
-                        textAlign: "right",
-                      }}
-                    />
-                  ) : (
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        fontWeight: "600",
-                        color: "#0F172A",
-                      }}
-                    >
-                      {`₩${breakdown[row.key].toLocaleString()}`}
-                    </Text>
-                  )}
-                </View>
-              ))}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingTop: 12,
-                  marginTop: 6,
-                  borderTopWidth: 1,
-                  borderTopColor: "#E2E8F0",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: "#0F172A",
-                    fontWeight: "700",
-                    flex: 1,
-                  }}
-                >
-                  합계
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 18,
-                    fontWeight: "700",
-                    color: "#DC2626",
-                  }}
-                >
-                  {`₩${total.toLocaleString()}`}
-                </Text>
-              </View>
-            </View>
-
-            <Pressable
-              onPress={() => {
-                if (manualEdit) {
-                  // 자동값으로 되돌리기
-                  setBreakdown(autoBreakdown);
-                }
-                setManualEdit(!manualEdit);
-              }}
-              style={{
-                paddingVertical: 11,
-                borderRadius: 10,
-                alignItems: "center",
-                backgroundColor: manualEdit ? "#FEF2F2" : "#FFFFFF",
-                borderWidth: 1,
-                borderColor: manualEdit ? "#FCA5A5" : "#E2E8F0",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: "600",
-                  color: manualEdit ? "#DC2626" : "#475569",
-                }}
-              >
-                {manualEdit ? "자동값으로 되돌리기" : "수동으로 수정"}
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
+        {/* 사용자가 evidence 단계에서 입력한 데이터 요약 카드 */}
+        <DataSummaryCard reportCase={reportCase} />
 
         {currentStep === "negotiation" ? (
-          <View>
+          <View style={{ marginTop: 16 }}>
             <Text
               style={{
                 fontSize: 20,
@@ -775,9 +287,7 @@ export function ReportDraftWizardView({
             >
               사업주와 협의 시도하셨나요?
             </Text>
-            <Text
-              style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}
-            >
+            <Text style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>
               선택에 따라 진정서 문구가 달라집니다
             </Text>
             {NEGOTIATION_OPTIONS.map((opt) => {
@@ -833,33 +343,25 @@ export function ReportDraftWizardView({
               );
             })}
           </View>
-        ) : null}
-
-        {currentStep === "preview" ? (
+        ) : (
           <ComplaintPreview
             reportCase={reportCase}
-            periodStart={periodStart}
-            periodEnd={periodEnd}
-            breakdown={breakdown}
-            total={total}
             negotiationText={
               NEGOTIATION_OPTIONS.find((o) => o.id === negotiation)
                 ?.draftText ?? ""
             }
-            onSavePdf={handleSavePdf}
-            onShare={handleShare}
-            onSubmit={() => {
-              void handleSubmitToMinistry();
-            }}
+            applicant={applicant}
+            onSavePdf={() => void handleSavePdf()}
+            onShare={() => void handleShare()}
+            onSubmit={() => void handleSubmitToMinistry()}
             returnedFromBrowser={returnedFromBrowser}
             onConfirmSubmitted={handleConfirmSubmitted}
             onNotYet={() => setReturnedFromBrowser(false)}
             customBodyText={customBodyText}
-            onEnterEdit={() => setCustomBodyText(buildDefaultBodyText())}
-            onSaveEdit={(text) => setCustomBodyText(text)}
-            onResetEdit={() => setCustomBodyText(null)}
+            onSaveCustom={setCustomBodyText}
+            onResetCustom={() => setCustomBodyText(null)}
           />
-        ) : null}
+        )}
       </ScrollView>
 
       {/* 하단 네비게이션 (preview 단계에서는 숨김) */}
@@ -898,20 +400,18 @@ export function ReportDraftWizardView({
           </Pressable>
           <Pressable
             onPress={handleNext}
-            disabled={!canNext}
             style={{
               flex: 2,
               paddingVertical: 14,
-              backgroundColor: canNext ? "#3182F6" : "#94A3B8",
+              backgroundColor: "#3182F6",
               borderRadius: 10,
               alignItems: "center",
-              opacity: canNext ? 1 : 0.6,
             }}
           >
             <Text
               style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}
             >
-              다음
+              다음 (미리보기)
             </Text>
           </Pressable>
         </View>
@@ -942,11 +442,7 @@ export function ReportDraftWizardView({
           >
             <ActivityIndicator size="large" color="#3182F6" />
             <Text
-              style={{
-                fontSize: 13,
-                color: "#475569",
-                marginTop: 12,
-              }}
+              style={{ fontSize: 13, color: "#475569", marginTop: 12 }}
             >
               PDF 생성 중...
             </Text>
@@ -958,42 +454,110 @@ export function ReportDraftWizardView({
 }
 
 // ──────────────────────────────────────────
-// 진정서 미리보기 + 액션 버튼
+// evidence 단계에서 수집된 데이터 요약 카드
+// ──────────────────────────────────────────
+
+function DataSummaryCard({
+  reportCase,
+}: {
+  reportCase: ReportCase;
+}): JSX.Element {
+  const facts = reportCase.facts ?? null;
+  const damages = reportCase.damageTypeEnums ?? [];
+  return (
+    <View
+      style={{
+        backgroundColor: "#EBF3FF",
+        borderRadius: 12,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: "#B5D4F4",
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 12,
+          fontWeight: "700",
+          color: "#185FA5",
+          marginBottom: 8,
+        }}
+      >
+        ✓ 입력하신 신고 정보
+      </Text>
+      <SummaryRow label="사업장" value={reportCase.workplaceName} />
+      {damages.length > 0 ? (
+        <SummaryRow
+          label="피해 유형"
+          value={damages.map((d) => DAMAGE_LABEL[d]).join(", ")}
+        />
+      ) : null}
+      {facts?.totalUnpaidWage !== null && facts?.totalUnpaidWage !== undefined ? (
+        <SummaryRow
+          label="체불 총액"
+          value={`₩${facts.totalUnpaidWage.toLocaleString()}`}
+        />
+      ) : null}
+      {facts?.employmentStartDate !== null &&
+      facts?.employmentStartDate !== undefined ? (
+        <SummaryRow
+          label="근무 기간"
+          value={`${facts.employmentStartDate} ~ ${facts.employmentEndDate ?? "재직 중"}`}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function SummaryRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}): JSX.Element {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        paddingVertical: 4,
+      }}
+    >
+      <Text style={{ fontSize: 12, color: "#185FA5", width: 80 }}>{label}</Text>
+      <Text
+        style={{
+          flex: 1,
+          fontSize: 12,
+          color: "#0F172A",
+          fontWeight: "600",
+        }}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 // ──────────────────────────────────────────
 
 interface PreviewProps {
   reportCase: ReportCase;
-  periodStart: Date;
-  periodEnd: Date;
-  breakdown: AmountBreakdown;
-  total: number;
   negotiationText: string;
+  applicant: ApplicantInfo | null;
   onSavePdf: () => void;
   onShare: () => void;
   onSubmit: () => void;
-  /** 외부 브라우저에서 돌아온 직후 — "제출하셨나요?" 확인 배너 노출 트리거. */
   returnedFromBrowser: boolean;
-  /** "제출 완료했어요 ✓" — 상위가 상태 전환 + 결과 화면으로 진입. */
   onConfirmSubmitted: () => void;
-  /** "아직 안 했어요" — 배너만 닫고 다시 제출 가능. */
   onNotYet: () => void;
-  /** 사용자가 직접 편집한 본문 — null이면 구조화 미리보기 사용. */
   customBodyText: string | null;
-  /** "✏️ 직접 수정하기" — 상위가 buildDefaultBodyText 결과를 customBodyText에 채워 편집 모드로. */
-  onEnterEdit: () => void;
-  /** "수정 완료" — 편집한 텍스트 저장. */
-  onSaveEdit: (text: string) => void;
-  /** "원래대로" — customBodyText를 null로 되돌려 구조화 렌더로 복귀. */
-  onResetEdit: () => void;
+  onSaveCustom: (text: string) => void;
+  onResetCustom: () => void;
 }
 
 function ComplaintPreview({
   reportCase,
-  periodStart,
-  periodEnd,
-  breakdown,
-  total,
   negotiationText,
+  applicant,
   onSavePdf,
   onShare,
   onSubmit,
@@ -1001,29 +565,68 @@ function ComplaintPreview({
   onConfirmSubmitted,
   onNotYet,
   customBodyText,
-  onEnterEdit,
-  onSaveEdit,
-  onResetEdit,
+  onSaveCustom,
+  onResetCustom,
 }: PreviewProps): JSX.Element {
-  const today = formatDate(new Date());
-  // 편집 모드 — customBodyText가 null이 아니지만 사용자가 아직 [수정 완료]를 안 누른 경우.
-  // draftText는 TextInput value, 저장 시 onSaveEdit으로 상위에 통보.
   const [isEditing, setIsEditing] = useState(false);
   const [draftText, setDraftText] = useState("");
 
+  const damages = reportCase.damageTypeEnums ?? [];
+  const facts = reportCase.facts;
+  const respondent = reportCase.respondent;
+  const total = facts?.totalUnpaidWage ?? 0;
+  const today = new Date().toLocaleDateString("ko-KR");
+
+  const applicantName = applicant?.fullName ?? "[성명]";
+  const applicantPhone = applicant?.phone ?? applicant?.mobile ?? "[연락처]";
+
+  const buildDefaultBodyText = (): string => {
+    const lines: string[] = [
+      `진　정　서`,
+      ``,
+      `1. 진정인`,
+      `   성명: ${applicantName}`,
+      `   연락처: ${applicantPhone}`,
+      `   주소: ${applicant?.address ?? "[주소]"}`,
+      ``,
+      `2. 피진정인`,
+      `   사업장명: ${reportCase.workplaceName}`,
+      `   대표자: ${respondent?.representativeName ?? "[사업주명]"}`,
+      `   연락처: ${respondent?.phone ?? "[사업주 연락처]"}`,
+      `   주소: ${respondent?.address ?? "[사업장 주소]"}`,
+      ``,
+      `3. 진정 내용`,
+      `   입사일: ${facts?.employmentStartDate ?? "-"}`,
+      facts?.employmentStatus === "FORMER"
+        ? `   퇴사일: ${facts?.employmentEndDate ?? "-"}`
+        : `   재직 상태: 재직 중`,
+      `   체불임금 총액: ₩${total.toLocaleString()}`,
+      ``,
+      `   피해 유형:`,
+      ...damages.map((d: DamageTypeEnum) => `     - ${DAMAGE_LABEL[d]}`),
+      ``,
+      `   상황 설명:`,
+      `   ${reportCase.freeFormDescription ?? "(상황 설명 미입력)"}`,
+      ``,
+      `   협의 시도 여부: ${negotiationText}`,
+      ``,
+      `위와 같이 진정합니다.`,
+      `${today}`,
+      `진정인: ${applicantName} (서명)`,
+      ``,
+      `[관할 고용노동청] 귀하`,
+    ];
+    return lines.join("\n");
+  };
+
   const handleEnterEdit = (): void => {
-    onEnterEdit(); // 상위가 default body로 customBodyText 채움
-    setDraftText(customBodyText ?? "");
+    const initial = customBodyText ?? buildDefaultBodyText();
+    setDraftText(initial);
     setIsEditing(true);
   };
 
-  // customBodyText가 채워졌는데 draftText 미초기화 시 동기화 (handleEnterEdit 직후 useEffect 대신)
-  if (isEditing && draftText.length === 0 && customBodyText !== null) {
-    setDraftText(customBodyText);
-  }
-
   return (
-    <View>
+    <View style={{ marginTop: 16 }}>
       <Text
         style={{
           fontSize: 20,
@@ -1038,7 +641,31 @@ function ComplaintPreview({
         아래 내용을 확인하고 저장하거나 제출하세요
       </Text>
 
-      {/* 미리보기 위 액션 줄 — 편집 / 다시 자동 생성 토글 */}
+      {applicant === null ? (
+        <View
+          style={{
+            backgroundColor: "#FEF3C7",
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 12,
+            flexDirection: "row",
+            gap: 6,
+            alignItems: "flex-start",
+          }}
+        >
+          <Ionicons
+            name="warning"
+            size={14}
+            color="#92400E"
+            style={{ marginTop: 1 }}
+          />
+          <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 18 }}>
+            진정인(본인) 정보가 없어 자리표시자로 채워집니다. 마이페이지에서 등록하면 PDF에 자동 반영돼요.
+          </Text>
+        </View>
+      ) : null}
+
+      {/* 미리보기 위 액션 줄 */}
       {!isEditing ? (
         <View
           style={{
@@ -1050,7 +677,7 @@ function ComplaintPreview({
         >
           {customBodyText !== null ? (
             <Pressable
-              onPress={onResetEdit}
+              onPress={onResetCustom}
               style={{
                 paddingHorizontal: 12,
                 paddingVertical: 7,
@@ -1095,19 +722,6 @@ function ComplaintPreview({
           marginBottom: 16,
         }}
       >
-        <Text
-          style={{
-            fontSize: 18,
-            fontWeight: "700",
-            color: "#0F172A",
-            textAlign: "center",
-            marginBottom: 16,
-          }}
-        >
-          진　정　서
-        </Text>
-
-        {/* 편집 모드 — TextInput multiline */}
         {isEditing ? (
           <>
             <TextInput
@@ -1125,17 +739,10 @@ function ComplaintPreview({
                 backgroundColor: "#F8FAFC",
               }}
             />
-            <View
-              style={{
-                flexDirection: "row",
-                gap: 8,
-                marginTop: 12,
-              }}
-            >
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
               <Pressable
                 onPress={() => {
-                  // 편집 취소 — customBodyText는 onEnterEdit가 채웠지만 사용자가 취소했으니 되돌림
-                  onResetEdit();
+                  onResetCustom();
                   setDraftText("");
                   setIsEditing(false);
                 }}
@@ -1150,14 +757,18 @@ function ComplaintPreview({
                 }}
               >
                 <Text
-                  style={{ fontSize: 13, color: "#475569", fontWeight: "600" }}
+                  style={{
+                    fontSize: 13,
+                    color: "#475569",
+                    fontWeight: "600",
+                  }}
                 >
                   취소
                 </Text>
               </Pressable>
               <Pressable
                 onPress={() => {
-                  onSaveEdit(draftText);
+                  onSaveCustom(draftText);
                   setIsEditing(false);
                 }}
                 style={{
@@ -1169,7 +780,11 @@ function ComplaintPreview({
                 }}
               >
                 <Text
-                  style={{ fontSize: 13, color: "#FFFFFF", fontWeight: "600" }}
+                  style={{
+                    fontSize: 13,
+                    color: "#FFFFFF",
+                    fontWeight: "600",
+                  }}
                 >
                   수정 완료
                 </Text>
@@ -1177,123 +792,14 @@ function ComplaintPreview({
             </View>
           </>
         ) : customBodyText !== null ? (
-          // 저장된 사용자 편집본 — 줄바꿈 유지 plain 렌더
           <Text style={previewLineStyle}>{customBodyText}</Text>
         ) : (
-          /* eslint-disable-next-line @typescript-eslint/no-unused-expressions */
-          null
+          <StructuredPreview
+            reportCase={reportCase}
+            negotiationText={negotiationText}
+            applicant={applicant}
+          />
         )}
-
-        {/* 기본 구조화 미리보기 — customBodyText가 null이고 편집 중도 아닐 때만 */}
-        {!isEditing && customBodyText === null ? (
-          <>
-        <Text style={previewLineStyle}>
-          진정인:    [본인 성함] ([연락처])
-        </Text>
-        <Text style={previewLineStyle}>
-          {`피진정인:  ${reportCase.workplaceName} (사업주: [사업주명])`}
-        </Text>
-        <Text style={previewLineStyle}>
-          {`           주소: [사업장 주소]`}
-        </Text>
-
-        <Text style={previewSectionStyle}>진정 취지</Text>
-        <Text style={previewLineStyle}>
-          {`  진정인은 피진정인이 운영하는 사업장에서`}
-        </Text>
-        <Text style={previewLineStyle}>
-          {`  ${formatDate(periodStart)}부터 ${formatDate(periodEnd)}까지 근로하였으며,`}
-        </Text>
-        <Text style={previewLineStyle}>
-          {`  근로기준법 제43조에 따라 지급받아야 할 임금`}
-        </Text>
-        <Text style={previewLineStyle}>
-          {`  총 ₩${total.toLocaleString()}원을 지급받지 못하여 진정합니다.`}
-        </Text>
-
-        <Text style={previewSectionStyle}>진정 사유</Text>
-        <Text style={previewLineStyle}>
-          {`  1. 미지급 항목 및 금액`}
-        </Text>
-        <Text style={previewLineStyle}>
-          {`     - 기본 임금: ₩${breakdown.base.toLocaleString()}`}
-        </Text>
-        <Text style={previewLineStyle}>
-          {`     - 주휴수당: ₩${breakdown.weekly.toLocaleString()}  (근로기준법 제55조)`}
-        </Text>
-        <Text style={previewLineStyle}>
-          {`     - 연장근로수당: ₩${breakdown.overtime.toLocaleString()}  (근로기준법 제56조)`}
-        </Text>
-        <Text style={previewLineStyle}>
-          {`     - 야간근로수당: ₩${breakdown.night.toLocaleString()}  (근로기준법 제56조)`}
-        </Text>
-        <Text style={previewLineStyle}>
-          {`     - 합계: ₩${total.toLocaleString()}`}
-        </Text>
-        <Text style={previewLineStyle}>
-          {`  2. 협의 시도 여부`}
-        </Text>
-        <Text style={previewLineStyle}>
-          {`     ${negotiationText}`}
-        </Text>
-
-        <Text style={previewSectionStyle}>증거 자료</Text>
-        <Text style={previewLineStyle}>
-          {`  - 근로계약서: ${reportCase.evidence.contracts}건`}
-        </Text>
-        <Text style={previewLineStyle}>
-          {`  - 출퇴근 기록: ${reportCase.evidence.workLogs}건`}
-        </Text>
-        {reportCase.evidence.paystubs > 0 ? (
-          <Text style={previewLineStyle}>
-            {`  - 급여 명세서: ${reportCase.evidence.paystubs}건`}
-          </Text>
-        ) : null}
-        {reportCase.evidence.bankRecords > 0 ? (
-          <Text style={previewLineStyle}>
-            {`  - 통장 내역: ${reportCase.evidence.bankRecords}건`}
-          </Text>
-        ) : null}
-
-        <Text
-          style={{
-            ...previewLineStyle,
-            marginTop: 14,
-          }}
-        >
-          위와 같이 진정합니다.
-        </Text>
-        <Text
-          style={{
-            ...previewLineStyle,
-            textAlign: "right",
-            marginTop: 16,
-          }}
-        >
-          {today}
-        </Text>
-        <Text
-          style={{
-            ...previewLineStyle,
-            textAlign: "right",
-            marginBottom: 14,
-          }}
-        >
-          진정인: [본인 성함] (서명)
-        </Text>
-
-        <Text
-          style={{
-            ...previewLineStyle,
-            textAlign: "center",
-            color: "#475569",
-            marginTop: 4,
-          }}
-        >
-          [관할 고용노동청] 귀하
-        </Text>
-          </>
-        ) : null}
       </View>
 
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
@@ -1313,9 +819,7 @@ function ComplaintPreview({
           }}
         >
           <Ionicons name="download-outline" size={14} color="#475569" />
-          <Text
-            style={{ fontSize: 13, color: "#475569", fontWeight: "600" }}
-          >
+          <Text style={{ fontSize: 13, color: "#475569", fontWeight: "600" }}>
             PDF로 저장
           </Text>
         </Pressable>
@@ -1335,9 +839,7 @@ function ComplaintPreview({
           }}
         >
           <Ionicons name="share-outline" size={14} color="#475569" />
-          <Text
-            style={{ fontSize: 13, color: "#475569", fontWeight: "600" }}
-          >
+          <Text style={{ fontSize: 13, color: "#475569", fontWeight: "600" }}>
             공유하기
           </Text>
         </Pressable>
@@ -1356,14 +858,11 @@ function ComplaintPreview({
         }}
       >
         <Ionicons name="open-outline" size={14} color="#FFFFFF" />
-        <Text
-          style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}
-        >
+        <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}>
           노동청에 제출하기 (고용24)
         </Text>
       </Pressable>
 
-      {/* 앱 복귀 후 — "제출하셨나요?" 확인 배너 */}
       {returnedFromBrowser ? (
         <View
           style={{
@@ -1393,8 +892,7 @@ function ComplaintPreview({
               marginBottom: 12,
             }}
           >
-            제출을 완료하셨다면 아래 버튼을 눌러주세요. 앱에서 다음 단계를
-            안내해드립니다.
+            제출을 완료하셨다면 아래 버튼을 눌러주세요. 앱에서 다음 단계를 안내해드립니다.
           </Text>
           <Pressable
             onPress={onConfirmSubmitted}
@@ -1406,9 +904,7 @@ function ComplaintPreview({
               marginBottom: 8,
             }}
           >
-            <Text
-              style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}
-            >
+            <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}>
               ✅ 제출 완료했어요
             </Text>
           </Pressable>
@@ -1423,6 +919,136 @@ function ComplaintPreview({
         </View>
       ) : null}
     </View>
+  );
+}
+
+// ──────────────────────────────────────────
+// 구조화 미리보기 (수정 모드 아닐 때 자동 렌더)
+// ──────────────────────────────────────────
+
+function StructuredPreview({
+  reportCase,
+  negotiationText,
+  applicant,
+}: {
+  reportCase: ReportCase;
+  negotiationText: string;
+  applicant: ApplicantInfo | null;
+}): JSX.Element {
+  const damages = reportCase.damageTypeEnums ?? [];
+  const facts = reportCase.facts;
+  const respondent = reportCase.respondent;
+  const total = facts?.totalUnpaidWage ?? 0;
+  const today = new Date().toLocaleDateString("ko-KR");
+
+  const applicantName = applicant?.fullName ?? "[성명]";
+  const applicantPhone = applicant?.phone ?? applicant?.mobile ?? "[연락처]";
+  const applicantAddress = applicant?.address ?? "[주소]";
+
+  return (
+    <>
+      <Text
+        style={{
+          fontSize: 18,
+          fontWeight: "700",
+          color: "#0F172A",
+          textAlign: "center",
+          marginBottom: 16,
+        }}
+      >
+        진　정　서
+      </Text>
+
+      <Text style={previewSectionStyle}>1. 진정인</Text>
+      <Text style={previewLineStyle}>{`   성명: ${applicantName}`}</Text>
+      <Text style={previewLineStyle}>{`   연락처: ${applicantPhone}`}</Text>
+      <Text style={previewLineStyle}>{`   주소: ${applicantAddress}`}</Text>
+
+      <Text style={previewSectionStyle}>2. 피진정인</Text>
+      <Text style={previewLineStyle}>
+        {`   사업장명: ${reportCase.workplaceName}`}
+      </Text>
+      <Text style={previewLineStyle}>
+        {`   대표자: ${respondent?.representativeName ?? "[사업주명]"}`}
+      </Text>
+      <Text style={previewLineStyle}>
+        {`   연락처: ${respondent?.phone ?? "[사업주 연락처]"}`}
+      </Text>
+      <Text style={previewLineStyle}>
+        {`   주소: ${respondent?.address ?? "[사업장 주소]"}`}
+      </Text>
+
+      <Text style={previewSectionStyle}>3. 진정 내용</Text>
+      <Text style={previewLineStyle}>
+        {`   입사일: ${facts?.employmentStartDate ?? "-"}`}
+      </Text>
+      {facts?.employmentStatus === "FORMER" ? (
+        <Text style={previewLineStyle}>
+          {`   퇴사일: ${facts?.employmentEndDate ?? "-"}`}
+        </Text>
+      ) : (
+        <Text style={previewLineStyle}>{`   재직 상태: 재직 중`}</Text>
+      )}
+      <Text style={previewLineStyle}>
+        {`   체불임금 총액: ₩${total.toLocaleString()}`}
+      </Text>
+
+      <Text
+        style={{ ...previewLineStyle, marginTop: 8, fontWeight: "600" }}
+      >
+        {`   피해 유형`}
+      </Text>
+      {damages.map((d) => (
+        <Text key={d} style={previewLineStyle}>
+          {`     - ${DAMAGE_LABEL[d]}`}
+        </Text>
+      ))}
+
+      <Text style={{ ...previewLineStyle, marginTop: 8, fontWeight: "600" }}>
+        {`   상황 설명`}
+      </Text>
+      <Text style={previewLineStyle}>
+        {`   ${reportCase.freeFormDescription ?? "(상황 설명 미입력)"}`}
+      </Text>
+
+      <Text style={{ ...previewLineStyle, marginTop: 8, fontWeight: "600" }}>
+        {`   협의 시도 여부`}
+      </Text>
+      <Text style={previewLineStyle}>{`   ${negotiationText}`}</Text>
+
+      <Text style={{ ...previewLineStyle, marginTop: 14 }}>
+        위와 같이 진정합니다.
+      </Text>
+      <Text
+        style={{
+          ...previewLineStyle,
+          textAlign: "right",
+          marginTop: 16,
+        }}
+      >
+        {today}
+      </Text>
+      <Text
+        style={{
+          ...previewLineStyle,
+          textAlign: "right",
+          marginBottom: 14,
+        }}
+      >
+        {`진정인: ${applicantName} (서명)`}
+      </Text>
+
+      <Text
+        style={{
+          ...previewLineStyle,
+          textAlign: "center",
+          color: "#475569",
+          marginTop: 4,
+        }}
+      >
+        [관할 고용노동청] 귀하
+      </Text>
+    </>
   );
 }
 

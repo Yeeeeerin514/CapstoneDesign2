@@ -80,7 +80,7 @@ export function IssueDetailSheet({
               <Text
                 style={{ color: badge.color, fontSize: 12, fontWeight: "500" }}
               >
-                {`${badge.label} · 이슈 ${issue.number} / ${totalCount}`}
+                {`${badge.label} · 이슈 ${issue.number ?? "-"} / ${totalCount}`}
               </Text>
             </View>
 
@@ -131,9 +131,11 @@ export function IssueDetailSheet({
                   marginBottom: 4,
                 }}
               >
-                {issue.legalBasis}
+                {typeof issue.legalBasis === "string"
+                  ? issue.legalBasis
+                  : (issue.legalBasis?.law ?? "")}
               </Text>
-              {issue.legalBasisExcerpt !== null && (
+              {issue.legalBasisExcerpt !== null && issue.legalBasisExcerpt !== undefined && (
                 <Text style={{ fontSize: 13, color: "#475569", lineHeight: 20 }}>
                   {issue.legalBasisExcerpt}
                 </Text>
@@ -159,7 +161,7 @@ export function IssueDetailSheet({
                 💡 이렇게 바꾸세요
               </Text>
               <Text style={{ fontSize: 14, color: "#04342C", lineHeight: 22 }}>
-                {issue.recommendation}
+                {issue.recommendation ?? ""}
               </Text>
             </View>
 

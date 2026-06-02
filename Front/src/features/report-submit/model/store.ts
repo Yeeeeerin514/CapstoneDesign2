@@ -1,62 +1,37 @@
 import { create } from "zustand";
 import {
-  getAmountCalcReadiness,
   INITIAL_EVIDENCE,
   STEP_ORDER,
+  type BusinessInfo,
   type CaseStep,
+  type ComplaintFacts,
+  type ComplaintRespondent,
+  type DamageTypeEnum,
   type EvidenceFile,
   type EvidenceState,
   type FileEvidenceKey,
   type InvestigationSubStatus,
   type ReportCase,
+  type ReportDraftSource,
   type ReportStatus,
+  type WageBreakdown,
 } from "@/entities/report";
 
-// ──────────────────────────────────────
-// 금액 계산 헬퍼 (Phase A — mock 고정값, Phase B에서 실제 파싱으로 교체)
-// ──────────────────────────────────────
 /**
- * 증거 변경 후 받아야 할 / 받은 / 미지급 금액을 재계산.
- *  - 받아야 할 금액: 계약서·근무기록 자동 수집 시 기존 값 또는 mock 1,560,000원
- *                  / 사용자 직접 입력 시 hourlyWage × workHours
- *  - 받은 금액:     통장 내역·급여명세서 있을 때 기존 값 또는 mock 260,000원
- *  - 미지급:        wageOwed - paidAmount (양쪽 다 있을 때만, max 0)
+ * 미지급 금액 derive — 우선순위:
+ *   1. manualUnpaidAmount (사용자가 breakdown 편집 후 저장한 값)
+ *   2. wageBreakdown.totalShouldReceive - actualReceivedAmount (양쪽 다 있을 때)
+ *   3. 기존 calculatedUnpaid 보존 (mock 흐름 호환)
  */
-function recalculateAmounts(
-  c: ReportCase,
-  e: EvidenceState,
-): Pick<
-  ReportCase,
-  "calculatedWageOwed" | "calculatedPaidAmount" | "calculatedUnpaid"
-> {
-  // readiness 단순 참조 — 향후 분기 확장 여지를 위해 보관.
-  void getAmountCalcReadiness(e);
-
-  let wageOwed: number | null = null;
-  if (e.contracts > 0 || e.workLogs > 0) {
-    wageOwed = c.calculatedWageOwed ?? 1_560_000;
-  } else if (
-    e.userInputHourlyWage !== null &&
-    e.userInputWorkHours !== null
-  ) {
-    wageOwed = e.userInputHourlyWage * e.userInputWorkHours;
+function deriveUnpaid(c: ReportCase): number | null {
+  if (c.manualUnpaidAmount !== null) return c.manualUnpaidAmount;
+  if (c.wageBreakdown !== null && c.actualReceivedAmount !== null) {
+    return Math.max(
+      0,
+      c.wageBreakdown.totalShouldReceive - c.actualReceivedAmount,
+    );
   }
-
-  let paidAmount: number | null = null;
-  if (e.bankRecords > 0 || e.paystubs > 0) {
-    paidAmount = c.calculatedPaidAmount ?? 260_000;
-  }
-
-  const unpaid =
-    wageOwed !== null && paidAmount !== null
-      ? Math.max(0, wageOwed - paidAmount)
-      : null;
-
-  return {
-    calculatedWageOwed: wageOwed,
-    calculatedPaidAmount: paidAmount,
-    calculatedUnpaid: unpaid,
-  };
+  return c.calculatedUnpaid;
 }
 
 interface ReportStoreState {
@@ -77,28 +52,34 @@ interface ReportStoreState {
   startReport: (params: {
     workplaceName: string;
     businessRegistrationNumber?: string | null;
+    /** 백엔드 business 테이블 ID. 사업장 검색 연결 시. */
+    businessId?: number | null;
     industry: string;
     region: string;
     damageTypes: string[];
-    /** 자동 수집된 초기 증거 — 미지정 시 INITIAL_EVIDENCE 사용. */
     initialEvidence?: Partial<EvidenceState>;
   }) => string;
 
-  /** 특정 step을 완료 처리. completedSteps 배열에 push + highestStep 업데이트. */
+  /** step 완료 처리 + highestStep 업데이트. */
   completeStep: (caseId: string, stepId: CaseStep) => void;
-  /** currentStep 변경. 이전 step은 모두 completedSteps에 push + highestStep 업데이트. */
+  /** currentStep 설정. completedSteps도 함께 갱신. */
   setCurrentStep: (caseId: string, stepId: CaseStep) => void;
-  /** 현재 단계를 완료 처리하고 다음 step으로 진행. */
+  /** 다음 step으로 진행. */
   advanceStep: (caseId: string) => void;
   /**
    * 완료된 이전 단계로 되돌아가기 (수정 모드).
    * highestStep은 절대 줄지 않으므로 "현재 진행 단계로 돌아가기"가 가능.
    */
   navigateToStep: (caseId: string, targetStep: CaseStep) => void;
-  /** Step 2 수정 모드 진입 시 amountCalcState를 다시 'idle'로 리셋. */
-  resetAmountCalcState: (caseId: string) => void;
   /** 사건 status 변경 — resolved로 전환 시 resolvedAt 자동 채움. */
   updateCaseStatus: (caseId: string, status: ReportStatus) => void;
+  /** 노동청 제출 완료 — submittedAt + investigationStatus 자동 설정. */
+  setSubmittedAt: (caseId: string, submittedAt: string) => void;
+  /** Step 6 (investigation) 내부 서브 상태 갱신. */
+  updateInvestigationStatus: (
+    caseId: string,
+    status: InvestigationSubStatus,
+  ) => void;
 
   /** 증거 상태 부분 갱신 — 한 필드씩 + 또는 통째 set. 금액 재계산은 별도. */
   updateEvidence: (caseId: string, patch: Partial<EvidenceState>) => void;
@@ -136,32 +117,57 @@ interface ReportStoreState {
     type: FileEvidenceKey,
   ) => EvidenceFile[];
 
-  /** 노동청 제출 완료 시 submittedAt 기록 + investigationStatus를 'waiting_inspector'로 자동 설정. */
-  setSubmittedAt: (caseId: string, submittedAt: string) => void;
-  /** Step 6 (investigation) 내부 서브 상태 갱신. */
-  updateInvestigationStatus: (
-    caseId: string,
-    status: InvestigationSubStatus,
-  ) => void;
+  /** Step 1 — 자연어 증거 텍스트 추가 (말미). */
+  addEvidenceText: (caseId: string, text: string) => void;
+  /** index 기반 삭제 — 카드에서 ✕ 누름. */
+  removeEvidenceText: (caseId: string, index: number) => void;
 
-  /** 공동대응 그룹 참여 시 groupId 저장. */
-  setGroupId: (caseId: string, groupId: string | undefined) => void;
-  /** 공동대응 그룹 탈퇴 — groupId 제거. useGroupStore.leaveGroup과 함께 호출. */
-  leaveGroup: (caseId: string) => void;
   /** 진정서 draftId 저장. */
   setDraftId: (caseId: string, draftId: string) => void;
   /** 후기 작성 완료 토글. ReviewWriteView가 작성 직후 호출. */
   setHasWrittenReview: (caseId: string, value: boolean) => void;
 
-  /** Step 2 — "금액 계산 시작" 누름. amountCalcState='calculating'으로 전환. */
-  startAmountCalc: (caseId: string) => void;
-  /** Step 2 — 계산 완료. recalculateAmounts 실행 + amountCalcState='done'으로 전환. */
-  finishAmountCalc: (caseId: string) => void;
-  /** Step 2 — 사용자가 금액 확인. step 2 완료 처리 + step 3 (group_decision)으로 진행. */
-  confirmAmountCalc: (caseId: string) => void;
+  /** Step 2 — 백엔드 wage-calc 결과 캐싱. */
+  setWageBreakdown: (caseId: string, breakdown: WageBreakdown | null) => void;
+  /** 사용자 지정 시급 입력 (wage-calc 재호출용). */
+  setReportHourlyWage: (caseId: string, hourlyWage: number | null) => void;
+  /** 실제 수령액 입력 — 미지급 추정액 derive 즉시 갱신. */
+  setActualReceivedAmount: (caseId: string, amount: number | null) => void;
+  /** 수동 미지급 총액 (편집 폼 결과) — derive 우선순위 최상위. */
+  setManualUnpaidAmount: (caseId: string, amount: number | null) => void;
 
   closeCase: (caseId: string) => void;
   deleteCase: (caseId: string) => void;
+
+  // ──────────────────────────────────────
+  // V2 — 신규 흐름 (백엔드 통신 문서 2026-05-30)
+  // ──────────────────────────────────────
+
+  /**
+   * POST /reports/draft 응답을 사건 store에 추가.
+   * V1 startReport와 달리 백엔드 caseId/business를 그대로 보존.
+   * source가 "registered"인 경우 partTimeJobId도 함께 전달.
+   */
+  createReportDraft: (params: {
+    caseId: string;
+    source: ReportDraftSource;
+    business: BusinessInfo;
+    partTimeJobId?: number;
+    industry?: string;
+    region?: string;
+  }) => void;
+
+  /** 1단계 1-A 다중 선택 결과 저장. */
+  setDamageTypes: (caseId: string, types: DamageTypeEnum[]) => void;
+  /** 1단계 1-B 자유 서술 저장. */
+  setFreeFormDescription: (caseId: string, text: string) => void;
+  /** 1단계 1-C 피진정인 폼 저장 (부분 patch 허용). */
+  patchRespondent: (
+    caseId: string,
+    patch: Partial<ComplaintRespondent>,
+  ) => void;
+  /** 1단계 1-C 진정 내용 폼 저장 (부분 patch 허용). */
+  patchFacts: (caseId: string, patch: Partial<ComplaintFacts>) => void;
 }
 
 export const useReportStore = create<ReportStoreState>((set, get) => ({
@@ -173,6 +179,7 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
   startReport: ({
     workplaceName,
     businessRegistrationNumber = null,
+    businessId = null,
     industry,
     region,
     damageTypes,
@@ -183,19 +190,24 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
       id,
       workplaceName,
       businessRegistrationNumber,
+      businessId,
       industry,
       region,
       damageTypes,
-      status: "pending",
+      status: "PENDING",
       currentStep: "evidence_collection",
       highestStep: "evidence_collection",
       completedSteps: [],
       evidence: { ...INITIAL_EVIDENCE, ...initialEvidence },
       evidenceFiles: [],
+      evidenceTexts: [],
       calculatedWageOwed: null,
       calculatedPaidAmount: null,
       calculatedUnpaid: null,
-      amountCalcState: "idle",
+      wageBreakdown: null,
+      hourlyWage: null,
+      actualReceivedAmount: null,
+      manualUnpaidAmount: null,
       createdAt: new Date().toISOString(),
     };
     set((s) => ({ cases: [newCase, ...s.cases] }));
@@ -266,13 +278,6 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
       ),
     })),
 
-  resetAmountCalcState: (caseId) =>
-    set((s) => ({
-      cases: s.cases.map((c) =>
-        c.id === caseId ? { ...c, amountCalcState: "idle" } : c,
-      ),
-    })),
-
   updateCaseStatus: (caseId, status) =>
     set((s) => ({
       cases: s.cases.map((c) =>
@@ -281,7 +286,7 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
               ...c,
               status,
               resolvedAt:
-                status === "resolved"
+                status === "RESOLVED"
                   ? new Date().toISOString()
                   : c.resolvedAt,
             }
@@ -364,38 +369,24 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
     return c?.evidenceFiles.filter((f) => f.evidenceType === type) ?? [];
   },
 
-  setSubmittedAt: (caseId, submittedAt) =>
+  addEvidenceText: (caseId, text) =>
+    set((s) => ({
+      cases: s.cases.map((c) =>
+        c.id === caseId
+          ? { ...c, evidenceTexts: [...c.evidenceTexts, text] }
+          : c,
+      ),
+    })),
+
+  removeEvidenceText: (caseId, index) =>
     set((s) => ({
       cases: s.cases.map((c) =>
         c.id === caseId
           ? {
               ...c,
-              submittedAt,
-              investigationStatus:
-                c.investigationStatus ?? "waiting_inspector",
+              evidenceTexts: c.evidenceTexts.filter((_, i) => i !== index),
             }
           : c,
-      ),
-    })),
-
-  updateInvestigationStatus: (caseId, status) =>
-    set((s) => ({
-      cases: s.cases.map((c) =>
-        c.id === caseId ? { ...c, investigationStatus: status } : c,
-      ),
-    })),
-
-  setGroupId: (caseId, groupId) =>
-    set((s) => ({
-      cases: s.cases.map((c) =>
-        c.id === caseId ? { ...c, groupId } : c,
-      ),
-    })),
-
-  leaveGroup: (caseId) =>
-    set((s) => ({
-      cases: s.cases.map((c) =>
-        c.id === caseId ? { ...c, groupId: undefined } : c,
       ),
     })),
 
@@ -413,39 +404,180 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
       ),
     })),
 
-  startAmountCalc: (caseId) =>
-    set((s) => ({
-      cases: s.cases.map((c) =>
-        c.id === caseId ? { ...c, amountCalcState: "calculating" } : c,
-      ),
-    })),
-
-  finishAmountCalc: (caseId) =>
+  setWageBreakdown: (caseId, breakdown) =>
     set((s) => ({
       cases: s.cases.map((c) => {
         if (c.id !== caseId) return c;
-        const amounts = recalculateAmounts(c, c.evidence);
-        return { ...c, ...amounts, amountCalcState: "done" };
+        const updated = { ...c, wageBreakdown: breakdown };
+        return { ...updated, calculatedUnpaid: deriveUnpaid(updated) };
       }),
     })),
 
-  confirmAmountCalc: (caseId) => {
-    // 1. amountCalcState='confirmed'로 마킹
+  setReportHourlyWage: (caseId, hourlyWage) =>
     set((s) => ({
       cases: s.cases.map((c) =>
-        c.id === caseId ? { ...c, amountCalcState: "confirmed" } : c,
+        c.id === caseId ? { ...c, hourlyWage } : c,
       ),
-    }));
-    // 2. step 2 완료 처리 + step 3 (group_decision)으로 진행 — 기존 액션 재사용
-    get().completeStep(caseId, "amount_calculation");
-    get().setCurrentStep(caseId, "group_decision");
-  },
+    })),
+
+  setActualReceivedAmount: (caseId, amount) =>
+    set((s) => ({
+      cases: s.cases.map((c) => {
+        if (c.id !== caseId) return c;
+        const updated = { ...c, actualReceivedAmount: amount };
+        return { ...updated, calculatedUnpaid: deriveUnpaid(updated) };
+      }),
+    })),
+
+  setManualUnpaidAmount: (caseId, amount) =>
+    set((s) => ({
+      cases: s.cases.map((c) => {
+        if (c.id !== caseId) return c;
+        const updated = { ...c, manualUnpaidAmount: amount };
+        return { ...updated, calculatedUnpaid: deriveUnpaid(updated) };
+      }),
+    })),
+
+  setSubmittedAt: (caseId, submittedAt) =>
+    set((s) => ({
+      cases: s.cases.map((c) =>
+        c.id === caseId
+          ? {
+              ...c,
+              submittedAt,
+              investigationStatus: "waiting_inspector",
+            }
+          : c,
+      ),
+    })),
+
+  updateInvestigationStatus: (caseId, status) =>
+    set((s) => ({
+      cases: s.cases.map((c) =>
+        c.id === caseId ? { ...c, investigationStatus: status } : c,
+      ),
+    })),
 
   closeCase: (caseId) =>
     set((s) => ({
       cases: s.cases.map((c) =>
-        c.id === caseId ? { ...c, status: "unresolved" } : c,
+        c.id === caseId ? { ...c, status: "UNRESOLVED" } : c,
       ),
+    })),
+
+  createReportDraft: ({
+    caseId,
+    source,
+    business,
+    partTimeJobId,
+    industry,
+    region,
+  }) =>
+    set((s) => {
+      // 이미 같은 id가 있으면 (재진입 등) 덮어쓰기 대신 무시.
+      if (s.cases.some((c) => c.id === caseId)) return s;
+      const newCase: ReportCase = {
+        id: caseId,
+        workplaceName: business.name,
+        businessRegistrationNumber: business.registrationNumber,
+        businessId: null,
+        industry: industry ?? business.category ?? "",
+        region: region ?? "",
+        damageTypes: [],
+        status: "PENDING",
+        currentStep: "evidence_collection",
+        highestStep: "evidence_collection",
+        completedSteps: [],
+        evidence: { ...INITIAL_EVIDENCE },
+        evidenceFiles: [],
+        evidenceTexts: [],
+        calculatedWageOwed: null,
+        calculatedPaidAmount: null,
+        calculatedUnpaid: null,
+        wageBreakdown: null,
+        hourlyWage: null,
+        actualReceivedAmount: null,
+        manualUnpaidAmount: null,
+        createdAt: new Date().toISOString(),
+        // V2 신규 필드
+        business,
+        draftSource: source,
+        damageTypeEnums: [],
+        freeFormDescription: "",
+        respondent: {
+          representativeName: business.representativeName,
+          phone: business.phone,
+          address: business.address,
+          businessType: "WORKPLACE",
+          workplaceName: business.name,
+          workplacePhone: business.phone,
+          employeeCount: null,
+        },
+        facts: {
+          employmentStartDate: null,
+          employmentEndDate: null,
+          totalUnpaidWage: null,
+          employmentStatus: null,
+          unpaidSeverance: null,
+          otherUnpaid: null,
+          jobDescription: null,
+          wagePaymentDate: null,
+          contractMethod: null,
+        },
+      };
+      // partTimeJobId가 있으면 store의 별도 매핑 등에 활용 가능 (현재는 보존만).
+      void partTimeJobId;
+      return { cases: [newCase, ...s.cases] };
+    }),
+
+  setDamageTypes: (caseId, types) =>
+    set((s) => ({
+      cases: s.cases.map((c) =>
+        c.id === caseId ? { ...c, damageTypeEnums: types } : c,
+      ),
+    })),
+
+  setFreeFormDescription: (caseId, text) =>
+    set((s) => ({
+      cases: s.cases.map((c) =>
+        c.id === caseId ? { ...c, freeFormDescription: text } : c,
+      ),
+    })),
+
+  patchRespondent: (caseId, patch) =>
+    set((s) => ({
+      cases: s.cases.map((c) => {
+        if (c.id !== caseId) return c;
+        const cur: ComplaintRespondent = c.respondent ?? {
+          representativeName: null,
+          phone: null,
+          address: null,
+          businessType: "WORKPLACE",
+          workplaceName: c.workplaceName,
+          workplacePhone: null,
+          employeeCount: null,
+        };
+        return { ...c, respondent: { ...cur, ...patch } };
+      }),
+    })),
+
+  patchFacts: (caseId, patch) =>
+    set((s) => ({
+      cases: s.cases.map((c) => {
+        if (c.id !== caseId) return c;
+        const cur: ComplaintFacts = c.facts ?? {
+          employmentStartDate: null,
+          employmentEndDate: null,
+          totalUnpaidWage: null,
+          employmentStatus: null,
+          unpaidSeverance: null,
+          otherUnpaid: null,
+          jobDescription: null,
+          wagePaymentDate: null,
+          contractMethod: null,
+        };
+        return { ...c, facts: { ...cur, ...patch } };
+      }),
     })),
 
   deleteCase: (caseId) =>

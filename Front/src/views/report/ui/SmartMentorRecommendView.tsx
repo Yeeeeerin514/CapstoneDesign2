@@ -14,12 +14,13 @@ import {
   confirmMatch,
   requestMatch,
   type BusinessSize,
+  type DamageAmountRange,
   type DamageType,
   type EmploymentType,
   type Industry,
   type MatchRecommendation,
   type MatchResponseEnvelope,
-  type RegionCode,
+  type Region,
 } from "@/entities/mentor";
 import { useMentorMatchStore } from "@/features/mentor-match";
 import { useAuthStore } from "@/entities/user/model/auth-store";
@@ -41,10 +42,13 @@ interface Props {
   damageTypes: DamageType[];
   businessSize: BusinessSize;
   employmentType?: EmploymentType;
-  region?: RegionCode;
+  region?: Region;
+  damageAmountRange?: DamageAmountRange;
   description?: string;
   onBack: () => void;
   onMatched?: (matchId: number, mentorNickname: string) => void;
+  /** Top-3 매칭에 마음에 드는 멘토가 없을 때 "멘토 더보기" → 부모가 전체 멘토 둘러보기 진입. */
+  onOpenBrowse?: () => void;
 }
 
 export function SmartMentorRecommendView({
@@ -54,9 +58,11 @@ export function SmartMentorRecommendView({
   businessSize,
   employmentType,
   region,
+  damageAmountRange,
   description,
   onBack,
   onMatched,
+  onOpenBrowse,
 }: Props): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [envelope, setEnvelope] = useState<MatchResponseEnvelope | null>(null);
@@ -74,14 +80,17 @@ export function SmartMentorRecommendView({
         setStage("필터");
         await delay(600);
         setStage("매칭");
+        // 백엔드 contract: MatchRequestPayload 모든 필드 required.
+        // 호출 측에서 optional로 들어온 값을 합당한 enum 기본값/0/""로 메운다.
         const result = await requestMatch({
-          caseId,
+          caseId: caseId ?? 0,
           industry,
           damageTypes,
-          employmentType,
+          employmentType: employmentType ?? "OTHER",
           businessSize,
-          region,
-          description,
+          region: region ?? "OTHER",
+          damageAmountRange: damageAmountRange ?? "UNDER_100K",
+          description: description ?? "",
           topK: 3,
         });
         setEnvelope(result);
@@ -194,6 +203,32 @@ export function SmartMentorRecommendView({
               />
             ))
           )}
+
+          {/* 멘토 더보기 — 매칭 결과에 마음에 드는 멘토가 없을 때 전체 멘토 둘러보기로 이동 */}
+          {onOpenBrowse !== undefined ? (
+            <Pressable
+              onPress={onOpenBrowse}
+              style={{
+                marginTop: spacing.md,
+                paddingVertical: 14,
+                borderRadius: 12,
+                alignItems: "center",
+                backgroundColor: "#FFFFFF",
+                borderWidth: 1,
+                borderColor: "#3182F6",
+                flexDirection: "row",
+                justifyContent: "center",
+                gap: 6,
+              }}
+            >
+              <Ionicons name="search" size={14} color="#3182F6" />
+              <Text
+                style={{ color: "#3182F6", fontSize: 14, fontWeight: "700" }}
+              >
+                멘토 더보기 (전체 보기)
+              </Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
       )}
     </SafeAreaView>

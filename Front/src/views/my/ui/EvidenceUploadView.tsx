@@ -62,7 +62,6 @@ export function EvidenceUploadView({ onBack }: Props): JSX.Element {
         fileObj = await resp.blob();
       } else {
         fileObj = {
-          // @ts-expect-error RN multipart 객체 (axios 호환)
           uri: asset.uri,
           type: "image/jpeg",
           name: `evidence-${Date.now()}.jpg`,

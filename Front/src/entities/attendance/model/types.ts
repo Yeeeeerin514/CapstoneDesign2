@@ -16,6 +16,8 @@ export interface AttendanceRecord {
   scheduledEnd: string;
   /** "HH:MM" — 실제 출근 시각. 미출근이면 undefined. */
   actualCheckIn?: string;
+  /** ISO 출근 시각 — 라이브 세션 경과 계산용. mock/실서버 모두 채움. */
+  actualCheckInIso?: string;
   /** "HH:MM" — 실제 퇴근 시각. 근무 중이면 undefined. */
   actualCheckOut?: string;
   /** 연장근무 분 (기본 0). */

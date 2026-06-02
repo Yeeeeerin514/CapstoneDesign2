@@ -9,13 +9,11 @@ import { useReportStore } from "@/features/report-submit";
 import { useAuthStore } from "@/entities/user/model/auth-store";
 import { MentorRegisterView } from "./MentorRegisterView";
 import { EvidenceUploadView } from "./EvidenceUploadView";
+import { MyApplicantFormView } from "./MyApplicantFormView";
+import { ReviewWriteView } from "@/views/report/ui/ReviewWriteView";
 import { MatchingFeedbackModal } from "@/views/report/ui/MatchingFeedbackModal";
 import type { VerificationMethod } from "@/entities/mentor";
 
-/**
- * MY 탭 — 현재는 "내 멘토링" 섹션만. 추후 프로필/설정 카드 추가 예정.
- * 멘토링 카드 탭하면 어디서든 채팅방으로 진입 가능 (top-level 라우트).
- */
 export function MyView(): JSX.Element {
   const userId = useAuthStore((s) => s.userIdString);
   const nickname = useAuthStore((s) => s.nickname);
@@ -24,15 +22,11 @@ export function MyView(): JSX.Element {
   const cases = useReportStore((s) => s.cases);
 
   function handleLogout(): void {
-    const confirmFn = (): boolean => {
-      if (Platform.OS === "web" && typeof window !== "undefined") {
-        const w = window as { confirm?: (m: string) => boolean };
-        return w.confirm ? w.confirm("로그아웃하시겠어요?") : true;
-      }
-      return false; // 네이티브는 Alert로 처리
-    };
     if (Platform.OS === "web") {
-      if (confirmFn()) {
+      const ok = typeof window !== "undefined"
+        ? (window as { confirm?: (m: string) => boolean }).confirm?.("로그아웃하시겠어요?") ?? true
+        : true;
+      if (ok) {
         clearAuth();
         router.replace("/login");
       }
@@ -50,8 +44,11 @@ export function MyView(): JSX.Element {
       ]);
     }
   }
+
   const [showMentorRegister, setShowMentorRegister] = useState(false);
   const [showEvidenceUpload, setShowEvidenceUpload] = useState(false);
+  const [showApplicantForm, setShowApplicantForm] = useState(false);
+  const [showFreeReviewWrite, setShowFreeReviewWrite] = useState(false);
   const [mentorVerification, setMentorVerification] = useState<{
     method: VerificationMethod;
     verifiedCaseIds?: number[];
@@ -60,7 +57,7 @@ export function MyView(): JSX.Element {
   const markFeedbackSubmitted = useMentorMatchStore((s) => s.markFeedbackSubmitted);
 
   // 멘토 자격 검증 — 해결된 신고 사건이 1개 이상 있어야 자동 통과
-  const resolvedCases = cases.filter((c) => c.status === "resolved");
+  const resolvedCases = cases.filter((c) => c.status === "RESOLVED");
   const hasResolvedCases = resolvedCases.length > 0;
 
   function handleMentorRegisterClick(): void {
@@ -116,6 +113,16 @@ export function MyView(): JSX.Element {
     return <EvidenceUploadView onBack={() => setShowEvidenceUpload(false)} />;
   }
 
+  if (showApplicantForm) {
+    return (
+      <MyApplicantFormView onBack={() => setShowApplicantForm(false)} />
+    );
+  }
+
+  if (showFreeReviewWrite) {
+    return <ReviewWriteView onBack={() => setShowFreeReviewWrite(false)} />;
+  }
+
   return (
     <SafeAreaView
       edges={["left", "right", "bottom"]}
@@ -134,7 +141,7 @@ export function MyView(): JSX.Element {
           {nickname.length > 0 ? `${nickname}님, 안녕하세요` : "환영합니다"}
         </Text>
 
-        {/* 멘토 등록 진입점 (자격 게이트 포함) */}
+        {/* 멘토 등록 진입점 */}
         <Pressable
           onPress={handleMentorRegisterClick}
           style={{
@@ -164,32 +171,92 @@ export function MyView(): JSX.Element {
             />
           </View>
           <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>
-                경험을 나눌 멘토로 등록하기
-              </Text>
-              {hasResolvedCases && (
-                <View
-                  style={{
-                    backgroundColor: "rgba(255,255,255,0.25)",
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderRadius: 8,
-                  }}
-                >
-                  <Text style={{ fontSize: 9, color: "#fff", fontWeight: "700" }}>
-                    자격 OK
-                  </Text>
-                </View>
-              )}
-            </View>
-            <Text style={{ fontSize: 11, color: "#DBEAFE", marginTop: 2, lineHeight: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>
+              경험을 나눌 멘토로 등록하기
+            </Text>
+            <Text style={{ fontSize: 11, color: "#DBEAFE", marginTop: 2 }}>
               {hasResolvedCases
-                ? `해결한 사건 ${resolvedCases.length}건이 자격 증빙으로 자동 첨부됩니다`
-                : "해결한 신고 사건이 있어야 등록할 수 있어요"}
+                ? `해결한 사건 ${resolvedCases.length}건 자동 첨부`
+                : "해결한 신고 사건이 있어야 등록 가능"}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#fff" />
+        </Pressable>
+
+        {/* 진정인 정보 카드 */}
+        <Pressable
+          onPress={() => setShowApplicantForm(true)}
+          style={{
+            marginTop: 10,
+            backgroundColor: "#FFFFFF",
+            borderRadius: 12,
+            padding: 14,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            borderWidth: 0.5,
+            borderColor: "#E2E8F0",
+          }}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: "#EBF3FF",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="person-outline" size={18} color="#1A5FAF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#0F172A" }}>
+              진정인 정보 (본인)
+            </Text>
+            <Text style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
+              진정서 PDF에 자동 채워질 본인 정보 · 이 기기에만 저장
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+        </Pressable>
+
+        {/* 내 해결 경험 공유 */}
+        <Pressable
+          onPress={() => setShowFreeReviewWrite(true)}
+          style={{
+            marginTop: 10,
+            backgroundColor: "#FFFFFF",
+            borderRadius: 12,
+            padding: 14,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            borderWidth: 0.5,
+            borderColor: "#E2E8F0",
+          }}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: "#EBF3FF",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="pencil" size={18} color="#1A5FAF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#0F172A" }}>
+              내 해결 경험 공유하기
+            </Text>
+            <Text style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
+              임금체불을 해결한 경험이 있다면 다른 분들에게 도움이 돼요
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
         </Pressable>
 
         <View

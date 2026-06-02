@@ -3,24 +3,30 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
-  StatusBar,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { router } from "expo-router";
 import {
   analyzeJobPost,
   type JobPostAnalysisResult,
 } from "@/entities/job-post";
 import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
+import { useReviewStore } from "@/entities/review";
 import { ScreenHeader } from "@/shared/ui";
+import { ReviewListView } from "@/views/report/ui/ReviewListView";
+import { ReviewDetailView } from "@/views/report/ui/ReviewDetailView";
+import { ResolveReviewCard } from "@/views/report/ui/ResolveReviewCard";
 import { JobAnalysisResultView } from "./JobAnalysisResultView";
+import {
+  WageIssueAnalyzerView,
+  type ReviewIndustry,
+} from "./WageIssueAnalyzerView";
 
 export function HomeView() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -28,7 +34,14 @@ export function HomeView() {
     useState<JobPostAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showResult, setShowResult] = useState(false);
+  const [showWageAnalyzer, setShowWageAnalyzer] = useState(false);
+  /** ReviewListView 진입 시 초기 industry 필터 ("전체"면 필터 없음). */
+  const [reviewListIndustry, setReviewListIndustry] =
+    useState<ReviewIndustry | null>(null);
+  /** 후기 카드의 "해결 후기 보기" → 해당 후기 상세 페이지 진입. */
+  const [viewingReviewId, setViewingReviewId] = useState<string | null>(null);
   const addWorkplace = useFavoriteWorkplaceStore((s) => s.addWorkplace);
+  const reviews = useReviewStore((s) => s.reviews);
 
   async function pickFromCamera() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -81,23 +94,51 @@ export function HomeView() {
   function handleFavoriteAdded() {
     if (analysisResult === null) return;
     addWorkplace(analysisResult.workplaceName);
-    Alert.alert(
-      "등록 완료",
-      `${analysisResult.workplaceName}이(가) 관심업장에 등록되었습니다.`,
-    );
+  }
+
+  function handleNavigateToWorkplace() {
+    router.push("/(tabs)/workplace");
     setShowResult(false);
+    setAnalysisResult(null);
+    setSelectedImage(null);
   }
 
   const canSubmit = selectedImage !== null && !isAnalyzing;
 
+  // ReviewListView 오버레이 — 전체 보기 / 맞춤 분석 결과 진입 모두 이 분기 사용
+  if (reviewListIndustry !== null) {
+    return (
+      <ReviewListView
+        initialIndustry={reviewListIndustry}
+        onBack={() => setReviewListIndustry(null)}
+      />
+    );
+  }
+
+  // 후기 카드 "해결 후기 보기" → 그 후기의 상세
+  if (viewingReviewId !== null) {
+    return (
+      <ReviewDetailView
+        reviewId={viewingReviewId}
+        onBack={() => setViewingReviewId(null)}
+      />
+    );
+  }
+
+  if (showWageAnalyzer) {
+    return (
+      <WageIssueAnalyzerView
+        onClose={() => setShowWageAnalyzer(false)}
+        onShowSimilarCases={({ industry }) => {
+          setShowWageAnalyzer(false);
+          setReviewListIndustry(industry);
+        }}
+      />
+    );
+  }
+
   return (
-    <SafeAreaView
-      style={{
-        flex: 1,
-        backgroundColor: "#F8FAFC",
-        paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
-      }}
-    >
+    <View style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
       <ScreenHeader showLogo />
       <ScrollView
         className="flex-1 bg-surface"
@@ -224,6 +265,58 @@ export function HomeView() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* ─────── 임금체불 해결 후기 섹션 ─────── */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginTop: 12,
+          }}
+        >
+          <Text style={{ fontSize: 18, fontWeight: "700", color: "#0F172A" }}>
+            임금체불 해결 후기
+          </Text>
+          <Pressable
+            onPress={() => setReviewListIndustry("전체")}
+            hitSlop={6}
+            style={{ flexDirection: "row", alignItems: "center", gap: 2 }}
+          >
+            <Text style={{ fontSize: 13, color: "#64748B" }}>전체</Text>
+            <Ionicons name="chevron-forward" size={14} color="#64748B" />
+          </Pressable>
+        </View>
+
+        {/* 맞춤 해결 사례 CTA */}
+        <Pressable
+          onPress={() => setShowWageAnalyzer(true)}
+          style={{
+            backgroundColor: "#1A5FAF",
+            borderRadius: 14,
+            padding: 14,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+          }}
+        >
+          <Ionicons name="sparkles" size={16} color="#FFFFFF" />
+          <Text
+            style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "700" }}
+          >
+            내 임금체불 유형 분석하여 맞춤 해결 사례 보기
+          </Text>
+        </Pressable>
+
+        {/* Top 2 후기 카드 — ResolveReviewCard 공용 컴포넌트 */}
+        {reviews.slice(0, 2).map((r) => (
+          <ResolveReviewCard
+            key={r.id}
+            review={r}
+            onPressDetail={() => setViewingReviewId(r.id)}
+          />
+        ))}
       </ScrollView>
 
       {showResult && analysisResult !== null && (
@@ -241,9 +334,10 @@ export function HomeView() {
             uploadedImageUri={selectedImage}
             onBack={handleBack}
             onFavoriteAdded={handleFavoriteAdded}
+            onNavigateToWorkplace={handleNavigateToWorkplace}
           />
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }

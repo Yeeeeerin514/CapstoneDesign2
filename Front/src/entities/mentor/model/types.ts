@@ -1,11 +1,14 @@
-export type MentorBadge = "인증멘토" | "공동대응대표" | "빠른해결";
+export type MentorBadge = "인증멘토" | "빠른해결";
 
 export interface MentorProfile {
   userId: string;
   nickname: string;
   /** 증빙서류(시정지시서/입금내역) 업로드 여부. */
   isVerified: boolean;
-  /** 공동대응 대표자 이력 보유 여부. */
+  /**
+   * V2 — 공동대응 기능 제거됨. 기존 mock 데이터/API 호환을 위해 필드만 보존.
+   * 항상 false. 점수 계산/UI에서 분기 없음.
+   */
   wasGroupLeader: boolean;
   /** 후기 별점 평균 (1.0 ~ 5.0). */
   averageRating: number;
@@ -14,6 +17,8 @@ export interface MentorProfile {
   resolvedDays: number;
   /** 업종 (카페·음식점, 편의점, 배달 등). */
   industry: string;
+  /** 활동 지역 (시·도 단위). 검색 필터 매칭용. */
+  region?: string;
   /** 경험한 피해 유형 (임금체불, 주휴수당, 연장수당 등). */
   damageTypes: string[];
   /** 1회 상담료(원). 기본 10,000. */
@@ -27,14 +32,14 @@ export interface MentorProfile {
 
 /**
  * 멘토 매칭 가중치 점수.
- * - 공동대응 대표자 이력: +30
  * - 증빙서류 업로드: +20
  * - 별점 평균 × 10
  * - 해결 소요일 역비례 (50 - days, 최저 0)
+ *
+ * V2 — 공동대응 가산점(wasGroupLeader +30) 제거됨.
  */
 export function calcMentorScore(profile: Omit<MentorProfile, "score">): number {
   let score = 0;
-  if (profile.wasGroupLeader) score += 30;
   if (profile.isVerified) score += 20;
   score += profile.averageRating * 10;
   score += Math.max(0, 50 - profile.resolvedDays);

@@ -1,3 +1,5 @@
+import { getMinimumWage } from "@/shared/lib/minimum-wage-store";
+
 // ─────────────────────────────────────────────────────────────────────
 //  공고문 분석 — 프론트 표현 모델 (UI에서 직접 사용)
 // ─────────────────────────────────────────────────────────────────────
@@ -93,6 +95,64 @@ export interface ExtractedContract {
   breakTimeMentioned: boolean | null;
   employerName: string | null;
   businessRegistrationNumber: string | null;
+  /** 근무 요일 — DayOfWeek enum string. 예: ["MONDAY","TUESDAY"]. */
+  workDays: string[] | null;
+  /** "09:00" (LocalTime). */
+  workStartTime: string | null;
+  /** "16:00" (LocalTime). */
+  workEndTime: string | null;
+  /** "2020-03-05" (LocalDate). */
+  employmentStartDate: string | null;
+  /** "2021-03-04" (LocalDate). */
+  contractEndDate: string | null;
+  /** "매월 5일" 등 자유 텍스트. */
+  wagePaymentDate: string | null;
+  /** "계좌이체" 등. */
+  wagePaymentMethod: string | null;
+  /** "12:00" (LocalTime). */
+  breakStartTime: string | null;
+  /** "13:00" (LocalTime). */
+  breakEndTime: string | null;
+  employerAddress: string | null;
+  employerPhone: string | null;
+  employerRepresentative: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  계약서 분석 — 프론트 표현 모델
+// ─────────────────────────────────────────────────────────────────────
+
+export type ContractIssueLevel = "danger" | "warning" | "info";
+
+export interface ContractIssue {
+  id?: string;
+  number?: number;
+  level: ContractIssueLevel;
+  title: string;
+  description: string;
+  originalText?: string;
+  /** 관련 법령 — 자유 텍스트 또는 구조화 객체. mock과 백엔드 호환. */
+  legalBasis?: string | { law: string; description: string };
+  /** 법령 발췌. */
+  legalBasisExcerpt?: string | null;
+  /** 백엔드 enum 식별자 (e.g. "MINIMUM_WAGE"). */
+  type?: string;
+  recommendation?: string;
+  actionable?: { type: string; label: string };
+  /** 관련 판례/사례 — 백엔드가 첨부 시 제공. */
+  relatedCases?: RelatedCase[];
+}
+
+export interface RelatedCase {
+  sourceType: string;
+  header: string;
+  excerpt: string;
+}
+
+export interface ContractTextSegment {
+  text: string;
+  highlight?: ContractIssueLevel;
+  issueId?: string;
 }
 
 export interface ContractAnalysisResult {
@@ -108,46 +168,6 @@ export interface ContractAnalysisResult {
   imageUrl: string | null;
   extracted: ExtractedContract;
 }
-
-export type ContractIssueLevel = "danger" | "warning" | "info";
-
-export interface RelatedCase {
-  /** "PRECEDENT" | "INTERPRETATION" */
-  sourceType: string;
-  /** 사용자 표시용 헤더: "[판례] 대법원 2025.10.30 — 사건명..." */
-  header: string;
-  /** 발췌 본문 (최대 400자) */
-  excerpt: string;
-}
-
-export interface ContractIssue {
-  /** 이슈 고유 ID (type + index 조합) */
-  id?: string;
-  /** 이슈 번호 (1-based, UI 표시용) */
-  number?: number;
-  level: ContractIssueLevel;
-  title: string;
-  description: string;
-  legalBasis: string;
-  legalBasisExcerpt: string | null;
-  /** Level 3 RAG: 위반과 관련된 판례·해석례 (백엔드에서 의미 검색으로 자동 첨부) */
-  relatedCases?: RelatedCase[];
-  type: string;
-  recommendation?: string;
-  actionable?: { type: string; label: string } | null;
-}
-
-export interface ContractTextSegment {
-  text: string;
-  /** 하이라이트 대상 이슈 ID (ContractIssue.id와 매칭) */
-  issueId?: string;
-  isHighlighted?: boolean;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-//  백엔드 응답 타입 (camelCase 그대로) + 매핑 함수
-// ─────────────────────────────────────────────────────────────────────
-const MIN_WAGE = 10030;
 
 interface ApiLlmConcern {
   category: string;
@@ -301,7 +321,7 @@ export function mapJobPostingApiResponse(
     hasWeeklyHolidayPay,
     businessStatus,
     wageDelinquencyCount,
-    minimumWage2026: MIN_WAGE,
+    minimumWage2026: getMinimumWage().wage,
     issues,
     summary: api.finalSummary ?? "",
     overallAssessment: ex.overallAssessment ?? null,
@@ -331,7 +351,8 @@ export function mapJobPostingApiResponse(
 // ─────────────────────────────────────────────────────────────────────
 //  계약서 백엔드 응답 + 매핑 함수
 // ─────────────────────────────────────────────────────────────────────
-interface ApiExtractedContractInfo {
+
+export interface ApiExtractedContractInfo {
   hourlyWage: number | null;
   monthlyWage: number | null;
   dailyWage: number | null;
@@ -346,119 +367,54 @@ interface ApiExtractedContractInfo {
   breakTimeMentioned: boolean | null;
   employerName: string | null;
   businessRegistrationNumber: string | null;
+  workDays: string[] | null;
+  workStartTime: string | null;
+  workEndTime: string | null;
+  employmentStartDate: string | null;
+  contractEndDate: string | null;
+  wagePaymentDate: string | null;
+  wagePaymentMethod: string | null;
+  breakStartTime: string | null;
+  breakEndTime: string | null;
+  employerAddress: string | null;
+  employerPhone: string | null;
+  employerRepresentative: string | null;
 }
 
-interface ApiRelatedCase {
-  sourceType: string;
-  header: string;
-  excerpt: string;
-}
-
-interface ApiContractViolation {
-  type: string;
-  severity: "HIGH" | "MEDIUM" | "LOW";
-  description: string;
-  legalBasis: string;
-  legalBasisExcerpt: string | null;
-  relatedCases?: ApiRelatedCase[] | null;
-}
-
+/**
+ * 계약서 백엔드 응답 — POST /api/contracts/analyze.
+ * extracted 필드 + LLM 요약/우려사항.
+ */
 export interface ApiContractAnalysisResponse {
-  contractId: number;
-  hasViolation: boolean;
-  extractedInfo: ApiExtractedContractInfo | null;
-  violations: ApiContractViolation[];
-  summary: string | null;
-  minimumWage: number;
+  contractId: number | null;
   imageUrl: string | null;
-  createdAt: string;
+  extracted: ExtractedContract;
+  overallRisk: "high" | "medium" | "low";
+  summary: string;
+  issues: ContractIssue[];
 }
 
-const VIOLATION_TITLE: Record<string, string> = {
-  MINIMUM_WAGE: "최저임금 미달",
-  OVERTIME_PAY: "연장수당 규정 누락",
-  WEEKLY_HOLIDAY: "주휴수당 명시 누락",
-  MANDATORY_ITEMS: "필수 기재사항 누락",
-  WORKING_HOURS: "근로시간 불명확",
-  ANNUAL_LEAVE: "연차휴가 명시 누락",
-  REST_TIME: "휴게시간 미명시",
-};
-
+/**
+ * 백엔드 응답 → 프론트 ContractAnalysisResult 매핑.
+ */
 export function mapContractApiResponse(
   api: ApiContractAnalysisResponse,
-  fallbackWorkplaceName: string,
 ): ContractAnalysisResult {
-  const info = api.extractedInfo;
-
-  // 시급: 명시 시급 우선, 없으면 0 (백엔드에서 역산 후 hourlyWage에 설정하므로 factSheet에 있음)
-  // 실제 역산값은 api.factSheet.hourlyWage에 있을 수 있으나, extractedInfo에서 우선 사용
-  const hourlyWage = info?.hourlyWage ?? 0;
-  const hoursPerDay = info?.workingHoursPerDay ?? 0;
-  const daysPerWeek = info?.workingDaysPerWeek ?? 0;
-
-  // 예상 월급: 월급이 이미 있으면 그대로 사용, 없으면 시급 역산
-  const estimatedMonthlyPay = (() => {
-    if ((info?.monthlyWage ?? 0) > 0) return info!.monthlyWage!;
-    if (hourlyWage > 0 && hoursPerDay > 0 && daysPerWeek > 0) {
-      // 주휴 포함 월 근무시간으로 계산
-      const weeklyHours = hoursPerDay * daysPerWeek;
-      const weeklyPaidHours = weeklyHours >= 15 ? weeklyHours + hoursPerDay : weeklyHours;
-      return Math.round(hourlyWage * weeklyPaidHours * 52 / 12);
-    }
-    return 0;
-  })();
-
-  const issues: ContractIssue[] = (api.violations ?? []).map((v) => ({
-    level: severityToLevel(v.severity),
-    title: VIOLATION_TITLE[v.type] ?? v.type,
-    description: v.description,
-    legalBasis: v.legalBasis,
-    legalBasisExcerpt: v.legalBasisExcerpt ?? null,
-    relatedCases: (v.relatedCases ?? []).map((c) => ({
-      sourceType: c.sourceType,
-      header: c.header,
-      excerpt: c.excerpt,
-    })),
-    type: v.type,
-  }));
-
-  const severities = (api.violations ?? []).map((v) => v.severity);
-  const overallRisk: ContractAnalysisResult["overallRisk"] = severities.includes(
-    "HIGH",
-  )
-    ? "high"
-    : severities.includes("MEDIUM")
-      ? "medium"
-      : "low";
-
   return {
-    contractId: api.contractId ?? null,
-    workplaceName: info?.employerName ?? fallbackWorkplaceName,
-    contractPeriod: info?.startDate ?? "확인불가",
-    hourlyWage,
-    minimumWage: api.minimumWage,
-    estimatedMonthlyPay,
-    issues,
-    overallRisk,
-    summary: api.summary ?? "",
-    imageUrl: api.imageUrl ?? null,
-    extracted: {
-      hourlyWage: info?.hourlyWage ?? null,
-      monthlyWage: info?.monthlyWage ?? null,
-      dailyWage: info?.dailyWage ?? null,
-      workingHoursPerDay: info?.workingHoursPerDay ?? null,
-      workingDaysPerWeek: info?.workingDaysPerWeek ?? null,
-      startDate: info?.startDate ?? null,
-      workPlace: info?.workPlace ?? null,
-      jobDescription: info?.jobDescription ?? null,
-      weeklyHolidayAllowanceMentioned:
-        info?.weeklyHolidayAllowanceMentioned ?? null,
-      overtimeAllowanceMentioned: info?.overtimeAllowanceMentioned ?? null,
-      annualLeaveMentioned: info?.annualLeaveMentioned ?? null,
-      breakTimeMentioned: info?.breakTimeMentioned ?? null,
-      employerName: info?.employerName ?? null,
-      businessRegistrationNumber: info?.businessRegistrationNumber ?? null,
-    },
+    contractId: api.contractId,
+    workplaceName: api.extracted.employerName ?? "",
+    contractPeriod:
+      api.extracted.employmentStartDate !== null
+        ? `${api.extracted.employmentStartDate} ~ ${api.extracted.contractEndDate ?? "기간없음"}`
+        : "",
+    hourlyWage: api.extracted.hourlyWage ?? 0,
+    minimumWage: getMinimumWage().wage,
+    estimatedMonthlyPay: api.extracted.monthlyWage ?? 0,
+    issues: api.issues,
+    overallRisk: api.overallRisk,
+    summary: api.summary,
+    imageUrl: api.imageUrl,
+    extracted: api.extracted,
   };
 }
 
