@@ -12,60 +12,66 @@ import { useMinimumWageStore } from "@/shared/lib/minimum-wage-store";
 const MIN_WAGE_CACHE_KEY = "minimumWage_cache";
 const MIN_WAGE_TTL_MS = 24 * 60 * 60 * 1000;
 
-export default function RootLayout() {
-  // 앱 포그라운드 복귀 시 FCM 토큰 동기화 (로그인 상태일 때만 백엔드 반영됨)
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (s) => {
-      if (s === "active") void syncFcmToken();
-    });
-    return () => sub.remove();
-  }, []);
+export default function RootLayout(): JSX.Element {
+  const setMinimumWage = useMinimumWageStore((s) => s.setMinimumWage);
 
-  // 앱 시작 시 30일 만료된 계약서 임시 캐시 정리
   useEffect(() => {
-    void cleanExpiredContractPending();
-  }, []);
-
-  // 앱 시작 시 최저시급 24h 캐시 로드 — 캐시 만료 시 백엔드 조회 후 갱신
-  useEffect(() => {
+    // 최저시급 캐시 로드 + 비동기 갱신
     void (async () => {
       try {
-        const raw = await AsyncStorage.getItem(MIN_WAGE_CACHE_KEY);
-        if (raw !== null) {
-          const cached = JSON.parse(raw) as {
-            hourlyWage: number;
+        const cached = await AsyncStorage.getItem(MIN_WAGE_CACHE_KEY);
+        if (cached !== null) {
+          const parsed = JSON.parse(cached) as {
+            wage: number;
             year: number;
-            cachedAt: number;
+            fetchedAt: number;
           };
-          if (Date.now() - cached.cachedAt < MIN_WAGE_TTL_MS) {
-            useMinimumWageStore
-              .getState()
-              .setMinimumWage(cached.hourlyWage, cached.year);
+          if (Date.now() - parsed.fetchedAt < MIN_WAGE_TTL_MS) {
+            setMinimumWage(parsed.wage, parsed.year);
             return;
           }
         }
-        const { hourlyWage, year } = await fetchMinimumWage(
-          new Date().getFullYear(),
-        );
-        useMinimumWageStore.getState().setMinimumWage(hourlyWage, year);
+        const res = await fetchMinimumWage();
+        setMinimumWage(res.hourlyWage, res.year);
         await AsyncStorage.setItem(
           MIN_WAGE_CACHE_KEY,
-          JSON.stringify({ hourlyWage, year, cachedAt: Date.now() }),
+          JSON.stringify({
+            wage: res.hourlyWage,
+            year: res.year,
+            fetchedAt: Date.now(),
+          }),
         );
       } catch {
-        // 네트워크/파싱 실패 — store는 폴백 값 유지
+        // 실패해도 store 기본값 유지
       }
     })();
-  }, []);
+
+    // FCM 토큰 동기화
+    void syncFcmToken().catch(() => {
+      /* 실패 무시 */
+    });
+
+    // 계약서 pending 만료 정리
+    void cleanExpiredContractPending().catch(() => {
+      /* 실패 무시 */
+    });
+
+    // foreground 복귀 시 토큰 재동기화
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") {
+        void syncFcmToken().catch(() => {
+          /* 무시 */
+        });
+      }
+    });
+    return () => sub.remove();
+  }, [setMinimumWage]);
 
   return (
     <ActionSheetProvider>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="work-record/[id]" />
-        <Stack.Screen name="mentor-chat/[matchId]" />
-        <Stack.Screen name="contract-detail/[contractId]" />
         <Stack.Screen name="login" />
       </Stack>
     </ActionSheetProvider>

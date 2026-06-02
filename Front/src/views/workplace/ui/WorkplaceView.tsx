@@ -425,6 +425,7 @@ export function WorkplaceView(): JSX.Element {
         onBack={() => {
           setPendingRegistration(null);
           setCurrentScreen("list");
+          router.push("/(tabs)/work-record");
         }}
         onNext={(info) => {
           setWorkInfo(registration.workplaceId, info);

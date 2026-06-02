@@ -5,9 +5,7 @@ export type {
 } from "./model/types";
 export {
   fetchAttendances,
-  fetchTodayAttendance,
   checkIn,
-  checkOut,
   fetchTotalMinutes,
 } from "./api/fetch-attendances";
 export {

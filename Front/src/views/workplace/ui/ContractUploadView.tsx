@@ -43,10 +43,7 @@ export function ContractUploadView({
   const handleCameraPress = async (): Promise<void> => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "카메라 권한 필요",
-        "계약서 촬영을 위해 카메라 권한이 필요합니다. 설정에서 허용해주세요.",
-      );
+      Alert.alert("권한 필요", "카메라 권한이 필요합니다.");
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -308,49 +305,28 @@ export function ContractUploadView({
       {/* 하단 고정 버튼 */}
       <View
         style={{
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
           padding: 16,
           backgroundColor: "#FFFFFF",
           borderTopWidth: 1,
           borderTopColor: "#E2E8F0",
-          flexDirection: "row",
-          gap: 8,
         }}
       >
-        <Pressable
-          onPress={onBack}
-          style={{
-            flex: 1,
-            paddingVertical: 14,
-            backgroundColor: "#F8FAFC",
-            borderRadius: 10,
-            alignItems: "center",
-            borderWidth: 1,
-            borderColor: "#E2E8F0",
-          }}
-        >
-          <Text style={{ color: "#475569", fontSize: 14, fontWeight: "500" }}>
-            이전으로
-          </Text>
-        </Pressable>
         <Pressable
           onPress={() => void handleAnalyze()}
           disabled={files.length === 0 || isAnalyzing}
           style={{
-            flex: 2,
+            backgroundColor:
+              files.length === 0 || isAnalyzing ? "#CBD5E1" : "#3182F6",
             paddingVertical: 14,
-            backgroundColor: files.length === 0 ? "#94A3B8" : "#3182F6",
-            borderRadius: 10,
+            borderRadius: 12,
             alignItems: "center",
-            opacity: files.length === 0 ? 0.6 : 1,
           }}
         >
-          <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}>
+          <Text
+            style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}
+          >
             {files.length === 0
-              ? "파일을 업로드해주세요"
+              ? "계약서 파일을 추가하세요"
               : `분석 시작하기 (${files.length}장)`}
           </Text>
         </Pressable>

@@ -48,10 +48,18 @@ function toAttendance(r: WorkingResponse): AttendanceRecord {
     overtimeMinutes: Math.max(0, workedMinutes - 480),
     nightWorkedMinutes: 0,
     estimatedWage: 0,
-    status: r.inProgress ? "working" : "checked-out",
+    status: r.inProgress
+      ? "working"
+      : r.realEndTime !== null
+        ? "checked-out"
+        : "checked-in",
   };
 }
 
+/**
+ * GET /api/working/history/{partTimeJobId}
+ * 출퇴근 히스토리 조회.
+ */
 export async function fetchAttendances(
   workplaceId: string,
 ): Promise<AttendanceRecord[]> {
@@ -62,20 +70,13 @@ export async function fetchAttendances(
   return data.map(toAttendance);
 }
 
-export async function fetchTodayAttendance(
-  workplaceId: string,
-): Promise<AttendanceRecord | null> {
-  // TODO: /api/working/** 인증 정책 변경 시 apiClient로 교체 필요
-  const { data } = await apiClient.get<WorkingResponse | null>(
-    `/working/current/${workplaceId}`,
-  );
-  return data ? toAttendance(data) : null;
-}
-
+/**
+ * POST /api/working/clock-in — 출근 처리.
+ */
 export async function checkIn(
   workplaceId: string,
   bssid?: string,
-): Promise<AttendanceRecord> {
+): Promise<AttendanceRecord | null> {
   // TODO: /api/working/** 인증 정책 변경 시 apiClient로 교체 필요
   const { data } = await apiClient.post<WorkingResponse>("/working/clock-in", {
     partTimeJobId: Number(workplaceId),

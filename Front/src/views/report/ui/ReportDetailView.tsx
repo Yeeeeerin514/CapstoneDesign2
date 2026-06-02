@@ -274,12 +274,8 @@ export function ReportDetailView({
             : reportCase.workplaceName
         }
         onBack={() => setShowSmartMentor(false)}
-        onMatched={(_matchId, _mentorNickname) => {
-          setShowSmartMentor(false);
-          // 채팅 진입은 SmartMentorRecommendView 내부에서 router.push로 직접 처리
-        }}
+        onMatched={() => setShowSmartMentor(false)}
         onOpenBrowse={() => {
-          // Top-3에 마음에 드는 멘토 없을 때 → 전체 멘토 둘러보기로 전환
           setShowSmartMentor(false);
           setShowMentorBrowse(true);
         }}
@@ -294,7 +290,7 @@ export function ReportDetailView({
         industry={reportCase.industry}
         damageTypes={reportCase.damageTypes}
         onBack={() => setShowMentorRecommend(false)}
-        onStartChat={(mentor) => {
+        onStartChat={(mentor: import("@/entities/mentor").MentorProfile) => {
           // 매칭 레코드 생성 + 최상위 라우트로 채팅 진입 (탭 무관 영구 접근).
           const match = createMentorMatch({
             caseId: reportCase.id,

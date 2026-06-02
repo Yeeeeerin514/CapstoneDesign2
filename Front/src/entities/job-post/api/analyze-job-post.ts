@@ -12,11 +12,6 @@ import { MOCK_CONTRACT_ANALYSIS, MOCK_JOB_ANALYSIS } from "../model/mock-data";
 
 const USE_MOCK = true; // 백엔드 연결 시 false로 바꾸면 끝
 
-/**
- * 이미지 URI를 백엔드로 전송 가능한 FormData 필드로 변환.
- * - Web: blob/data URL을 fetch해 Blob으로 변환
- * - Native: { uri, type, name } 객체 (RN 자체 멀티파트 처리)
- */
 async function buildImageFormData(
   imageUri: string,
   filename: string,
@@ -25,11 +20,7 @@ async function buildImageFormData(
   if (Platform.OS === "web") {
     const response = await fetch(imageUri);
     const blob = await response.blob();
-    (formData as unknown as { append: (n: string, v: Blob, f?: string) => void }).append(
-      "image",
-      blob,
-      filename,
-    );
+    formData.append("image", blob, filename);
   } else {
     formData.append("image", {
       uri: imageUri,
@@ -98,5 +89,9 @@ export async function analyzeContract(
       timeout: 60_000,
     },
   );
-  return mapContractApiResponse(data, fallbackWorkplaceName);
+  const result = mapContractApiResponse(data);
+  if (result.workplaceName.length === 0) {
+    result.workplaceName = fallbackWorkplaceName;
+  }
+  return result;
 }

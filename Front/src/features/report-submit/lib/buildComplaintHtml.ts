@@ -42,32 +42,31 @@ function fmtDate(value: string | null): string {
 
 function buildFactsBlock(facts: ComplaintFacts | undefined): string {
   if (facts === undefined) return "";
-  const rows = [
+  const rows: Array<[string, string]> = [
     ["입사일", fmtDate(facts.employmentStartDate)],
     facts.employmentStatus === "FORMER"
       ? ["퇴사일", fmtDate(facts.employmentEndDate)]
       : ["재직 상태", facts.employmentStatus === "CURRENT" ? "재직 중" : "-"],
     ["체불임금 총액", fmtMoney(facts.totalUnpaidWage)],
-    facts.employmentStatus === "FORMER"
-      ? ["체불 퇴직금", fmtMoney(facts.unpaidSeverance)]
-      : null,
-    facts.otherUnpaid !== null && facts.otherUnpaid > 0
-      ? ["기타 체불금", fmtMoney(facts.otherUnpaid)]
-      : null,
-    facts.jobDescription !== null && facts.jobDescription.length > 0
-      ? ["업무 내용", facts.jobDescription]
-      : null,
-    facts.wagePaymentDate !== null && facts.wagePaymentDate.length > 0
-      ? ["임금 지급일", facts.wagePaymentDate]
-      : null,
-    facts.contractMethod !== null
-      ? [
-          "근로계약 방법",
-          facts.contractMethod === "WRITTEN" ? "서면" : "구두",
-        ]
-      : null,
-  ].filter((r): r is [string, string] => r !== null);
-
+  ];
+  if (facts.employmentStatus === "FORMER") {
+    rows.push(["체불 퇴직금", fmtMoney(facts.unpaidSeverance)]);
+  }
+  if (facts.otherUnpaid !== null && facts.otherUnpaid > 0) {
+    rows.push(["기타 체불금", fmtMoney(facts.otherUnpaid)]);
+  }
+  if (facts.jobDescription !== null && facts.jobDescription.length > 0) {
+    rows.push(["업무 내용", facts.jobDescription]);
+  }
+  if (facts.wagePaymentDate !== null && facts.wagePaymentDate.length > 0) {
+    rows.push(["임금 지급일", facts.wagePaymentDate]);
+  }
+  if (facts.contractMethod !== null) {
+    rows.push([
+      "근로계약 방법",
+      facts.contractMethod === "WRITTEN" ? "서면" : "구두",
+    ]);
+  }
   return rows
     .map(
       ([k, v]) =>
@@ -198,16 +197,6 @@ export function buildComplaintHtml(params: BuildComplaintParams): string {
 
   <p style="margin-top: 14px;"><strong>협의 시도 여부</strong></p>
   <div class="indent">${negotiationText}</div>
-</div>
-
-<div class="section">
-  <div class="section-title">4. 첨부 증거</div>
-  <div class="indent">
-    - 근로계약서 (${reportCase.evidence.contracts}건)<br/>
-    - 출퇴근 기록 (${reportCase.evidence.workLogs}건)<br/>
-    - 급여명세서 (${reportCase.evidence.paystubs}건)<br/>
-    - 통장 거래내역 (${reportCase.evidence.bankRecords}건)
-  </div>
 </div>
 
 <div class="sign">

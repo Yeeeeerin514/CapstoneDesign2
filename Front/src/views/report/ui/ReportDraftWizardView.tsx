@@ -215,7 +215,6 @@ export function ReportDraftWizardView({
       style={{ flex: 1, backgroundColor: "#F8FAFC" }}
     >
       <ScreenHeader showLogo />
-
       <View
         style={{
           flexDirection: "row",
@@ -539,8 +538,6 @@ function SummaryRow({
 }
 
 // ──────────────────────────────────────────
-// 진정서 미리보기 + 액션 버튼
-// ──────────────────────────────────────────
 
 interface PreviewProps {
   reportCase: ReportCase;
@@ -606,7 +603,7 @@ function ComplaintPreview({
       `   체불임금 총액: ₩${total.toLocaleString()}`,
       ``,
       `   피해 유형:`,
-      ...damages.map((d) => `     - ${DAMAGE_LABEL[d]}`),
+      ...damages.map((d: DamageTypeEnum) => `     - ${DAMAGE_LABEL[d]}`),
       ``,
       `   상황 설명:`,
       `   ${reportCase.freeFormDescription ?? "(상황 설명 미입력)"}`,

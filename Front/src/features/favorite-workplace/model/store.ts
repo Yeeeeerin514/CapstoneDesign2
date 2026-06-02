@@ -7,13 +7,9 @@ export interface FavoriteWorkplace {
   id: string;
   name: string;
   contractStatus: "none" | "uploaded" | "analyzed";
-  /** 사업장 등록 상태 (BSSID 등록 완료 시 "registered") */
   registrationStatus: "none" | "registered";
-  /** 등록된 사업장 Wi-Fi BSSID */
   bssid?: string;
-  /** 등록된 사업장 Wi-Fi SSID (사용자 표시용) */
   ssid?: string;
-  /** 등록 완료 시각 (ISO) */
   registeredAt?: string;
   /** 마지막 분석된 계약서 ID (서버 측 LaborContract.id) */
   contractId?: number;
@@ -65,17 +61,15 @@ interface FavoriteWorkplaceState {
   /** contractStatus만 갱신 (백엔드 흐름). */
   updateContractStatus: (
     id: string,
-    status: FavoriteWorkplace["contractStatus"],
+    status: "none" | "uploaded" | "analyzed",
   ) => void;
-  /** 서버 측 LaborContract.id 저장. */
-  setContractId: (id: string, contractId: number) => void;
-  /** 백엔드 part_time_job.id 저장. */
-  setPartTimeJobId: (id: string, partTimeJobId: number) => void;
-  /** BSSID 등록 완료 처리 (사업장 정식 등록). */
+  /** BSSID 등록 완료 처리. */
   markRegistered: (id: string, bssid: string, ssid: string) => void;
-  /** 등록 취소 (사업장에서 제외). */
-  unregister: (id: string) => void;
-  /** 1단계 근무 정보 저장 (BSSID 등록 전 단계). */
+  /** contractId 갱신. */
+  setContractId: (id: string, contractId: number) => void;
+  /** partTimeJobId 갱신 — BSSID 등록 시 자동 부여. */
+  setPartTimeJobId: (id: string, partTimeJobId: number) => void;
+  /** 근무 정보 (workDays/시간/시급) 저장. */
   setWorkInfo: (id: string, info: WorkInfoInput) => void;
 }
 
@@ -126,18 +120,6 @@ export const useFavoriteWorkplaceStore = create<FavoriteWorkplaceState>()(
             w.id === id ? { ...w, contractStatus: status } : w,
           ),
         })),
-      setContractId: (id, contractId) =>
-        set((state) => ({
-          workplaces: state.workplaces.map((w) =>
-            w.id === id ? { ...w, contractId } : w,
-          ),
-        })),
-      setPartTimeJobId: (id, partTimeJobId) =>
-        set((state) => ({
-          workplaces: state.workplaces.map((w) =>
-            w.id === id ? { ...w, partTimeJobId } : w,
-          ),
-        })),
       markRegistered: (id, bssid, ssid) =>
         set((state) => ({
           workplaces: state.workplaces.map((w) =>
@@ -152,18 +134,16 @@ export const useFavoriteWorkplaceStore = create<FavoriteWorkplaceState>()(
               : w,
           ),
         })),
-      unregister: (id) =>
+      setContractId: (id, contractId) =>
         set((state) => ({
           workplaces: state.workplaces.map((w) =>
-            w.id === id
-              ? {
-                  ...w,
-                  registrationStatus: "none",
-                  bssid: undefined,
-                  ssid: undefined,
-                  registeredAt: undefined,
-                }
-              : w,
+            w.id === id ? { ...w, contractId } : w,
+          ),
+        })),
+      setPartTimeJobId: (id, partTimeJobId) =>
+        set((state) => ({
+          workplaces: state.workplaces.map((w) =>
+            w.id === id ? { ...w, partTimeJobId } : w,
           ),
         })),
       setWorkInfo: (id, info) =>

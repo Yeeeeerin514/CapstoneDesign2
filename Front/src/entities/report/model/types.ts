@@ -1,27 +1,17 @@
 import type { WageBreakdown } from "../api/wage-calc";
 
-export type EvidenceType =
-  | "bssid-log"
-  | "contract"
-  | "bankbook"
-  | "payslip"
-  | "etc";
+// ──────────────────────────────────────
+// 레거시 Report — 옛 신고 모델 (api/create-report.ts 호환). 새 코드는 ReportCase 사용.
+// ──────────────────────────────────────
+export type EvidenceType = "attendance" | "contract" | "chat" | "photo";
 
 export interface ReportEvidence {
   id: string;
   type: EvidenceType;
-  /** 로컬 URI 또는 서버 URL. */
   uri: string;
-  /** 사용자에게 보여줄 라벨 (예: "1월 BSSID 기록"). */
-  label: string;
-  /** 자동 수집 여부 — UI에서 ✓ 표시. */
-  autoCollected: boolean;
+  capturedAt: string;
 }
 
-/**
- * 레거시 신고 모델 — `entities/report/api/create-report.ts`가 사용.
- * 새 신고 코치 흐름은 `ReportCase`를 사용한다.
- */
 export interface Report {
   id: string;
   workplaceId: string;
@@ -29,26 +19,16 @@ export interface Report {
   estimatedUnpaidAmount: number;
   status: "draft" | "submitted" | "resolved";
   evidences: ReportEvidence[];
-  /** 연대 신고 여부. */
   isSolidarity: boolean;
-  /** 연대 참여자 수 (본인 포함). */
   participantCount: number;
-  /** ISO 생성 시각. */
   createdAt: string;
 }
 
-// ───────────────────────────────────────────────
-// 신고 코치 흐름 — ReportCase 기반
-// ───────────────────────────────────────────────
+// ──────────────────────────────────────
+// V2 ReportCase 모델 — 신고 사건 단위.
+// ──────────────────────────────────────
 
-/**
- * 사건 상태 (앱 전체 통일) — docs/REPORT_SPEC.md 5-val 모델 기준.
- * - pending: 진정 접수 전 (증거수집/금액계산 단계)
- * - inspecting: 진정 제출 후 감독관 조사 중
- * - correction_ordered: 시정지시 완료
- * - resolved: 해결됨 (종결 통보 + 자가확인)
- * - unresolved: 미수령 (민사 필요)
- */
+/** 사건 상태 — 진행 흐름의 메인 축. */
 export type ReportStatus =
   | "PENDING"
   | "INSPECTING"
@@ -383,35 +363,33 @@ export interface ReportCase {
   businessRegistrationNumber: string | null;
   /** 백엔드 business 테이블 ID. 사업장 검색 연결 시 채워짐. 미연결이면 null. */
   businessId: number | null;
-  /** 업종 — 멘토 매칭 / 후기 필터링 기준 (예: "카페·음식점"). */
+  /** 업종 (카페·음식점 등) — UI 필터·후기 매칭용. */
   industry: string;
-  /** 지역 — 후기 필터 / 표시용 (예: "서울 강남구"). */
+  /** 지역 (서울 강남구 등). */
   region: string;
-  /** 피해 유형 — 멘토 매칭 기준 (예: ["임금체불", "주휴수당"]). */
+  /** 피해 유형 라벨 배열 — V2에서는 damageTypeEnums가 정식이지만 호환을 위해 보존. */
   damageTypes: string[];
 
+  /** 사건 상태 — 신고 흐름의 메인 축. */
   status: ReportStatus;
-  /** 현재 진행 중인 단계 ID. 수정 모드에선 highestStep보다 작을 수 있음. */
+  /** 현재 활성 step. */
   currentStep: CaseStep;
-  /**
-   * 진행한 적이 있는 가장 마지막 단계.
-   * 사용자가 이전 단계로 되돌아가 수정해도 줄어들지 않음.
-   *   - currentStep === highestStep: 신규 진행 중
-   *   - currentStep < highestStep:    수정 모드
-   */
+  /** 도달한 최고 step — 수정 모드에서도 줄지 않음. */
   highestStep: CaseStep;
-  /** 완료된 단계 ID 목록. completeStep 액션이 push, 중복 방지. */
+  /** 완료된 step 목록. */
   completedSteps: CaseStep[];
 
-  /** 증거 상태 — EvidenceState (카운트 + 사용자 직접 입력값). */
+  /** 증거 상태 (레거시 V1). */
   evidence: EvidenceState;
-  /** 실제 업로드된 증거 파일 목록 — evidence 카운트와 동기 갱신. */
   evidenceFiles: EvidenceFile[];
-  /**
-   * 자연어 증거 텍스트 목록 — Step 1에서 사용자가 자유롭게 작성.
-   * POST /api/reports description 필드로 `\n\n---\n\n` join 후 전송.
-   */
   evidenceTexts: string[];
+
+  /** ISO 생성 시각. */
+  createdAt: string;
+  /** ISO resolved 전환 시각. */
+  resolvedAt?: string;
+  /** ISO 노동청 제출 시각. */
+  submittedAt?: string;
 
   // 금액 (모두 null 시작 — 증거 없이는 금액 표시 안 함)
   /** 받아야 할 금액 (시급 × 근무시간). 계약서 + 근무기록 또는 사용자 입력 있을 때만. */
@@ -429,13 +407,6 @@ export interface ReportCase {
   actualReceivedAmount: number | null;
   /** 사용자가 breakdown 편집 후 저장한 미지급 총액. 우선순위: manual > (totalShouldReceive - actualReceived). */
   manualUnpaidAmount: number | null;
-
-  /** 사건 생성 시각 (ISO). */
-  createdAt: string;
-  /** status가 resolved로 전환된 시각 (ISO). updateCaseStatus가 자동 채움. */
-  resolvedAt?: string;
-  /** 노동청 제출 시각 (ISO). setSubmittedAt이 채움. */
-  submittedAt?: string;
 
   /** 진정서 초안 ID — ReportDraft entity 도입 시 사용. */
   draftId?: string;

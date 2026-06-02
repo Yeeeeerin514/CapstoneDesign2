@@ -57,15 +57,14 @@ interface ReportStoreState {
     industry: string;
     region: string;
     damageTypes: string[];
-    /** 자동 수집된 초기 증거 — 미지정 시 INITIAL_EVIDENCE 사용. */
     initialEvidence?: Partial<EvidenceState>;
   }) => string;
 
-  /** 특정 step을 완료 처리. completedSteps 배열에 push + highestStep 업데이트. */
+  /** step 완료 처리 + highestStep 업데이트. */
   completeStep: (caseId: string, stepId: CaseStep) => void;
-  /** currentStep 변경. 이전 step은 모두 completedSteps에 push + highestStep 업데이트. */
+  /** currentStep 설정. completedSteps도 함께 갱신. */
   setCurrentStep: (caseId: string, stepId: CaseStep) => void;
-  /** 현재 단계를 완료 처리하고 다음 step으로 진행. */
+  /** 다음 step으로 진행. */
   advanceStep: (caseId: string) => void;
   /**
    * 완료된 이전 단계로 되돌아가기 (수정 모드).
@@ -74,6 +73,13 @@ interface ReportStoreState {
   navigateToStep: (caseId: string, targetStep: CaseStep) => void;
   /** 사건 status 변경 — resolved로 전환 시 resolvedAt 자동 채움. */
   updateCaseStatus: (caseId: string, status: ReportStatus) => void;
+  /** 노동청 제출 완료 — submittedAt + investigationStatus 자동 설정. */
+  setSubmittedAt: (caseId: string, submittedAt: string) => void;
+  /** Step 6 (investigation) 내부 서브 상태 갱신. */
+  updateInvestigationStatus: (
+    caseId: string,
+    status: InvestigationSubStatus,
+  ) => void;
 
   /** 증거 상태 부분 갱신 — 한 필드씩 + 또는 통째 set. 금액 재계산은 별도. */
   updateEvidence: (caseId: string, patch: Partial<EvidenceState>) => void;
@@ -115,14 +121,6 @@ interface ReportStoreState {
   addEvidenceText: (caseId: string, text: string) => void;
   /** index 기반 삭제 — 카드에서 ✕ 누름. */
   removeEvidenceText: (caseId: string, index: number) => void;
-
-  /** 노동청 제출 완료 시 submittedAt 기록 + investigationStatus를 'waiting_inspector'로 자동 설정. */
-  setSubmittedAt: (caseId: string, submittedAt: string) => void;
-  /** Step 6 (investigation) 내부 서브 상태 갱신. */
-  updateInvestigationStatus: (
-    caseId: string,
-    status: InvestigationSubStatus,
-  ) => void;
 
   /** 진정서 draftId 저장. */
   setDraftId: (caseId: string, draftId: string) => void;
@@ -392,27 +390,6 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
       ),
     })),
 
-  setSubmittedAt: (caseId, submittedAt) =>
-    set((s) => ({
-      cases: s.cases.map((c) =>
-        c.id === caseId
-          ? {
-              ...c,
-              submittedAt,
-              investigationStatus:
-                c.investigationStatus ?? "waiting_inspector",
-            }
-          : c,
-      ),
-    })),
-
-  updateInvestigationStatus: (caseId, status) =>
-    set((s) => ({
-      cases: s.cases.map((c) =>
-        c.id === caseId ? { ...c, investigationStatus: status } : c,
-      ),
-    })),
-
   setDraftId: (caseId, draftId) =>
     set((s) => ({
       cases: s.cases.map((c) =>
@@ -459,6 +436,26 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
         const updated = { ...c, manualUnpaidAmount: amount };
         return { ...updated, calculatedUnpaid: deriveUnpaid(updated) };
       }),
+    })),
+
+  setSubmittedAt: (caseId, submittedAt) =>
+    set((s) => ({
+      cases: s.cases.map((c) =>
+        c.id === caseId
+          ? {
+              ...c,
+              submittedAt,
+              investigationStatus: "waiting_inspector",
+            }
+          : c,
+      ),
+    })),
+
+  updateInvestigationStatus: (caseId, status) =>
+    set((s) => ({
+      cases: s.cases.map((c) =>
+        c.id === caseId ? { ...c, investigationStatus: status } : c,
+      ),
     })),
 
   closeCase: (caseId) =>

@@ -12,32 +12,10 @@ import type {
   MentorshipMatch,
 } from "../model/matching-types";
 
-/** 멘토 등록/수정 */
-export async function registerMentor(
-  req: MentorRegistrationRequest,
-): Promise<BackendMentorProfile> {
-  const { data } = await apiClient.post<BackendMentorProfile>(
-    "/mentoring/mentor-profile",
-    req,
-  );
-  return data;
-}
-
-/** 내 멘토 프로필 조회 (없으면 null) */
-export async function fetchMyMentorProfile(): Promise<BackendMentorProfile | null> {
-  try {
-    const { data } = await apiClient.get<BackendMentorProfile>(
-      "/mentoring/mentor-profile/me",
-    );
-    return data ?? null;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * 매칭 요청 — Gower distance + Gale-Shapley + Thompson Sampling 적용.
- * 응답으로 top-K 멘토 + 항목별 기여도 + 사용 가중치 반환.
+ * POST /api/mentoring/match-request
+ * 사건 컨텍스트를 보내고 top-K 매칭 결과를 받음. 백엔드가 Gower distance +
+ * Gale-Shapley + Thompson Sampling으로 계산.
  */
 export async function requestMatch(
   payload: MatchRequestPayload,
@@ -49,21 +27,43 @@ export async function requestMatch(
   return data;
 }
 
-/** 멘티가 결제·동의 후 매칭 확정 (PROPOSED → ACTIVE) */
-export async function confirmMatch(matchId: number): Promise<void> {
-  await apiClient.post(`/mentoring/match/${matchId}/confirm`);
+/**
+ * POST /api/mentoring/match/{matchId}/confirm
+ * PROPOSED 상태 매칭을 ACTIVE로 전환. 사용자가 결제하고 멘토를 확정할 때 호출.
+ */
+export async function confirmMatch(matchId: number): Promise<MentorshipMatch> {
+  const { data } = await apiClient.post<MentorshipMatch>(
+    `/mentoring/match/${matchId}/confirm`,
+  );
+  return data;
 }
 
-/** 매칭 종료 후 피드백 제출 — Thompson Sampling 학습 신호 */
-export async function submitMatchingFeedback(
+/** POST /api/mentoring/match/{matchId}/feedback — 매칭 종료 후 별점/감사 메시지. */
+export async function submitMatchFeedback(
+  matchId: number,
   payload: FeedbackPayload,
 ): Promise<void> {
-  await apiClient.post("/mentoring/feedback", payload);
+  await apiClient.post(`/mentoring/match/${matchId}/feedback`, payload);
 }
 
-/** 내 매칭 이력 — API-REFERENCE.md §7 MentorshipMatch[] */
-export async function fetchMyMatches(): Promise<MentorshipMatch[]> {
-  const { data } = await apiClient.get<MentorshipMatch[]>("/mentoring/my-matches");
+/** GET /api/mentoring/mentors/{userId} — 단일 멘토 풀 프로필. */
+export async function fetchMentorProfileById(
+  userId: number,
+): Promise<BackendMentorProfile> {
+  const { data } = await apiClient.get<BackendMentorProfile>(
+    `/mentoring/mentors/${userId}`,
+  );
+  return data;
+}
+
+/** POST /api/mentoring/mentors — 멘토 신규 등록 (자격 증빙 첨부). */
+export async function registerMentor(
+  payload: MentorRegistrationRequest,
+): Promise<BackendMentorProfile> {
+  const { data } = await apiClient.post<BackendMentorProfile>(
+    "/mentoring/mentors",
+    payload,
+  );
   return data;
 }
 

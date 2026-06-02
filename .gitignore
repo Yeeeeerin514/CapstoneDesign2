@@ -2,6 +2,13 @@
 *.key
 .vscode/
 tmp_mid_ppt_media/
+<<<<<<< HEAD
+=======
+node_modules/
+docs/node_modules/
+docs/package*.json
+docs/*.js
+>>>>>>> main
 
 # 환경 변수 — 비밀 키는 절대 추적하지 않음
 .env.local

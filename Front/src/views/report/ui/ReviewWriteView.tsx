@@ -121,7 +121,6 @@ export function ReviewWriteView({
   const [resolutionMethod, setResolutionMethod] =
     useState<ResolutionMethodLabel>("노동청 진정");
 
-  // ── 본문 필드
   const [rating, setRating] = useState<number>(5);
   const [title, setTitle] = useState<string>("");
   const [content, setContent] = useState<string>("");

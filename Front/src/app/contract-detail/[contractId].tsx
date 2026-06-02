@@ -46,7 +46,8 @@ export default function ContractDetailScreen(): JSX.Element {
     fetchContractDetail(id)
       .then((api: ContractAnalysisResponse) => {
         if (cancelled) return;
-        const result = mapContractApiResponse(api, "확인불가");
+        const result = mapContractApiResponse(api);
+        if (result.workplaceName.length === 0) result.workplaceName = "확인불가";
         setState({ kind: "ok", result });
       })
       .catch((err) => {

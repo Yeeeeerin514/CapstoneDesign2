@@ -131,7 +131,9 @@ export function IssueDetailSheet({
                   marginBottom: 4,
                 }}
               >
-                {issue.legalBasis}
+                {typeof issue.legalBasis === "string"
+                  ? issue.legalBasis
+                  : (issue.legalBasis?.law ?? "")}
               </Text>
               {issue.legalBasisExcerpt !== null && issue.legalBasisExcerpt !== undefined && (
                 <Text style={{ fontSize: 13, color: "#475569", lineHeight: 20 }}>

@@ -118,33 +118,7 @@ export type VerificationMethod = "RESOLVED_CASE" | "EVIDENCE_UPLOAD" | "ADMIN_VE
 /** 백엔드 mentorship_match.status 컬럼 enum. */
 export type MatchStatus = "PROPOSED" | "ACTIVE" | "COMPLETED" | "CANCELED";
 
-export const VERIFICATION_METHOD_LABEL: Record<VerificationMethod, string> = {
-  RESOLVED_CASE: "앱 내 해결 경험",
-  EVIDENCE_UPLOAD: "증빙 자료 업로드",
-  ADMIN_VERIFIED: "관리자 승인",
-};
-
-export interface MentorRegistrationRequest {
-  nickname: string;
-  industry: Industry;
-  damageTypes: DamageType[];
-  employmentType: EmploymentType;
-  businessSize: BusinessSize;
-  region: Region;
-  resolutionMethods: ResolutionMethod[];
-  resolutionDays: number;
-  damageAmountRange: DamageAmountRange;
-  bio: string;
-  capacity: number;
-  consultingFee: number;
-  /** null이면 백엔드 400. RESOLVED_CASE / EVIDENCE_UPLOAD / ADMIN_VERIFIED 중 하나. */
-  verificationMethod: VerificationMethod;
-  /** RESOLVED_CASE: 해결된 신고 사건 ID 목록. 미해당 시 null. */
-  verifiedCaseIds: number[] | null;
-  /** EVIDENCE_UPLOAD: S3 업로드된 증빙 자료 URL. 미해당 시 null. */
-  evidenceUrls: string[] | null;
-}
-
+/** POST /api/mentoring/match-request 요청 본문. */
 export interface MatchRequestPayload {
   caseId: number;
   industry: Industry;
@@ -226,24 +200,16 @@ export interface MentorshipMatch {
   status: MatchStatus;
 }
 
-export interface FeedbackPayload {
-  matchId: number;
-  rating: number;       // 1~5
-  chatDays: number;
-  resolved: boolean;
-  comment?: string;
-}
-
-/** 백엔드 MentorProfile 엔티티 응답. */
+/** GET /api/mentoring/mentors/{userId} — 백엔드 멘토 프로필 풀 응답. */
 export interface BackendMentorProfile {
   id: number;
   userId: number;
   nickname: string;
   industry: Industry;
   damageTypes: DamageType[];
-  employmentType: EmploymentType | null;
+  employmentType: EmploymentType;
   businessSize: BusinessSize;
-  region: Region | null;
+  region: Region;
   resolutionMethods: ResolutionMethod[];
   resolutionDuration: string | null;
   damageAmountRange: DamageAmountRange | null;
@@ -261,4 +227,34 @@ export interface BackendMentorProfile {
   verifiedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** POST /api/mentoring/match/{matchId}/feedback — 매칭 종료 후 별점/감사 메시지. */
+export interface FeedbackPayload {
+  rating: number;
+  comment?: string;
+  resolved?: boolean;
+}
+
+/** POST /api/mentoring/mentors — 멘토 신규 등록. */
+export interface MentorRegistrationRequest {
+  nickname: string;
+  industry: Industry;
+  damageTypes: DamageType[];
+  employmentType: EmploymentType;
+  businessSize: BusinessSize;
+  region: Region;
+  resolutionMethods: ResolutionMethod[];
+  /** 평균 해결 소요 일수. */
+  resolutionDays: number;
+  damageAmountRange: DamageAmountRange;
+  bio: string;
+  /** 동시 매칭 가능한 멘티 수. */
+  capacity: number;
+  consultingFee: number;
+  verificationMethod: VerificationMethod;
+  /** RESOLVED_CASE 자격 검증 시 — 본인 해결 사건 ID 목록. */
+  verifiedCaseIds?: number[];
+  /** EVIDENCE_UPLOAD 자격 검증 시 — S3 업로드 URL 목록. */
+  evidenceUrls?: string[];
 }

@@ -16,16 +16,13 @@ import type { MentorProfile } from "@/entities/mentor";
 import { usePaymentStore } from "@/features/payment";
 import { PAYMENT_DISTRIBUTION } from "@/shared/lib/payment";
 import { useAuthStore } from "@/entities/user/model/auth-store";
-import { MentorBrowseView } from "./MentorBrowseView";
 import type { DamageTypeEnum } from "@/entities/report";
 
 interface MentorRecommendViewProps {
   caseId: string;
-  /** 매칭 컨텍스트 — 현재 사건의 업종/피해유형. ReportCase에 필드 도입 전까지는 props로 받음. */
   industry: string;
   damageTypes: string[];
   onBack: () => void;
-  /** 매칭 완료 후 1:1 대화 시작. 미지정 시 onBack으로 fallback. */
   onStartChat?: (mentor: MentorProfile) => void;
 }
 
@@ -50,7 +47,6 @@ export function MentorRecommendView({
   industry,
   damageTypes,
   onBack,
-  onStartChat,
 }: MentorRecommendViewProps): JSX.Element {
   const getRecommended = useMentorStore((s) => s.getRecommended);
   const chargeMentorFee = usePaymentStore((s) => s.chargeMentorFee);
@@ -61,20 +57,10 @@ export function MentorRecommendView({
   const [selectedMentor, setSelectedMentor] = useState<MentorProfile | null>(
     null,
   );
-  const [showBrowse, setShowBrowse] = useState(false);
+  const [, setShowBrowse] = useState(false);
+  void setShowBrowse;
 
-  // damageTypes 라벨 → DamageTypeEnum 매핑 (browse 필터 prefill용)
-  const damageTypeEnums: DamageTypeEnum[] = damageTypes
-    .map((d): DamageTypeEnum | null => {
-      if (d.includes("주휴")) return "WEEKLY_HOLIDAY";
-      if (d.includes("연장")) return "OVERTIME";
-      if (d.includes("야간")) return "NIGHT";
-      if (d.includes("퇴직")) return "SEVERANCE";
-      if (d.includes("임금") || d.includes("체불")) return "BASE_WAGE";
-      return null;
-    })
-    .filter((d): d is DamageTypeEnum => d !== null);
-
+  // 추천 멘토 Top-3 (industry/damageTypes 매칭)
   const recommended = getRecommended(industry, damageTypes);
 
   const handleSelectMentor = (mentor: MentorProfile): void => {
@@ -85,7 +71,7 @@ export function MentorRecommendView({
   const handleConfirmPay = async (): Promise<void> => {
     if (selectedMentor === null) return;
     const result = await chargeMentorFee({
-      menteeId: menteeId,
+      menteeId,
       mentorId: selectedMentor.userId,
       caseId,
     });
@@ -96,124 +82,15 @@ export function MentorRecommendView({
     }
   };
 
-  // ───── 매칭 완료 화면 ─────
-  if (mode === "success" && selectedMentor !== null) {
-    return (
-      <SafeAreaView
-        edges={["left", "right", "bottom"]}
-        style={{ flex: 1, backgroundColor: "#F8FAFC" }}
-      >
-        <ScreenHeader showLogo />
-        <View
-          style={{
-            flex: 1,
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 32,
-          }}
-        >
-          <View
-            style={{
-              width: 80,
-              height: 80,
-              borderRadius: 40,
-              backgroundColor: "#DCFCE7",
-              justifyContent: "center",
-              alignItems: "center",
-              marginBottom: 20,
-            }}
-          >
-            <Ionicons name="checkmark" size={44} color="#16A34A" />
-          </View>
-          <Text
-            style={{
-              fontSize: 20,
-              fontWeight: "700",
-              color: "#0F172A",
-              marginBottom: 8,
-            }}
-          >
-            매칭 완료!
-          </Text>
-          <Text
-            style={{
-              fontSize: 14,
-              color: "#475569",
-              textAlign: "center",
-              lineHeight: 22,
-              marginBottom: 4,
-            }}
-          >
-            {`${selectedMentor.nickname} 멘토와 연결되었습니다.`}
-          </Text>
-          <Text
-            style={{
-              fontSize: 13,
-              color: "#64748B",
-              textAlign: "center",
-              lineHeight: 20,
-              marginBottom: 32,
-            }}
-          >
-            멘토가 24시간 이내에 연락드릴 예정이에요.
-          </Text>
-          <Pressable
-            onPress={() => {
-              if (onStartChat !== undefined) {
-                onStartChat(selectedMentor);
-              } else {
-                onBack();
-              }
-            }}
-            style={{
-              backgroundColor: "#3182F6",
-              paddingVertical: 14,
-              paddingHorizontal: 32,
-              borderRadius: 10,
-              minWidth: 220,
-              alignItems: "center",
-              marginBottom: 10,
-            }}
-          >
-            <Text
-              style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "600" }}
-            >
-              지금 1:1 대화 시작하기
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={onBack}
-            style={{
-              paddingVertical: 10,
-              paddingHorizontal: 24,
-            }}
-          >
-            <Text
-              style={{ color: "#64748B", fontSize: 13, fontWeight: "500" }}
-            >
-              나중에 하기
-            </Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // ───── 전체 멘토 검색 overlay ─────
-  if (showBrowse) {
-    return (
-      <MentorBrowseView
-        initialIndustry={industry}
-        initialDamageTypes={damageTypeEnums}
-        onBack={() => setShowBrowse(false)}
-        onSelect={(mentor) => {
-          setShowBrowse(false);
-          handleSelectMentor(mentor);
-        }}
-      />
-    );
-  }
-
+  // damageTypes 라벨 → DamageTypeEnum 매핑 (browse 필터 prefill용; 현재 미사용 — 향후 활용)
+  void damageTypes.map((d): DamageTypeEnum | null => {
+    if (d.includes("주휴")) return "WEEKLY_HOLIDAY";
+    if (d.includes("연장")) return "OVERTIME";
+    if (d.includes("야간")) return "NIGHT";
+    if (d.includes("퇴직")) return "SEVERANCE";
+    if (d.includes("임금") || d.includes("체불")) return "BASE_WAGE";
+    return null;
+  });
   // ───── 리스트 화면 ─────
   return (
     <SafeAreaView
@@ -314,7 +191,6 @@ export function MentorRecommendView({
           </Text>
         </Pressable>
 
-        {/* 멘토 카드 리스트 */}
         {recommended.length === 0 ? (
           <View
             style={{
@@ -326,23 +202,14 @@ export function MentorRecommendView({
           >
             <Ionicons name="search-outline" size={32} color="#94A3B8" />
             <Text
-              style={{
-                fontSize: 13,
-                color: "#64748B",
-                marginTop: 8,
-                textAlign: "center",
-              }}
+              style={{ fontSize: 13, color: "#64748B", marginTop: 8 }}
             >
               매칭되는 멘토를 찾지 못했어요
             </Text>
           </View>
         ) : (
           recommended.map((mentor) => {
-            const matchReasons = getMatchReasons(
-              mentor,
-              industry,
-              damageTypes,
-            );
+            const matchReasons = getMatchReasons(mentor, industry, damageTypes);
             return (
               <View
                 key={mentor.userId}
@@ -353,22 +220,17 @@ export function MentorRecommendView({
                   marginBottom: 10,
                 }}
               >
-                {/* 상단: 닉네임 + 배지들 */}
+                {/* 닉네임 + 배지 */}
                 <View
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    flexWrap: "wrap",
                     gap: 6,
-                    marginBottom: 8,
+                    marginBottom: 6,
                   }}
                 >
                   <Text
-                    style={{
-                      fontSize: 15,
-                      fontWeight: "700",
-                      color: "#0F172A",
-                    }}
+                    style={{ fontSize: 15, fontWeight: "700", color: "#0F172A" }}
                   >
                     {mentor.nickname}
                   </Text>
@@ -376,18 +238,14 @@ export function MentorRecommendView({
                     <View
                       key={b}
                       style={{
-                        backgroundColor: "#E8F2FF",
+                        backgroundColor: "#EBF3FF",
                         paddingHorizontal: 6,
                         paddingVertical: 2,
-                        borderRadius: 4,
+                        borderRadius: 6,
                       }}
                     >
                       <Text
-                        style={{
-                          fontSize: 10,
-                          color: "#1B64DA",
-                          fontWeight: "600",
-                        }}
+                        style={{ fontSize: 10, color: "#1B64DA", fontWeight: "600" }}
                       >
                         {b === "인증멘토" ? "🛡 인증멘토" : "⚡ 빠른해결"}
                       </Text>

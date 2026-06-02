@@ -20,8 +20,7 @@ interface WorkplaceSelectForReportViewProps {
 
 /**
  * 신고 탭 인라인 — 신고 가능한 내 업장 리스트.
- * 등록 완료된(workplaceRegistered) 관심업장만 표시. 카드에서 "신고하기" 누르면
- * workplace.name으로 바로 사건 생성 → onCaseCreated. 수동 입력 화면 거치지 않음.
+ * 등록 완료된(workplaceRegistered) 관심업장만 표시.
  */
 export function WorkplaceSelectForReportView({
   onBack,
@@ -35,15 +34,8 @@ export function WorkplaceSelectForReportView({
     (w) => w.registrationStatus === "registered",
   );
 
-  /**
-   * 등록 업장은 이미 workplace.name이 확정되어 있어 "사업장 정보 입력" 화면이 불필요.
-   * 계약서가 있으면 factsheet로 사업주명/사업자등록번호를 enrich하지만,
-   * factsheet 조회 실패 또는 계약서 미업로드여도 workplace.name으로 그대로 사건 생성.
-   * (사용자 요청 — 등록 업장 path는 어떤 경우에도 수동 입력 화면을 거치지 않음)
-   */
   const handleReport = (wp: FavoriteWorkplace): void => {
-    const hasContract =
-      wp.contractStatus === "uploaded" || wp.contractStatus === "analyzed";
+    const hasContract = wp.contractStatus === "uploaded";
     const initialEvidence = hasContract ? { contracts: 1 } : {};
 
     const createCase = (
@@ -61,11 +53,9 @@ export function WorkplaceSelectForReportView({
     };
 
     if (wp.contractId === undefined) {
-      // 계약서 없음 — workplace.name 그대로 사용. 수동 입력 화면 거치지 않음.
       createCase();
       return;
     }
-    // 계약서 있음 — factsheet로 사업주명/사업자등록번호 enrich 시도. 실패해도 fallback.
     setLoadingId(wp.id);
     void fetchContractFactSheet(wp.contractId)
       .then((fs) => {
@@ -75,7 +65,6 @@ export function WorkplaceSelectForReportView({
         });
       })
       .catch(() => {
-        // factsheet 실패 — silent fallback (수동 입력 안 보냄).
         createCase();
       })
       .finally(() => setLoadingId(null));

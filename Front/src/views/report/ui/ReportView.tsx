@@ -13,11 +13,11 @@ import { BusinessConfirmView } from "./BusinessConfirmView";
 type Screen =
   | "list"
   | "detail"
-  | "source-select"        // "+ 새 사건 신고하기" 누른 후 검색/등록업장 선택 화면
+  | "source-select"
   | "workplace-select"
   | "manual-business-input"
-  | "business-search"      // V2 사업장 검색
-  | "business-confirm";    // V2 검색 결과 카드 탭 후 "이 사업장이 맞나요?"
+  | "business-search"
+  | "business-confirm";
 
 interface PendingManualInput {
   workplaceId: string;
@@ -30,19 +30,13 @@ export function ReportView(): JSX.Element {
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [pendingManualInput, setPendingManualInput] =
     useState<PendingManualInput | null>(null);
-  /** 사업장 검색 결과 카드 탭 직후 confirm 단계로 전달할 데이터. */
   const [confirmCandidate, setConfirmCandidate] =
     useState<BusinessSearchResult | null>(null);
   const startReport = useReportStore((s) => s.startReport);
-
   const cases = useReportStore((s) => s.cases);
-  // 진행 중/해결됨 분리는 ReportListView 내부에서 처리.
-  // 사건이 0건일 때만 Empty 화면, 1건 이상이면(해결됨 포함) ListView에서 섹션 분리해 표시.
 
   useFocusEffect(
     useCallback(() => {
-      // 일회성 플래그가 설정되어 있으면(예: mentor-chat 라우트로 빠졌다가 돌아온 경우)
-      // 현재 상세 화면 상태를 그대로 유지. 그 외엔 list로 복귀.
       const { shouldSkipNextFocusReset, setShouldSkipNextFocusReset } =
         useReportStore.getState();
       if (shouldSkipNextFocusReset) {
@@ -151,7 +145,6 @@ export function ReportView(): JSX.Element {
     );
   }
 
-  // "+ 새 사건 신고하기" 진입 — Empty 화면과 동일한 두 갈래 분기 (재사용).
   if (currentScreen === "source-select") {
     return (
       <ReportEmptyView

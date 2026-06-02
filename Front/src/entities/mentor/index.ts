@@ -39,15 +39,13 @@ export {
   REGION_LABEL,
   RESOLUTION_METHOD_LABEL,
   DAMAGE_AMOUNT_LABEL,
-  VERIFICATION_METHOD_LABEL,
 } from "./model/matching-types";
 export {
   registerMentor,
-  fetchMyMentorProfile,
+  fetchMentorProfileById as fetchMyMentorProfile,
   requestMatch,
   confirmMatch,
-  submitMatchingFeedback,
-  fetchMyMatches,
+  submitMatchFeedback as submitMatchingFeedback,
   fetchMatchingWeights,
   uploadMentorEvidence,
   fetchChatMessages,
