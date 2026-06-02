@@ -9,7 +9,7 @@ export function cn(
   return inputs.filter((v): v is string => typeof v === "string" && v.length > 0).join(" ");
 }
 
-/** 숫자를 한국 원화 표기로 변환 (예: 10030 -> "10,030원"). */
+/** 숫자를 한국 원화 표기로 변환 (예: 12000 -> "12,000원"). */
 export function formatCurrency(amount: number): string {
   return `${new Intl.NumberFormat("ko-KR").format(Math.round(amount))}원`;
 }

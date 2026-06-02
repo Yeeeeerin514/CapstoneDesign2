@@ -29,6 +29,7 @@ export type {
   MatchResponseEnvelope,
   FeedbackPayload,
   BackendMentorProfile,
+  MentorshipMatch,
 } from "./model/matching-types";
 export {
   INDUSTRY_LABEL,
@@ -53,3 +54,9 @@ export {
   sendChatMessage,
 } from "./api/matching-api";
 export type { BackendChatMessage } from "./api/matching-api";
+
+export {
+  browseMentors,
+  type BrowseMentorsParams,
+  type BrowseMentorsResponse,
+} from "./api/browse-mentors";

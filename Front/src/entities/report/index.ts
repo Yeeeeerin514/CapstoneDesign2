@@ -7,7 +7,6 @@ export type {
   CaseStep,
   CaseStepMeta,
   InvestigationSubStatus,
-  AmountCalcState,
   ReportStep,
   ReportStepStatus,
   EvidenceState,
@@ -17,6 +16,15 @@ export type {
   EvidenceMeta,
   EvidenceAcceptType,
   FileEvidenceKey,
+  BusinessInfo,
+  ReportDraftSource,
+  DamageTypeEnum,
+  BusinessType,
+  EmploymentStatusEnum,
+  ContractMethod,
+  ComplaintRespondent,
+  ComplaintFacts,
+  ApplicantInfo,
 } from "./model/types";
 export {
   STEP_ORDER,
@@ -35,5 +43,15 @@ export {
   createReport,
   generateReportDraft,
 } from "./api/create-report";
+export {
+  createReportDraft,
+  type CreateReportDraftRequest,
+  type CreateReportDraftResponse,
+} from "./api/create-report-draft";
+export {
+  putReportEvidence,
+  type PutEvidenceRequest,
+} from "./api/put-evidence";
+export type { BackendReport } from "./api/create-report";
 export { fetchWageCalc } from "./api/wage-calc";
 export type { WageBreakdown } from "./api/wage-calc";

@@ -8,8 +8,13 @@ import { ScreenHeader } from "@/shared/ui";
 interface Props {
   result: ContractAnalysisResult;
   onBack: () => void;
-  /** 사업장 등록 진입 — detail view에서는 생략 시 하단 버튼 미노출. */
+  /** 하단 CTA 진입 — detail view에서는 생략 시 하단 버튼 미노출. */
   onRegister?: () => void;
+  /**
+   * 하단 CTA 라벨 — 미지정 시 "사업장 등록하기 →".
+   * 이미 등록된 업장에서 계약서만 추가하는 경우 "계약서 업로드 완료" 등으로 override.
+   */
+  submitLabel?: string;
 }
 
 type TabKey = "issues" | "content" | "guide";
@@ -69,6 +74,7 @@ export function ContractAnalysisView({
   result,
   onBack,
   onRegister,
+  submitLabel,
 }: Props): JSX.Element {
   const [activeTab, setActiveTab] = useState<TabKey>("issues");
   const banner = RISK_BANNER[result.overallRisk];
@@ -417,14 +423,47 @@ export function ContractAnalysisView({
               }
             />
             <ContentRow label="근무 시작일" value={result.extracted.startDate ?? "미확인"} />
+            <ContentRow
+              label="계약 종료일"
+              value={result.extracted.contractEndDate ?? "미확인"}
+            />
             <ContentRow label="근무 장소" value={result.extracted.workPlace ?? "미확인"} />
             <ContentRow
               label="업무 내용"
               value={result.extracted.jobDescription ?? "미확인"}
             />
             <ContentRow
+              label="휴게시간"
+              value={
+                result.extracted.breakStartTime !== null &&
+                result.extracted.breakEndTime !== null
+                  ? `${result.extracted.breakStartTime} ~ ${result.extracted.breakEndTime}`
+                  : "미확인"
+              }
+            />
+            <ContentRow
+              label="임금 지급일"
+              value={result.extracted.wagePaymentDate ?? "미확인"}
+            />
+            <ContentRow
+              label="임금 지급 방법"
+              value={result.extracted.wagePaymentMethod ?? "미확인"}
+            />
+            <ContentRow
               label="고용주(상호)"
               value={result.extracted.employerName ?? "미확인"}
+            />
+            <ContentRow
+              label="대표자명"
+              value={result.extracted.employerRepresentative ?? "미확인"}
+            />
+            <ContentRow
+              label="고용주 주소"
+              value={result.extracted.employerAddress ?? "미확인"}
+            />
+            <ContentRow
+              label="고용주 전화"
+              value={result.extracted.employerPhone ?? "미확인"}
             />
             <ContentRow
               label="사업자등록번호"
@@ -529,7 +568,7 @@ export function ContractAnalysisView({
             }}
           >
             <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
-              사업장 등록하기 →
+              {submitLabel ?? "사업장 등록하기 →"}
             </Text>
           </TouchableOpacity>
         </View>

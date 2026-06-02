@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { ScreenHeader, colors, radius, spacing, typography } from "@/shared/ui";
 import {
   BUSINESS_SIZE_LABEL,
@@ -13,6 +14,7 @@ import {
   RESOLUTION_METHOD_LABEL,
   fetchMyMentorProfile,
   registerMentor,
+  uploadMentorEvidence,
   type BusinessSize,
   type DamageAmountRange,
   type DamageType,
@@ -22,6 +24,17 @@ import {
   type ResolutionMethod,
   type VerificationMethod,
 } from "@/entities/mentor";
+import { fetchReports } from "@/entities/report";
+import type { Report } from "@/entities/report";
+
+const MAX_EVIDENCE_URLS = 3;
+
+interface EvidenceItem {
+  uri: string;
+  url?: string;
+  uploading?: boolean;
+  error?: string;
+}
 
 interface Props {
   onBack: () => void;
@@ -57,6 +70,19 @@ export function MentorRegisterView({ onBack, onSaved, verification }: Props): JS
   const [capacity, setCapacity] = useState("3");
   const [consultingFee, setConsultingFee] = useState("10000");
 
+  // 자격 검증 (외부 prop을 초기값으로 받되 화면에서 자유롭게 변경 가능)
+  const [verificationMethod, setVerificationMethod] =
+    useState<VerificationMethod | null>(verification?.method ?? null);
+  const [verifiedCaseIds, setVerifiedCaseIds] = useState<number[]>(
+    verification?.verifiedCaseIds ?? [],
+  );
+  const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>(
+    (verification?.evidenceUrls ?? []).map((url) => ({ uri: url, url })),
+  );
+  // RESOLVED_CASE 분기 — 사용자의 해결된 신고 사건 목록
+  const [resolvedReports, setResolvedReports] = useState<Report[]>([]);
+  const [loadingReports, setLoadingReports] = useState(false);
+
   useEffect(() => {
     (async () => {
       try {
@@ -85,9 +111,117 @@ export function MentorRegisterView({ onBack, onSaved, verification }: Props): JS
     else setter([...arr, value]);
   }
 
+  // 업로드 완료된 evidence URL 목록 (저장 시 사용)
+  const evidenceUrls = evidenceItems
+    .map((it) => it.url)
+    .filter((u): u is string => typeof u === "string");
+
+  /** RESOLVED_CASE 선택 시 해결 사건 lazy fetch. */
+  async function loadResolvedReports(): Promise<void> {
+    if (resolvedReports.length > 0 || loadingReports) return;
+    setLoadingReports(true);
+    try {
+      const all = await fetchReports();
+      setResolvedReports(all.filter((r) => r.status === "resolved"));
+    } catch {
+      // 네트워크 실패 — 빈 목록 유지
+    } finally {
+      setLoadingReports(false);
+    }
+  }
+
+  function selectVerificationMethod(method: VerificationMethod): void {
+    setVerificationMethod(method);
+    if (method === "RESOLVED_CASE") {
+      void loadResolvedReports();
+    }
+  }
+
+  function toggleCaseId(id: number): void {
+    setVerifiedCaseIds((prev) =>
+      prev.includes(id) ? prev.filter((n) => n !== id) : [...prev, id],
+    );
+  }
+
+  /** EVIDENCE_UPLOAD — 갤러리 → S3 업로드. max 3개. */
+  async function pickEvidence(): Promise<void> {
+    if (evidenceItems.length >= MAX_EVIDENCE_URLS) {
+      Alert.alert("업로드 제한", `최대 ${MAX_EVIDENCE_URLS}개까지 업로드할 수 있어요.`);
+      return;
+    }
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted") {
+      Alert.alert("권한 필요", "사진 접근 권한을 허용해주세요.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+      allowsMultipleSelection: false,
+    });
+    if (result.canceled || result.assets[0] === undefined) return;
+    const asset = result.assets[0];
+    const newItem: EvidenceItem = { uri: asset.uri, uploading: true };
+    setEvidenceItems((prev) => [...prev, newItem]);
+    try {
+      let fileObj: File | Blob;
+      if (Platform.OS === "web") {
+        const resp = await fetch(asset.uri);
+        fileObj = await resp.blob();
+      } else {
+        fileObj = {
+          uri: asset.uri,
+          type: "image/jpeg",
+          name: `evidence-${Date.now()}.jpg`,
+        } as unknown as Blob;
+      }
+      const url = await uploadMentorEvidence(fileObj);
+      setEvidenceItems((prev) =>
+        prev.map((it) =>
+          it.uri === asset.uri ? { ...it, url, uploading: false } : it,
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "업로드 실패";
+      setEvidenceItems((prev) =>
+        prev.map((it) =>
+          it.uri === asset.uri ? { ...it, uploading: false, error: msg } : it,
+        ),
+      );
+    }
+  }
+
+  function removeEvidence(uri: string): void {
+    setEvidenceItems((prev) => prev.filter((it) => it.uri !== uri));
+  }
+
+  const canSave =
+    verificationMethod !== null &&
+    ((verificationMethod === "RESOLVED_CASE" && verifiedCaseIds.length > 0) ||
+      (verificationMethod === "EVIDENCE_UPLOAD" && evidenceUrls.length > 0));
+
+  function showInactiveToast(): void {
+    if (verificationMethod === null) {
+      Alert.alert("선택 필요", "자격 검증 방법을 선택해주세요");
+      return;
+    }
+    if (verificationMethod === "RESOLVED_CASE" && verifiedCaseIds.length === 0) {
+      Alert.alert("선택 필요", "해결한 사건을 선택해주세요");
+      return;
+    }
+    if (verificationMethod === "EVIDENCE_UPLOAD" && evidenceUrls.length === 0) {
+      Alert.alert("업로드 필요", "증빙 자료를 업로드해주세요");
+      return;
+    }
+  }
+
   async function handleSave(): Promise<void> {
     if (industry === "OTHER" && damageTypes.length === 0) {
       Alert.alert("입력 필요", "최소 업종과 피해 유형 1개를 선택하세요.");
+      return;
+    }
+    if (!canSave) {
+      showInactiveToast();
       return;
     }
     setSaving(true);
@@ -107,10 +241,12 @@ export function MentorRegisterView({ onBack, onSaved, verification }: Props): JS
         bio: bio.trim(),
         capacity: Number(capacity) || 3,
         consultingFee: Number(consultingFee) || 10000,
-        // 자격 검증 정보 (게이트에서 자동 전달)
-        verificationMethod: verification?.method ?? "RESOLVED_CASE",
-        verifiedCaseIds: verification?.verifiedCaseIds ?? null,
-        evidenceUrls: verification?.evidenceUrls ?? null,
+        // 자격 검증 — 화면에서 선택된 값 우선, canSave 통과 보장
+        verificationMethod: verificationMethod as VerificationMethod,
+        verifiedCaseIds:
+          verificationMethod === "RESOLVED_CASE" ? verifiedCaseIds : null,
+        evidenceUrls:
+          verificationMethod === "EVIDENCE_UPLOAD" ? evidenceUrls : null,
       });
       Alert.alert("등록 완료", "멘토 프로필이 저장되었습니다.");
       onSaved?.();
@@ -254,6 +390,159 @@ export function MentorRegisterView({ onBack, onSaved, verification }: Props): JS
             />
           </Section>
         </View>
+
+        {/* 자격 검증 — STEP 20 */}
+        <Section title="자격 검증 방법 *">
+          <RadioOption
+            label="앱에서 해결한 사건이 있어요"
+            selected={verificationMethod === "RESOLVED_CASE"}
+            onPress={() => selectVerificationMethod("RESOLVED_CASE")}
+          />
+          <RadioOption
+            label="증빙 자료를 업로드할게요"
+            selected={verificationMethod === "EVIDENCE_UPLOAD"}
+            onPress={() => selectVerificationMethod("EVIDENCE_UPLOAD")}
+          />
+        </Section>
+
+        {verificationMethod === "RESOLVED_CASE" ? (
+          <Section title="해결한 사건 선택 (다중)">
+            {loadingReports ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : resolvedReports.length === 0 ? (
+              <View
+                style={{
+                  backgroundColor: "#fff",
+                  borderRadius: radius.sm,
+                  padding: spacing.md,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                  해결된(RESOLVED) 신고 사건이 아직 없어요.
+                </Text>
+              </View>
+            ) : (
+              resolvedReports.map((r) => {
+                const idNum = Number(r.id);
+                const selected = verifiedCaseIds.includes(idNum);
+                return (
+                  <Pressable
+                    key={r.id}
+                    onPress={() => toggleCaseId(idNum)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      marginBottom: 6,
+                      borderRadius: radius.sm,
+                      borderWidth: 1,
+                      borderColor: selected ? colors.primary : colors.border,
+                      backgroundColor: selected ? colors.primaryLight : "#fff",
+                    }}
+                  >
+                    <Ionicons
+                      name={selected ? "checkbox" : "square-outline"}
+                      size={18}
+                      color={selected ? colors.primary : colors.textSecondary}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "700",
+                          color: colors.text,
+                        }}
+                      >
+                        {r.workplaceName}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: colors.textSecondary,
+                          marginTop: 2,
+                        }}
+                      >
+                        {`사건번호 ${r.id} · ${r.createdAt.slice(0, 10)}`}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })
+            )}
+          </Section>
+        ) : null}
+
+        {verificationMethod === "EVIDENCE_UPLOAD" ? (
+          <Section title={`증빙 자료 업로드 (${evidenceItems.length}/${MAX_EVIDENCE_URLS})`}>
+            {evidenceItems.map((it) => (
+              <View
+                key={it.uri}
+                style={{
+                  backgroundColor: "#fff",
+                  borderRadius: radius.sm,
+                  padding: 10,
+                  marginBottom: 6,
+                  borderWidth: 0.5,
+                  borderColor: colors.border,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <Image
+                  source={{ uri: it.uri }}
+                  style={{ width: 48, height: 48, borderRadius: 6 }}
+                  resizeMode="cover"
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.text }}>
+                    {it.uploading === true
+                      ? "업로드 중..."
+                      : it.url !== undefined
+                        ? "✓ 업로드 완료"
+                        : "✗ 실패"}
+                  </Text>
+                  {it.error !== undefined ? (
+                    <Text style={{ fontSize: 11, color: "#DC2626", marginTop: 2 }}>
+                      {it.error}
+                    </Text>
+                  ) : null}
+                </View>
+                {it.uploading === true ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Pressable onPress={() => removeEvidence(it.uri)} hitSlop={6}>
+                    <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                  </Pressable>
+                )}
+              </View>
+            ))}
+            <Pressable
+              onPress={() => {
+                void pickEvidence();
+              }}
+              disabled={evidenceItems.length >= MAX_EVIDENCE_URLS}
+              style={{
+                marginTop: 6,
+                paddingVertical: 11,
+                borderRadius: radius.sm,
+                borderWidth: 1,
+                borderColor: colors.primary,
+                backgroundColor: "#fff",
+                alignItems: "center",
+                opacity: evidenceItems.length >= MAX_EVIDENCE_URLS ? 0.5 : 1,
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.primary }}>
+                + 자료 추가
+              </Text>
+            </Pressable>
+          </Section>
+        ) : null}
       </ScrollView>
 
       <View
@@ -267,11 +556,18 @@ export function MentorRegisterView({ onBack, onSaved, verification }: Props): JS
         }}
       >
         <Pressable
-          onPress={handleSave}
+          onPress={() => {
+            if (saving) return;
+            if (!canSave) {
+              showInactiveToast();
+              return;
+            }
+            void handleSave();
+          }}
           disabled={saving}
           style={{
             paddingVertical: 14,
-            backgroundColor: saving ? "#9CA3AF" : colors.primary,
+            backgroundColor: saving || !canSave ? "#9CA3AF" : colors.primary,
             borderRadius: radius.md,
             alignItems: "center",
           }}
@@ -279,11 +575,56 @@ export function MentorRegisterView({ onBack, onSaved, verification }: Props): JS
           {saving ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>저장하기</Text>
+            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
+              멘토 등록하기
+            </Text>
           )}
         </Pressable>
       </View>
     </SafeAreaView>
+  );
+}
+
+function RadioOption({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}): JSX.Element {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        paddingVertical: 11,
+        paddingHorizontal: 12,
+        marginBottom: 6,
+        borderRadius: radius.sm,
+        borderWidth: 1,
+        borderColor: selected ? colors.primary : colors.border,
+        backgroundColor: selected ? colors.primaryLight : "#fff",
+      }}
+    >
+      <Ionicons
+        name={selected ? "radio-button-on" : "radio-button-off"}
+        size={18}
+        color={selected ? colors.primary : colors.textSecondary}
+      />
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: selected ? "700" : "500",
+          color: selected ? colors.primary : colors.text,
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 

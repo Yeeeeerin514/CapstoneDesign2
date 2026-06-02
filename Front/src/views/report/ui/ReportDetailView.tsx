@@ -11,9 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
 import { useReportStore } from "@/features/report-submit";
-import { useGroupStore } from "@/features/co-action";
 import { useAuthStore } from "@/entities/user/model/auth-store";
-import { GroupJoinView } from "./GroupJoinView";
 import { router } from "expo-router";
 import { MentorRecommendView } from "./MentorRecommendView";
 import { SmartMentorRecommendView } from "./SmartMentorRecommendView";
@@ -24,29 +22,23 @@ import {
   mapIndustryLabelToCode,
   mapRegionLabelToCode,
 } from "./report-case-mapper";
-import { GroupChatView } from "./GroupChatView";
 import { useMentorMatchStore } from "@/features/mentor-match";
 import { ReportDraftWizardView } from "./ReportDraftWizardView";
 import { ResolveConfirmView } from "./ResolveConfirmView";
 import { SubmissionResultView } from "./SubmissionResultView";
-import { CaseAmountHeader } from "./CaseAmountHeader";
-import { EvidenceTodoBox } from "./EvidenceTodoBox";
-import { AmountCalcTodoBox } from "./AmountCalcTodoBox";
-import { WageBreakdownCard } from "./WageBreakdownCard";
-import { EvidenceSection } from "./EvidenceSection";
-import { ManualWageInputModal } from "./ManualWageInputModal";
 import { ResolveSuccessView } from "./ResolveSuccessView";
 import { ReviewWriteView } from "./ReviewWriteView";
+import { EvidenceFlowView } from "./EvidenceFlowView";
+import { MentorBrowseView } from "./MentorBrowseView";
+import { MentorQuickMatchModal } from "./MentorQuickMatchModal";
+import type { DamageTypeEnum } from "@/entities/report";
 import {
-  fetchWageCalc,
   STEP_ORDER,
   STEP_META,
   type CaseStep,
-  type FileEvidenceKey,
   type InvestigationSubStatus,
   type ReportStatus,
 } from "@/entities/report";
-import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
 
 interface ReportDetailViewProps {
   caseId: string;
@@ -84,14 +76,11 @@ interface CurrentTask {
 interface TaskHandlers {
   onAdvance: () => void;
   onConnectMentor: () => void;
-  onFindCoAction: () => void;
   onOpenWork24: () => void;
   onStartDraft: () => void;
-  onEvidenceComplete: () => void;
-  onViewGroup: () => void;
+  /** V2 — 1-A/1-B/1-C 신고 정보 입력 흐름 진입. */
+  onStartEvidenceFlow: () => void;
   onOpenResolveConfirm: () => void;
-  /** 본인이 이미 그룹 멤버로 참여 중인지. group_decision 박스 분기에 사용. */
-  isAlreadyMember: boolean;
   /** Step 6 (investigation) 서브 상태. 제출 직후 자동 'waiting_inspector'. */
   investigationStatus?: InvestigationSubStatus;
 }
@@ -107,42 +96,13 @@ function getCurrentTaskByStep(
   switch (step) {
     case "evidence_collection":
       return {
-        title: "증거 수집 중",
-        description: "수집된 증거를 확인하고, 충분하면 다음 단계로 넘어가세요",
+        title: "신고 정보를 입력해주세요",
+        description:
+          "피해 유형 → 상황 설명 → 진정 내용을 차례대로 작성하면 다음 단계로 넘어가요",
         primary: {
-          label: "증거 충분해요, 다음 단계로 →",
-          onPress: handlers.onEvidenceComplete,
+          label: "신고 정보 입력 시작하기 →",
+          onPress: handlers.onStartEvidenceFlow,
         },
-      };
-    case "amount_calculation":
-      return {
-        title: "미지급 금액을 계산할게요",
-        description: "근무시간과 계약 시급을 기반으로 산정합니다",
-        primary: { label: "금액 계산 시작", onPress: handlers.onAdvance },
-      };
-    case "group_decision":
-      if (handlers.isAlreadyMember) {
-        return {
-          title: "공동대응 그룹 참여 중 ✓",
-          description: "현재 공동대응 그룹에 참여하고 있어요",
-          primary: {
-            label: "그룹 현황 보기 →",
-            onPress: handlers.onViewGroup,
-          },
-          secondary: {
-            label: "다음 단계로 (진정서 작성)",
-            onPress: handlers.onAdvance,
-          },
-        };
-      }
-      return {
-        title: "공동대응 여부를 결정해주세요",
-        description: "진정서 작성 전에 함께할 동료를 찾으세요",
-        primary: {
-          label: "공동대응 동료 찾기 →",
-          onPress: handlers.onFindCoAction,
-        },
-        secondary: { label: "혼자 진행할게요", onPress: handlers.onAdvance },
       };
     case "complaint_draft":
       return {
@@ -225,57 +185,25 @@ export function ReportDetailView({
   );
   const advanceStep = useReportStore((s) => s.advanceStep);
   const closeCase = useReportStore((s) => s.closeCase);
-  const allCases = useReportStore((s) => s.cases);
-  const completeStep = useReportStore((s) => s.completeStep);
-  const setCurrentStepAction = useReportStore((s) => s.setCurrentStep);
   const updateInvestigationStatus = useReportStore(
     (s) => s.updateInvestigationStatus,
   );
   const updateCaseStatus = useReportStore((s) => s.updateCaseStatus);
-  const setManualWageInput = useReportStore((s) => s.setManualWageInput);
-  const startAmountCalc = useReportStore((s) => s.startAmountCalc);
-  const finishAmountCalc = useReportStore((s) => s.finishAmountCalc);
-  const setWageBreakdown = useReportStore((s) => s.setWageBreakdown);
-  const setActualReceivedAmount = useReportStore(
-    (s) => s.setActualReceivedAmount,
-  );
-  const setManualUnpaidAmount = useReportStore((s) => s.setManualUnpaidAmount);
-  const resetAmountCalcState = useReportStore((s) => s.resetAmountCalcState);
-  const reportWorkplaceName = useReportStore(
-    (s) => s.cases.find((c) => c.id === caseId)?.workplaceName,
-  );
-  const partTimeJobId = useFavoriteWorkplaceStore((s) =>
-    reportWorkplaceName !== undefined
-      ? s.workplaces.find((w) => w.name === reportWorkplaceName)?.partTimeJobId
-      : undefined,
-  );
-  const confirmAmountCalc = useReportStore((s) => s.confirmAmountCalc);
   const navigateToStep = useReportStore((s) => s.navigateToStep);
-  const findGroupByWorkplace = useGroupStore((s) => s.findGroupByWorkplace);
-  const isAlreadyMemberFn = useGroupStore((s) => s.isAlreadyMember);
   const userId = useAuthStore((s) => s.userIdString);
-  const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [showGroupJoin, setShowGroupJoin] = useState(false);
   const [showMentorRecommend, setShowMentorRecommend] = useState(false);
   const [showSmartMentor, setShowSmartMentor] = useState(false);
+  /** 멘토 둘러보기/더보기 — MentorBrowseView 오버레이 */
+  const [showMentorBrowse, setShowMentorBrowse] = useState(false);
+  /** BrowseView에서 멘토 선택 시 결제 모달 진입용 */
+  const [browsedMentorId, setBrowsedMentorId] = useState<string | null>(null);
   const [showDraftWizard, setShowDraftWizard] = useState(false);
   const [showResolveConfirm, setShowResolveConfirm] = useState(false);
   const [showSubmissionResult, setShowSubmissionResult] = useState(false);
-  const [showWageModal, setShowWageModal] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
-  /** 증거 섹션 위치 측정용 ref — TodoBox 버튼 → 해당 행으로 스크롤 시 사용. */
-  const evidenceSectionRef = useRef<View | null>(null);
-  /** 잠깐 강조할 증거 종류 — 깜빡임 애니메이션 + 파란 테두리. */
-  const [highlightedEvidenceType, setHighlightedEvidenceType] =
-    useState<FileEvidenceKey | null>(null);
   /** Step 6 사건 진행 상태 업데이트 박스 — 인라인 예/아니오 확인 대기 중인 항목. */
   const [pendingInvestigationStatus, setPendingInvestigationStatus] =
     useState<InvestigationSubStatus | null>(null);
-  /** 사건 상세 내부에서 직접 그룹 채팅 열기 위한 overlay 상태. */
-  const [showGroupChat, setShowGroupChat] = useState<{
-    groupId: string;
-    groupName: string;
-  } | null>(null);
   const createMentorMatch = useMentorMatchStore((s) => s.createMatch);
   const caseMentorMatches = useMentorMatchStore((s) =>
     s.matches.filter(
@@ -284,28 +212,48 @@ export function ReportDetailView({
   );
   const [showResolveSuccess, setShowResolveSuccess] = useState(false);
   const [showReviewWrite, setShowReviewWrite] = useState(false);
+  /** V2 신고 정보 입력 흐름 (1-A 피해유형 / 1-B 자유서술 / 1-C 진정내용) */
+  const [showEvidenceFlow, setShowEvidenceFlow] = useState(false);
 
   if (reportCase === undefined) {
     return null;
   }
 
-  if (showGroupChat !== null) {
+  if (showEvidenceFlow) {
     return (
-      <GroupChatView
-        groupId={showGroupChat.groupId}
-        groupName={showGroupChat.groupName}
-        onBack={() => setShowGroupChat(null)}
+      <EvidenceFlowView
+        reportCase={reportCase}
+        onBack={() => setShowEvidenceFlow(false)}
+        onComplete={() => {
+          setShowEvidenceFlow(false);
+          scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+        }}
       />
     );
   }
 
-  if (showGroupJoin) {
+  if (showMentorBrowse) {
+    /**
+     * 둘러보기/더보기 진입 — prefill 정책:
+     *   - 1단계(evidence_collection) "전체 멘토 둘러보기": 사건 정보 부족 + 사용자 의도가 "전체 보기" →
+     *     prefill 안 보냄, 모든 멘토 노출.
+     *   - 2단계 이후 "멘토 더보기": 사건 컨텍스트 prefill (industry/damageTypes/region).
+     */
+    const isBrowsingBeforeInput =
+      reportCase.currentStep === "evidence_collection";
+    const damageEnums: DamageTypeEnum[] = reportCase.damageTypeEnums ?? [];
     return (
-      <GroupJoinView
-        workplaceName={reportCase.workplaceName}
-        caseId={reportCase.id}
-        myAmount={reportCase.calculatedUnpaid ?? 0}
-        onBack={() => setShowGroupJoin(false)}
+      <MentorBrowseView
+        initialIndustry={
+          isBrowsingBeforeInput ? undefined : reportCase.industry
+        }
+        initialDamageTypes={isBrowsingBeforeInput ? undefined : damageEnums}
+        initialRegion={isBrowsingBeforeInput ? undefined : reportCase.region}
+        onBack={() => setShowMentorBrowse(false)}
+        onSelect={(mentor) => {
+          setShowMentorBrowse(false);
+          setBrowsedMentorId(mentor.userId);
+        }}
       />
     );
   }
@@ -329,6 +277,11 @@ export function ReportDetailView({
         onMatched={(_matchId, _mentorNickname) => {
           setShowSmartMentor(false);
           // 채팅 진입은 SmartMentorRecommendView 내부에서 router.push로 직접 처리
+        }}
+        onOpenBrowse={() => {
+          // Top-3에 마음에 드는 멘토 없을 때 → 전체 멘토 둘러보기로 전환
+          setShowSmartMentor(false);
+          setShowMentorBrowse(true);
         }}
       />
     );
@@ -429,34 +382,6 @@ export function ReportDetailView({
   const progressWidth: `${number}%` = `${progressPercent}%`;
   const badge = STATUS_BADGE[reportCase.status];
 
-  // 공동대응 배너: useGroupStore에서 같은 업장 그룹 탐색
-  const sameWorkplaceGroup = findGroupByWorkplace(reportCase.workplaceName);
-  // userId 기반 멤버 확인 (배너 / group_decision 박스 분기 공용)
-  const isAlreadyMember =
-    sameWorkplaceGroup !== undefined
-      ? isAlreadyMemberFn(sameWorkplaceGroup.id, userId)
-      : false;
-  // 본인의 그룹 내 역할 — 대표자(leaderId 일치) / 자원자(isVolunteer) 여부.
-  const myMember = sameWorkplaceGroup?.members.find(
-    (m) => m.userId === userId,
-  );
-  const isLeader =
-    sameWorkplaceGroup !== undefined &&
-    sameWorkplaceGroup.leaderId === userId;
-  const isVolunteer = myMember?.isVolunteer === true;
-  const showGroupBanner =
-    sameWorkplaceGroup !== undefined && !isAlreadyMember && !bannerDismissed;
-  const otherMemberCount = sameWorkplaceGroup?.members.length ?? 0;
-
-  // 본문 "공동대응 그룹" 섹션은 useReportStore.cases 기반 peer 도출 유지
-  const peerCases = allCases.filter(
-    (c) => c.id !== caseId && c.workplaceName === reportCase.workplaceName,
-  );
-  const peerCount = peerCases.length;
-  const totalGroupDamage =
-    (reportCase.calculatedUnpaid ?? 0) +
-    peerCases.reduce((sum, c) => sum + (c.calculatedUnpaid ?? 0), 0);
-
   const handleAdvance = (): void => {
     // Alert 없이 즉시 진행 — "혼자 진행할게요" / "다음 단계로 (진정서 작성)" 모두 같은 핸들러.
     advanceStep(reportCase.id);
@@ -466,10 +391,6 @@ export function ReportDetailView({
   const handleConnectMentor = (): void => {
     // 메인 매칭 흐름은 AI 시스템 (Gower + Gale-Shapley + Thompson Sampling)
     setShowSmartMentor(true);
-  };
-
-  const handleFindCoAction = (): void => {
-    setShowGroupJoin(true);
   };
 
   const handleOpenWork24 = (): void => {
@@ -493,31 +414,6 @@ export function ReportDetailView({
   };
 
   /**
-   * TodoBox의 "🏦 통장 내역 추가하기" 등을 누르면 호출.
-   * EvidenceSection의 해당 행으로 스크롤 + 2.5초간 깜빡임 강조.
-   * 파일 추가 자체는 EvidenceSection 안의 [+ 추가] 버튼이 ActionSheet로 진행.
-   */
-  const scrollToEvidenceItem = (type: FileEvidenceKey): void => {
-    const scrollNode = scrollViewRef.current;
-    const target = evidenceSectionRef.current;
-    if (scrollNode === null || target === null) {
-      setHighlightedEvidenceType(type);
-      return;
-    }
-    target.measureLayout(
-      // @ts-expect-error — RN typing: ScrollView's underlying node is acceptable here.
-      scrollNode,
-      (_x: number, y: number) => {
-        scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
-      },
-      () => {
-        // measureLayout 실패 시에도 강조만 진행.
-      },
-    );
-    setHighlightedEvidenceType(type);
-    setTimeout(() => setHighlightedEvidenceType(null), 2500);
-  };
-
   /**
    * 진행 단계 리스트/네비게이터에서 호출. Alert 없이 즉시 이동.
    * 이전 단계로 가도 입력 데이터/amountCalcState는 그대로 유지 (변경 안 함).
@@ -531,33 +427,13 @@ export function ReportDetailView({
     scrollViewRef.current?.scrollTo({ y: 0, animated: true });
   };
 
-  const handleEvidenceComplete = (): void => {
-    Alert.alert(
-      "증거 수집 완료",
-      "지금까지 수집한 증거로 다음 단계로 넘어갈까요?\n\n나중에도 증거를 추가할 수 있지만,\n진정서 작성 전에 추가하는 것이 좋습니다.",
-      [
-        { text: "계속 수집할게요", style: "cancel" },
-        {
-          text: "다음 단계로 →",
-          onPress: () => {
-            completeStep(reportCase.id, "evidence_collection");
-            setCurrentStepAction(reportCase.id, "amount_calculation");
-          },
-        },
-      ],
-    );
-  };
-
   const currentTask = getCurrentTaskByStep(currentStep, {
     onAdvance: handleAdvance,
     onConnectMentor: handleConnectMentor,
-    onFindCoAction: handleFindCoAction,
     onOpenWork24: handleOpenWork24,
     onStartDraft: handleStartDraft,
-    onEvidenceComplete: handleEvidenceComplete,
-    onViewGroup: handleFindCoAction,
+    onStartEvidenceFlow: () => setShowEvidenceFlow(true),
     onOpenResolveConfirm: () => setShowResolveConfirm(true),
-    isAlreadyMember,
     investigationStatus: reportCase.investigationStatus,
   });
 
@@ -639,7 +515,6 @@ export function ReportDetailView({
             marginBottom: 12,
           }}
         >
-          <CaseAmountHeader reportCase={reportCase} />
           <Text
             style={{
               fontSize: 12,
@@ -668,256 +543,10 @@ export function ReportDetailView({
           </View>
         </View>
 
-        {/* 공동대응 알림 배너 */}
-        {showGroupBanner ? (
-          <View
-            style={{
-              backgroundColor: "#EBF3FF",
-              borderLeftWidth: 4,
-              borderLeftColor: "#3182F6",
-              borderRadius: 10,
-              padding: 14,
-              marginBottom: 12,
-            }}
-          >
-            <Pressable
-              onPress={() => setBannerDismissed(true)}
-              hitSlop={6}
-              style={{
-                position: "absolute",
-                top: 8,
-                right: 8,
-                width: 24,
-                height: 24,
-                borderRadius: 12,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <Ionicons name="close" size={14} color="#64748B" />
-            </Pressable>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                marginBottom: 6,
-                paddingRight: 24,
-              }}
-            >
-              <Ionicons name="people" size={16} color="#1B64DA" />
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: "700",
-                  color: "#0F172A",
-                }}
-              >
-                같은 업장 피해자가 있어요!
-              </Text>
-            </View>
-            <Text
-              style={{
-                fontSize: 12,
-                color: "#1E40AF",
-                lineHeight: 18,
-                marginBottom: 10,
-              }}
-            >
-              {`${reportCase.workplaceName}에서 신고한 사람이 ${otherMemberCount}명 더 있습니다. 함께 대응하면 더 빠르게 해결됩니다.`}
-            </Text>
-            <Pressable
-              onPress={() => setShowGroupJoin(true)}
-              style={{
-                backgroundColor: "#3182F6",
-                paddingVertical: 10,
-                borderRadius: 8,
-                alignItems: "center",
-                flexDirection: "row",
-                justifyContent: "center",
-                gap: 4,
-              }}
-            >
-              <Text
-                style={{
-                  color: "#FFFFFF",
-                  fontSize: 13,
-                  fontWeight: "600",
-                }}
-              >
-                공동대응 참여하기
-              </Text>
-              <Ionicons name="arrow-forward" size={14} color="#FFFFFF" />
-            </Pressable>
-          </View>
-        ) : null}
 
-        {/* 지금 해야 할 일 — evidence_collection / amount_calculation / investigation 종결은 별도 카드.
+        {/* 지금 해야 할 일 — V2: evidence_collection 단계는 일반 currentTask 카드로 통일.
             (수정 모드 배너는 진행 단계 카드 상단의 StepNavigator로 대체됨) */}
-        {currentStep === "evidence_collection" ? (
-          <EvidenceTodoBox
-            reportCase={reportCase}
-            onScrollToEvidence={scrollToEvidenceItem}
-            onManualInputWage={() => setShowWageModal(true)}
-            onEvidenceComplete={handleEvidenceComplete}
-          />
-        ) : currentStep === "amount_calculation" ? (
-          <>
-            {reportCase.amountCalcState === "done" &&
-            reportCase.wageBreakdown !== null ? (
-              <WageBreakdownCard
-                breakdown={reportCase.wageBreakdown}
-                actualReceivedAmount={reportCase.actualReceivedAmount}
-                manualUnpaidAmount={reportCase.manualUnpaidAmount}
-                onChangeReceived={(v) =>
-                  setActualReceivedAmount(reportCase.id, v)
-                }
-                onSaveManualTotal={(v) =>
-                  setManualUnpaidAmount(reportCase.id, v)
-                }
-              />
-            ) : null}
-            <AmountCalcTodoBox
-              reportCase={reportCase}
-              onStartCalc={() => {
-                if (partTimeJobId === undefined) {
-                  // 알바 미등록 → 로컬 수동 입력 모달
-                  setShowWageModal(true);
-                  return;
-                }
-                startAmountCalc(reportCase.id);
-                fetchWageCalc(
-                  partTimeJobId,
-                  reportCase.hourlyWage ?? undefined,
-                )
-                  .then((breakdown) => {
-                    setWageBreakdown(reportCase.id, breakdown);
-                    finishAmountCalc(reportCase.id);
-                  })
-                  .catch(() => {
-                    Alert.alert(
-                      "계산 실패",
-                      "계산에 실패했습니다. 다시 시도해주세요.",
-                    );
-                    resetAmountCalcState(reportCase.id);
-                  });
-              }}
-              onConfirm={() => confirmAmountCalc(reportCase.id)}
-              onEdit={() => setShowWageModal(true)}
-            />
-          </>
-        ) : currentStep === "group_decision" &&
-          isAlreadyMember &&
-          sameWorkplaceGroup !== undefined ? (
-          // Step 3 — 이미 참여 중일 때: 그룹 현황 + 그룹 채팅 나란히 + 다음 단계 secondary
-          <View
-            style={{
-              backgroundColor: "#FEF3C7",
-              borderRadius: 14,
-              padding: 16,
-              marginBottom: 12,
-              borderWidth: 1,
-              borderColor: "#FCD34D",
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                marginBottom: 4,
-              }}
-            >
-              <Ionicons name="people" size={18} color="#92400E" />
-              <Text
-                style={{ fontSize: 12, fontWeight: "700", color: "#92400E" }}
-              >
-                지금 해야 할 일
-              </Text>
-            </View>
-            <Text
-              style={{
-                fontSize: 16,
-                fontWeight: "700",
-                color: "#78350F",
-                marginBottom: 12,
-              }}
-            >
-              공동대응 그룹에 참여하고 있어요
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <Pressable
-                onPress={handleFindCoAction}
-                style={{
-                  flex: 1,
-                  paddingVertical: 12,
-                  borderRadius: 10,
-                  alignItems: "center",
-                  backgroundColor: "#FFFFFF",
-                  borderWidth: 1,
-                  borderColor: "#1A5FAF",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: "600",
-                    color: "#1A5FAF",
-                  }}
-                >
-                  그룹 현황 보기
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() =>
-                  setShowGroupChat({
-                    groupId: sameWorkplaceGroup.id,
-                    groupName: sameWorkplaceGroup.workplaceName,
-                  })
-                }
-                style={{
-                  flex: 1,
-                  paddingVertical: 12,
-                  borderRadius: 10,
-                  alignItems: "center",
-                  backgroundColor: "#1A5FAF",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontWeight: "600",
-                    color: "#FFFFFF",
-                  }}
-                >
-                  💬 그룹 채팅
-                </Text>
-              </Pressable>
-            </View>
-            <Pressable
-              onPress={handleAdvance}
-              style={{
-                marginTop: 10,
-                paddingVertical: 11,
-                borderRadius: 10,
-                alignItems: "center",
-                backgroundColor: "#FFFFFF",
-                borderWidth: 1.5,
-                borderColor: "#3182F6",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: "600",
-                  color: "#3182F6",
-                }}
-              >
-                다음 단계로 (진정서 작성)
-              </Text>
-            </Pressable>
-          </View>
-        ) : currentStep === "investigation" &&
+        {currentStep === "investigation" &&
           reportCase.status === "RESOLVED" ? (
           <View
             style={{
@@ -1460,19 +1089,7 @@ export function ReportDetailView({
           </View>
         ) : null}
 
-        {/* 자동 수집된 증거 — evidence_collection 단계에서만 표시 */}
-        {currentStep === "evidence_collection" ? (
-          <View
-            ref={evidenceSectionRef}
-            collapsable={false}
-          >
-            <EvidenceSection
-              caseId={reportCase.id}
-              reportCase={reportCase}
-              highlightedType={highlightedEvidenceType}
-            />
-          </View>
-        ) : null}
+        {/* V2 — "증거 내용 작성" 섹션 제거. evidence 입력은 EvidenceFlowView로 단일화됨. */}
 
         {/* 진행 단계 체크리스트 */}
         <View
@@ -1651,10 +1268,6 @@ export function ReportDetailView({
               }
             }
 
-            // group_decision 활성 시 특별 인라인 위젯
-            const showGroupDecisionInline =
-              isActive && stepId === "group_decision";
-
             return (
               <Pressable
                 key={stepId}
@@ -1797,104 +1410,6 @@ export function ReportDetailView({
                     </Text>
                   ) : null}
 
-                  {/* group_decision 활성: 그룹 상태 기반 위젯
-                       - 그룹 없음:       "아직 동료가 없어요" + [혼자 진행하기]
-                       - 미참여:          "현재 N명 참여 중" + [참여하기]
-                       - 이미 참여 중:    "✅ 공동대응 참여 중 · N명" + [💬 그룹 채팅] */}
-                  {showGroupDecisionInline ? (
-                    <View
-                      style={{
-                        marginTop: 10,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          color: "#475569",
-                          flex: 1,
-                        }}
-                      >
-                        {sameWorkplaceGroup === undefined
-                          ? "아직 동료가 없어요"
-                          : isAlreadyMember
-                            ? `✅ 공동대응 참여 중 · ${sameWorkplaceGroup.members.length}명`
-                            : `현재 ${sameWorkplaceGroup.members.length}명 참여 중`}
-                      </Text>
-                      {sameWorkplaceGroup === undefined ? (
-                        <Pressable
-                          onPress={handleAdvance}
-                          style={{
-                            paddingHorizontal: 12,
-                            paddingVertical: 7,
-                            borderWidth: 1,
-                            borderColor: "#3182F6",
-                            borderRadius: 8,
-                            backgroundColor: "#FFFFFF",
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              fontWeight: "600",
-                              color: "#3182F6",
-                            }}
-                          >
-                            혼자 진행하기
-                          </Text>
-                        </Pressable>
-                      ) : isAlreadyMember ? (
-                        <Pressable
-                          onPress={() =>
-                            setShowGroupChat({
-                              groupId: sameWorkplaceGroup.id,
-                              groupName: sameWorkplaceGroup.workplaceName,
-                            })
-                          }
-                          style={{
-                            paddingHorizontal: 12,
-                            paddingVertical: 7,
-                            borderWidth: 0.5,
-                            borderColor: "#B5D4F4",
-                            borderRadius: 8,
-                            backgroundColor: "#EBF3FF",
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              fontWeight: "600",
-                              color: "#185FA5",
-                            }}
-                          >
-                            💬 그룹 채팅
-                          </Text>
-                        </Pressable>
-                      ) : (
-                        <Pressable
-                          onPress={handleFindCoAction}
-                          style={{
-                            paddingHorizontal: 12,
-                            paddingVertical: 7,
-                            borderRadius: 8,
-                            backgroundColor: "#3182F6",
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              fontWeight: "600",
-                              color: "#FFFFFF",
-                            }}
-                          >
-                            참여하기
-                          </Text>
-                        </Pressable>
-                      )}
-                    </View>
-                  ) : null}
 
                   {/* complaint_draft / investigation 단계의 멘토 진입 버튼 */}
                   {inlineAction !== undefined ? (
@@ -1928,351 +1443,6 @@ export function ReportDetailView({
           })}
         </View>
 
-        {/* 공동대응 그룹 본문 섹션 — 참여 완료(isAlreadyMember) 시에만 노출.
-            미참여 상태에선 상단 GroupAlertBanner만 표시 → 참여 유도. */}
-        {isAlreadyMember && peerCount > 0 ? (
-          <View
-            style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: 14,
-              padding: 16,
-              marginBottom: 12,
-            }}
-          >
-            {/* 헤더 */}
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                marginBottom: 4,
-              }}
-            >
-              <Ionicons name="people" size={18} color="#3182F6" />
-              <Text
-                style={{ fontSize: 14, fontWeight: "700", color: "#0F172A" }}
-              >
-                공동대응 그룹
-              </Text>
-            </View>
-            <Text
-              style={{
-                fontSize: 12,
-                color: "#64748B",
-                marginBottom: 12,
-              }}
-            >
-              {`${reportCase.workplaceName} 공동대응 그룹`}
-            </Text>
-
-            {/* 멤버 현황 */}
-            <Text
-              style={{
-                fontSize: 12,
-                fontWeight: "600",
-                color: "#475569",
-                marginBottom: 8,
-              }}
-            >
-              멤버 현황
-            </Text>
-            <View
-              style={{
-                backgroundColor: "#F8FAFC",
-                borderRadius: 10,
-                paddingVertical: 4,
-                paddingHorizontal: 12,
-                marginBottom: 10,
-              }}
-            >
-              {peerCases.map((peer, idx) => {
-                const nickname = `닉네임${String.fromCharCode(65 + idx)}`;
-                const isLeader = idx === 0;
-                return (
-                  <View
-                    key={peer.id}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      paddingVertical: 8,
-                      borderBottomWidth: 1,
-                      borderBottomColor: "#F1F5F9",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        color: "#0F172A",
-                        fontWeight: "500",
-                      }}
-                    >
-                      {nickname}
-                    </Text>
-                    <Text
-                      style={{ fontSize: 12, color: "#94A3B8", marginLeft: 6 }}
-                    >
-                      {`· 미지급 ₩${(peer.calculatedUnpaid ?? 0).toLocaleString()}`}
-                    </Text>
-                    {isLeader ? (
-                      <View
-                        style={{
-                          marginLeft: "auto",
-                          backgroundColor: "#FEF3C7",
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
-                          borderRadius: 4,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            color: "#92400E",
-                            fontWeight: "700",
-                          }}
-                        >
-                          대표자 👑
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                );
-              })}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingVertical: 8,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: "#3182F6",
-                    fontWeight: "700",
-                  }}
-                >
-                  나
-                </Text>
-                <Text
-                  style={{ fontSize: 12, color: "#94A3B8", marginLeft: 6 }}
-                >
-                  {`· 미지급 ₩${(reportCase.calculatedUnpaid ?? 0).toLocaleString()}`}
-                </Text>
-              </View>
-            </View>
-
-            {/* 총 피해액 + 그룹 상태 */}
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                paddingVertical: 8,
-                marginBottom: 4,
-              }}
-            >
-              <Text style={{ fontSize: 13, color: "#475569" }}>
-                총 피해액
-              </Text>
-              <Text
-                style={{ fontSize: 14, fontWeight: "700", color: "#DC2626" }}
-              >
-                {`₩${totalGroupDamage.toLocaleString()}`}
-              </Text>
-            </View>
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                paddingVertical: 8,
-                marginBottom: 12,
-                borderBottomWidth: 1,
-                borderBottomColor: "#F1F5F9",
-              }}
-            >
-              <Text style={{ fontSize: 13, color: "#475569" }}>
-                그룹 상태
-              </Text>
-              <Text
-                style={{ fontSize: 12, fontWeight: "600", color: "#92400E" }}
-              >
-                🟡 대표자 선출 중 (48시간 이내)
-              </Text>
-            </View>
-
-            {/* 대표자 선출 안내 */}
-            <View
-              style={{
-                backgroundColor: "#FFFBEB",
-                borderRadius: 10,
-                padding: 12,
-                marginBottom: 12,
-                borderWidth: 1,
-                borderColor: "#FDE68A",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: "600",
-                  color: "#92400E",
-                  marginBottom: 4,
-                }}
-              >
-                대표자 선출 안내
-              </Text>
-              <Text
-                style={{ fontSize: 11, color: "#78350F", lineHeight: 16 }}
-              >
-                48시간 내 자원자가 없으면 피해액이 가장 큰 분이 자동으로 대표자가 됩니다.
-              </Text>
-            </View>
-
-            {/* 본인 역할 기반 분기:
-                  - 대표자 선출됨: 👑 안내 + 자원/멤버 버튼 없음
-                  - 자원 완료: ✋ 자원 상태 표시
-                  - 멤버 (자원 X): [지금 대표자로 자원하기] 단일 버튼 */}
-            {isLeader ? (
-              <View
-                style={{
-                  backgroundColor: "#FEF3C7",
-                  borderRadius: 10,
-                  paddingVertical: 12,
-                  paddingHorizontal: 14,
-                  alignItems: "center",
-                  marginBottom: 12,
-                  borderWidth: 1,
-                  borderColor: "#FCD34D",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: "700",
-                    color: "#92400E",
-                  }}
-                >
-                  👑 당신이 대표자로 선출되었습니다
-                </Text>
-              </View>
-            ) : isVolunteer ? (
-              <View
-                style={{
-                  backgroundColor: "#EAF3DE",
-                  borderRadius: 10,
-                  paddingVertical: 12,
-                  alignItems: "center",
-                  marginBottom: 12,
-                  borderWidth: 1,
-                  borderColor: "#C0DD97",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: "600",
-                    color: "#3B6D11",
-                  }}
-                >
-                  ✋ 대표자로 자원하셨어요
-                </Text>
-              </View>
-            ) : (
-              <Pressable
-                onPress={() => {
-                  if (sameWorkplaceGroup !== undefined) {
-                    useGroupStore
-                      .getState()
-                      .volunteerAsLeader(sameWorkplaceGroup.id, userId);
-                  }
-                }}
-                style={{
-                  backgroundColor: "#3182F6",
-                  paddingVertical: 12,
-                  borderRadius: 10,
-                  alignItems: "center",
-                  marginBottom: 12,
-                }}
-              >
-                <Text
-                  style={{
-                    color: "#FFFFFF",
-                    fontSize: 14,
-                    fontWeight: "600",
-                  }}
-                >
-                  지금 대표자로 자원하기
-                </Text>
-              </Pressable>
-            )}
-
-            {/* 그룹 채팅 진입점 */}
-            <View
-              style={{
-                borderTopWidth: 1,
-                borderTopColor: "#F1F5F9",
-                paddingTop: 12,
-              }}
-            >
-              <Pressable
-                onPress={() => {
-                  if (sameWorkplaceGroup !== undefined) {
-                    setShowGroupChat({
-                      groupId: sameWorkplaceGroup.id,
-                      groupName: sameWorkplaceGroup.workplaceName,
-                    });
-                  }
-                }}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  paddingVertical: 6,
-                }}
-              >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  <Ionicons name="chatbubbles" size={16} color="#3182F6" />
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "600",
-                      color: "#0F172A",
-                    }}
-                  >
-                    공동대응 그룹 채팅
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      color: "#3182F6",
-                      fontWeight: "600",
-                    }}
-                  >
-                    바로가기
-                  </Text>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={14}
-                    color="#3182F6"
-                  />
-                </View>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
 
         {/* 사건 해결 확인 진입점 — 노동청 시정지시 이후 단계에서만 노출 */}
         {reportCase.status === "INSPECTING" ||
@@ -2315,104 +1485,6 @@ export function ReportDetailView({
             </View>
             <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
           </Pressable>
-        ) : null}
-
-        {/* 연결된 공동대응 그룹 — 멤버일 때 항상 노출, 어느 단계에서도 채팅 1탭 진입.
-            (멘토 카드와 동일한 visual + 동일한 위치 정책) */}
-        {isAlreadyMember && sameWorkplaceGroup !== undefined ? (
-          <View
-            style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: 14,
-              padding: 16,
-              marginBottom: 12,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                marginBottom: 10,
-              }}
-            >
-              <Ionicons name="people" size={18} color="#1B64DA" />
-              <Text
-                style={{ fontSize: 14, fontWeight: "700", color: "#0F172A" }}
-              >
-                연결된 공동대응 그룹
-              </Text>
-            </View>
-            <Pressable
-              onPress={() =>
-                setShowGroupChat({
-                  groupId: sameWorkplaceGroup.id,
-                  groupName: sameWorkplaceGroup.workplaceName,
-                })
-              }
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                backgroundColor: "#F8FAFC",
-                borderRadius: 12,
-                padding: 12,
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 10,
-                  flex: 1,
-                }}
-              >
-                <View
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 20,
-                    backgroundColor: "#DBEAFE",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Ionicons name="people" size={20} color="#1B64DA" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      color: "#0F172A",
-                    }}
-                  >
-                    {sameWorkplaceGroup.workplaceName}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      color: "#64748B",
-                      marginTop: 2,
-                    }}
-                  >
-                    {`참여자 ${sameWorkplaceGroup.members.length}명${
-                      isLeader
-                        ? " · 👑 대표자"
-                        : isVolunteer
-                          ? " · ✋ 자원자"
-                          : ""
-                    }`}
-                  </Text>
-                </View>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={14}
-                color="#CBD5E1"
-              />
-            </Pressable>
-          </View>
         ) : null}
 
         {/* 연결된 멘토 — 활성 매칭이 있으면 채팅방 빠른 진입 카드 */}
@@ -2540,7 +1612,7 @@ export function ReportDetailView({
           </View>
         ) : null}
 
-        {/* 멘토 연결하기 */}
+        {/* 멘토 연결하기 — 신고 정보 입력 전/후로 분기 */}
         <View
           style={{
             backgroundColor: "#FFFFFF",
@@ -2549,7 +1621,6 @@ export function ReportDetailView({
             marginBottom: 16,
           }}
         >
-          {/* 헤더 */}
           <View
             style={{
               flexDirection: "row",
@@ -2562,73 +1633,165 @@ export function ReportDetailView({
             <Text
               style={{ fontSize: 14, fontWeight: "700", color: "#0F172A" }}
             >
-              멘토 연결하기
+              {currentStep === "evidence_collection"
+                ? "멘토 둘러보기"
+                : "멘토 연결하기"}
             </Text>
           </View>
 
-          {/* Intro */}
-          <Text
-            style={{
-              fontSize: 12,
-              color: "#64748B",
-              lineHeight: 18,
-              marginBottom: 12,
-            }}
-          >
-            [진정서 작성 단계]에서 연결하면 할인 없음{"\n"}
-            지금 단계에서도 멘토를 찾아볼 수 있어요
-          </Text>
-
-          {/* AI 매칭 진입 버튼 — 사건 컨텍스트로 적합한 멘토를 찾아 추천 */}
-          <Pressable
-            onPress={handleConnectMentor}
-            style={{
-              backgroundColor: "#3182F6",
-              borderRadius: 12,
-              padding: 14,
-              marginBottom: 10,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: "rgba(255,255,255,0.2)",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="search" size={20} color="#FFFFFF" />
-            </View>
-            <View style={{ flex: 1 }}>
+          {currentStep === "evidence_collection" ? (
+            <>
+              {/* 1단계 — 매칭 알고리즘 가동 전. 둘러보기만 가능 + 결제도 가능 */}
               <Text
                 style={{
-                  color: "#FFFFFF",
-                  fontSize: 14,
-                  fontWeight: "700",
+                  fontSize: 12,
+                  color: "#64748B",
+                  lineHeight: 18,
+                  marginBottom: 12,
                 }}
               >
-                연결할 멘토 찾기
+                신고 정보를 먼저 입력하면 사건에 맞춰 Top-3가 추천돼요.{"\n"}
+                지금은 전체 멘토를 살펴볼 수 있어요.
               </Text>
+              <Pressable
+                onPress={() => setShowMentorBrowse(true)}
+                style={{
+                  backgroundColor: "#3182F6",
+                  borderRadius: 12,
+                  padding: 14,
+                  marginBottom: 10,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    backgroundColor: "rgba(255,255,255,0.2)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="people" size={20} color="#FFFFFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: 14,
+                      fontWeight: "700",
+                    }}
+                  >
+                    전체 멘토 둘러보기
+                  </Text>
+                  <Text
+                    style={{
+                      color: "#DBEAFE",
+                      fontSize: 11,
+                      marginTop: 2,
+                      lineHeight: 15,
+                    }}
+                  >
+                    업종·지역·피해유형으로 필터해서 찾기
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+              </Pressable>
+            </>
+          ) : (
+            <>
+              {/* 2단계 이후 — 매칭 알고리즘 가동 + 더보기 진입점 */}
               <Text
                 style={{
-                  color: "#DBEAFE",
-                  fontSize: 11,
-                  marginTop: 2,
-                  lineHeight: 15,
+                  fontSize: 12,
+                  color: "#64748B",
+                  lineHeight: 18,
+                  marginBottom: 12,
                 }}
               >
-                사건과 가장 비슷한 경험을 가진 멘토 Top-3 추천
+                사건 정보를 기반으로 가장 적합한 멘토를 추천해드려요
               </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
-          </Pressable>
+              <Pressable
+                onPress={handleConnectMentor}
+                style={{
+                  backgroundColor: "#3182F6",
+                  borderRadius: 12,
+                  padding: 14,
+                  marginBottom: 8,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    backgroundColor: "rgba(255,255,255,0.2)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="sparkles" size={20} color="#FFFFFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: "#FFFFFF",
+                      fontSize: 14,
+                      fontWeight: "700",
+                    }}
+                  >
+                    연결할 멘토 찾기
+                  </Text>
+                  <Text
+                    style={{
+                      color: "#DBEAFE",
+                      fontSize: 11,
+                      marginTop: 2,
+                      lineHeight: 15,
+                    }}
+                  >
+                    사건과 가장 비슷한 경험을 가진 멘토 Top-3 추천
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+              </Pressable>
+              {/* 멘토 더보기 — Top-3에 마음에 드는 사람이 없을 때 직접 검색 */}
+              <Pressable
+                onPress={() => setShowMentorBrowse(true)}
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: 10,
+                  padding: 12,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  borderWidth: 1,
+                  borderColor: "#3182F6",
+                  marginBottom: 10,
+                }}
+              >
+                <Ionicons name="search" size={13} color="#3182F6" />
+                <Text
+                  style={{
+                    color: "#3182F6",
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  멘토 더보기 (전체 검색)
+                </Text>
+              </Pressable>
+            </>
+          )}
 
-          {/* 면책 문구 */}
+          {/* 면책 문구 — 공통 */}
           <View
             style={{
               flexDirection: "row",
@@ -2668,18 +1831,15 @@ export function ReportDetailView({
         </Pressable>
       </ScrollView>
 
-      <ManualWageInputModal
-        visible={showWageModal}
-        onClose={() => setShowWageModal(false)}
-        onConfirm={(hourlyWage, workHours) => {
-          setManualWageInput(reportCase.id, hourlyWage, workHours);
-          setShowWageModal(false);
-          Alert.alert(
-            "입력 완료",
-            `시급 ₩${hourlyWage.toLocaleString()} · ${workHours}시간으로 받아야 할 금액이 계산되었습니다.`,
-          );
-        }}
-      />
+      {/* BrowseView에서 멘토 선택 후 결제 진입 */}
+      {browsedMentorId !== null ? (
+        <MentorQuickMatchModal
+          visible
+          mentorUserId={browsedMentorId}
+          activeCases={[reportCase]}
+          onClose={() => setBrowsedMentorId(null)}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

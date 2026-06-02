@@ -9,6 +9,8 @@ import { useReportStore } from "@/features/report-submit";
 import { useAuthStore } from "@/entities/user/model/auth-store";
 import { MentorRegisterView } from "./MentorRegisterView";
 import { EvidenceUploadView } from "./EvidenceUploadView";
+import { MyApplicantFormView } from "./MyApplicantFormView";
+import { ReviewWriteView } from "@/views/report/ui/ReviewWriteView";
 import { MatchingFeedbackModal } from "@/views/report/ui/MatchingFeedbackModal";
 import type { VerificationMethod } from "@/entities/mentor";
 
@@ -52,6 +54,8 @@ export function MyView(): JSX.Element {
   }
   const [showMentorRegister, setShowMentorRegister] = useState(false);
   const [showEvidenceUpload, setShowEvidenceUpload] = useState(false);
+  const [showApplicantForm, setShowApplicantForm] = useState(false);
+  const [showFreeReviewWrite, setShowFreeReviewWrite] = useState(false);
   const [mentorVerification, setMentorVerification] = useState<{
     method: VerificationMethod;
     verifiedCaseIds?: number[];
@@ -114,6 +118,16 @@ export function MyView(): JSX.Element {
 
   if (showEvidenceUpload) {
     return <EvidenceUploadView onBack={() => setShowEvidenceUpload(false)} />;
+  }
+
+  if (showApplicantForm) {
+    return (
+      <MyApplicantFormView onBack={() => setShowApplicantForm(false)} />
+    );
+  }
+
+  if (showFreeReviewWrite) {
+    return <ReviewWriteView onBack={() => setShowFreeReviewWrite(false)} />;
   }
 
   return (
@@ -190,6 +204,84 @@ export function MyView(): JSX.Element {
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#fff" />
+        </Pressable>
+
+        {/* 진정인(본인) 정보 — 로컬 저장 */}
+        <Pressable
+          onPress={() => setShowApplicantForm(true)}
+          style={{
+            marginTop: 12,
+            backgroundColor: "#FFFFFF",
+            borderRadius: 12,
+            padding: 14,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            borderWidth: 0.5,
+            borderColor: "#E2E8F0",
+          }}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: "#EBF3FF",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="person-outline" size={18} color="#1A5FAF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#0F172A" }}>
+              진정인 정보 (본인)
+            </Text>
+            <Text style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
+              진정서 PDF에 자동으로 채워질 본인 정보 · 이 기기에만 저장
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+        </Pressable>
+
+        {/* 내 해결 경험 공유하기 — 사건 무관 자유 작성 진입 */}
+        <Pressable
+          onPress={() => setShowFreeReviewWrite(true)}
+          style={{
+            marginTop: 10,
+            backgroundColor: "#FFFFFF",
+            borderRadius: 12,
+            padding: 14,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            borderWidth: 0.5,
+            borderColor: "#E2E8F0",
+          }}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: "#EBF3FF",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="pencil" size={18} color="#1A5FAF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{ fontSize: 14, fontWeight: "600", color: "#0F172A" }}
+            >
+              내 해결 경험 공유하기
+            </Text>
+            <Text style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
+              임금체불을 해결한 경험이 있다면 다른 분들에게 도움이 돼요
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
         </Pressable>
 
         <View

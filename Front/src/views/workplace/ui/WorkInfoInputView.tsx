@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Platform,
@@ -12,8 +12,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { ScreenHeader } from "@/shared/ui";
-import type { ContractAnalysisResult } from "@/entities/job-post";
+import {
+  loadContractPending,
+  type ContractAnalysisResult,
+} from "@/entities/job-post";
 import type { WorkInfoInput } from "@/features/favorite-workplace";
+import { useMinimumWageStore } from "@/shared/lib/minimum-wage-store";
 
 interface Props {
   workplaceName: string;
@@ -21,6 +25,8 @@ interface Props {
   prefillFromContract?: ContractAnalysisResult;
   onBack: () => void;
   onNext: (info: WorkInfoInput) => void;
+  /** "계약서를 업로드하면..." 안내 카드 탭 시 계약서 업로드 화면으로 이동. */
+  onGoToContractUpload?: () => void;
 }
 
 const ALL_DAYS = [
@@ -72,8 +78,11 @@ export function WorkInfoInputView({
   prefillFromContract,
   onBack,
   onNext,
+  onGoToContractUpload,
 }: Props): JSX.Element {
   const extracted = prefillFromContract?.extracted;
+  const minimumWage = useMinimumWageStore((s) => s.minimumWage);
+  const minimumWageYear = useMinimumWageStore((s) => s.minimumWageYear);
 
   const [selectedDays, setSelectedDays] = useState<string[]>(
     extracted?.workDays ?? [],
@@ -92,10 +101,34 @@ export function WorkInfoInputView({
       ? String(extracted.hourlyWage)
       : "",
   );
+  /** AsyncStorage 캐시에서 로드 성공 여부 — 상단 안내 카드 분기에 사용. */
+  const [loadedFromCache, setLoadedFromCache] = useState(false);
 
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // mount 시 AsyncStorage 캐시 로드 — 발견되면 prop pre-fill보다 우선 덮어씀
+  useEffect(() => {
+    let cancelled = false;
+    void loadContractPending(workplaceName).then((entry) => {
+      if (cancelled || entry === null) return;
+      const info = entry.extractedInfo;
+      setSelectedDays(info.workDays ?? []);
+      setStartTime(info.workStartTime ?? "09:00");
+      setEndTime(info.workEndTime ?? "18:00");
+      setStartDay(info.employmentStartDate ?? todayIso());
+      setHourlyWageStr(
+        info.hourlyWage !== null && info.hourlyWage !== undefined
+          ? String(info.hourlyWage)
+          : "",
+      );
+      setLoadedFromCache(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [workplaceName]);
 
   const toggleDay = (key: string): void => {
     setSelectedDays((prev) =>
@@ -165,26 +198,56 @@ export function WorkInfoInputView({
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
       >
-        {/* 상단 안내 */}
-        <View
-          style={{
-            backgroundColor: "#EFF6FF",
-            borderRadius: 10,
-            padding: 12,
-            marginBottom: 16,
-          }}
-        >
-          <Text
-            style={{ fontSize: 13, fontWeight: "600", color: "#1D4ED8", marginBottom: 4 }}
+        {/* 상단 안내 — 데이터 출처에 따라 2-way 분기 */}
+        {loadedFromCache || extracted !== undefined ? (
+          <View
+            style={{
+              backgroundColor: "#EFF6FF",
+              borderRadius: 10,
+              padding: 12,
+              marginBottom: 16,
+            }}
           >
-            💡 이 정보가 맞나요? 틀리면 수정해주세요
-          </Text>
-          <Text style={{ fontSize: 12, color: "#1E40AF", lineHeight: 17 }}>
-            {extracted !== undefined
-              ? "계약서 분석 결과를 자동으로 채웠습니다. 확인 후 다음으로 진행하세요."
-              : "계약서가 없어도 직접 입력해서 등록할 수 있습니다."}
-          </Text>
-        </View>
+            <Text
+              style={{ fontSize: 13, fontWeight: "600", color: "#1D4ED8", marginBottom: 4 }}
+            >
+              💡 이 정보가 맞나요? 틀리면 수정해주세요
+            </Text>
+            <Text style={{ fontSize: 12, color: "#1E40AF", lineHeight: 17 }}>
+              계약서 분석 결과를 자동으로 채웠습니다. 확인 후 다음으로 진행하세요.
+            </Text>
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => onGoToContractUpload?.()}
+            disabled={onGoToContractUpload === undefined}
+            style={{
+              backgroundColor: "#FEF3C7",
+              borderRadius: 10,
+              padding: 12,
+              marginBottom: 16,
+              borderWidth: 1,
+              borderColor: "#FCD34D",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{ fontSize: 13, fontWeight: "600", color: "#92400E", marginBottom: 4 }}
+              >
+                💡 계약서를 업로드하면 정보가 자동으로 채워집니다
+              </Text>
+              <Text style={{ fontSize: 12, color: "#78350F", lineHeight: 17 }}>
+                직접 입력해서 등록할 수도 있어요.
+              </Text>
+            </View>
+            {onGoToContractUpload !== undefined ? (
+              <Ionicons name="chevron-forward" size={18} color="#92400E" />
+            ) : null}
+          </Pressable>
+        )}
 
         {/* 근무 요일 */}
         <SectionLabel label="근무 요일" required />
@@ -305,7 +368,7 @@ export function WorkInfoInputView({
             value={hourlyWageStr}
             onChangeText={(v) => setHourlyWageStr(v.replace(/[^0-9]/g, ""))}
             keyboardType="numeric"
-            placeholder="예: 10030"
+            placeholder={`예: ${minimumWage}`}
             placeholderTextColor="#94A3B8"
             style={{
               flex: 1,
@@ -317,7 +380,7 @@ export function WorkInfoInputView({
           <Text style={{ fontSize: 14, color: "#64748B" }}>원</Text>
         </View>
         <Text style={{ fontSize: 11, color: "#94A3B8", marginBottom: 16 }}>
-          미입력 시 최저시급이 적용됩니다.
+          {`미입력 시 최저시급(${minimumWageYear}년 기준 ${minimumWage.toLocaleString()}원)이 적용됩니다.`}
         </Text>
       </ScrollView>
 

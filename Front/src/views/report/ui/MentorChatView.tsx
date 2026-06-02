@@ -65,13 +65,11 @@ export function MentorChatView({
         for (const m of msgs) {
           if (seenBackendIdsRef.current.has(m.id)) continue;
           seenBackendIdsRef.current.add(m.id);
-          // backend role → store role 매핑
-          const role: "mentee" | "mentor" | "system" =
-            m.senderRole === "MENTEE" ? "mentee"
-              : m.senderRole === "MENTOR" ? "mentor"
-                : "system";
+          // backend role → store role 매핑 (백엔드는 MENTOR/MENTEE만 보냄)
+          const role: "mentee" | "mentor" =
+            m.senderRole === "MENTEE" ? "mentee" : "mentor";
           addMessage(matchId, {
-            senderId: m.senderUserId !== null ? String(m.senderUserId) : "system",
+            senderId: m.senderUserId !== null ? String(m.senderUserId) : "0",
             senderRole: role,
             text: m.text,
             timestamp: m.createdAt,

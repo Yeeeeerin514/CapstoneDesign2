@@ -197,6 +197,35 @@ export interface MatchResponseEnvelope {
   algorithm: string;
 }
 
+/**
+ * GET /api/mentoring/my-matches 응답 단일 엔트리.
+ * API-REFERENCE.md §7 MentorshipMatch.
+ * MatchRecommendation과 유사하나 status·matchReasons·neural/rule score 모두 non-nullable.
+ */
+export interface MentorshipMatch {
+  matchId: number;
+  mentorProfileId: number;
+  mentorUserId: number;
+  mentorNickname: string;
+  industry: string;
+  damageTypes: string[];
+  businessSize: string;
+  region: string;
+  resolutionMethods: string[];
+  isVerified: boolean;
+  averageRating: number;
+  reviewCount: number;
+  consultingFee: number;
+  bio: string;
+  matchScore: number;
+  ruleBasedScore: number;
+  neuralScore: number;
+  contributions: Record<string, number>;
+  matchReasons: string[];
+  rank: number;
+  status: MatchStatus;
+}
+
 export interface FeedbackPayload {
   matchId: number;
   rating: number;       // 1~5

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -8,9 +8,14 @@ import {
   View,
 } from "react-native";
 import { Star } from "lucide-react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { isAxiosError } from "axios";
-import type { ContractAnalysisResult } from "@/entities/job-post";
+import {
+  saveContractPending,
+  clearContractPending,
+  listPendingBusinessNames,
+  type ContractAnalysisResult,
+} from "@/entities/job-post";
 import {
   useFavoriteWorkplaceStore,
   type FavoriteWorkplace,
@@ -24,6 +29,8 @@ import { ContractEditView } from "./ContractEditView";
 import { BssidRegisterView } from "./BssidRegisterView";
 import { BssidRegisterCompleteView } from "./BssidRegisterCompleteView";
 import { WorkInfoInputView } from "./WorkInfoInputView";
+import { WorkInfoConfirmView } from "./WorkInfoConfirmView";
+import { ContractGateView } from "./ContractGateView";
 
 type ButtonVariant = "disabled" | "primary" | "outline" | "success";
 
@@ -66,69 +73,108 @@ const BUTTON_STYLES: Record<ButtonVariant, ButtonStyle> = {
   },
 };
 
-type CardStage = "initial" | "contract-uploaded" | "registered";
+type CardAction =
+  | "open-gate"        // initial 상태: [업장 등록하기] → 계약서 게이트로
+  | "upload-contract"  // 등록 후 계약서 추가 업로드
+  | "edit-contract"    // 이미 업로드된 계약서 수정
+  | "register-bssid"   // 계약서만 업로드된 상태에서 BSSID 등록만 진행
+  | "open-dashboard";  // 등록 완료 — 근무 대시보드로 이동
 
 interface CardButtonState {
   variant: ButtonVariant;
   label: string;
-  isPressable: boolean;
+  action: CardAction;
 }
 
+/**
+ * 카드 버튼 매트릭스 — (계약서 업로드 여부) × (업장 등록 여부) 2×2.
+ *   - none × none:    [업장 등록하기] 단일
+ *   - none × registered:    [계약서 업로드] + [근무 대시보드]
+ *   - uploaded × none:      [계약서 수정] + [BSSID 등록]
+ *   - uploaded × registered:[계약서 수정] + [근무 대시보드]
+ */
 interface CardButtonStates {
-  stage: CardStage;
-  contractButton: CardButtonState;
-  registerButton: CardButtonState;
+  layout: "single" | "dual";
+  primary: CardButtonState;
+  secondary?: CardButtonState;
 }
 
 function getCardButtonStates(workplace: FavoriteWorkplace): CardButtonStates {
-  const isContractUploaded =
+  const hasContract =
     workplace.contractStatus === "uploaded" ||
     workplace.contractStatus === "analyzed";
   const isRegistered = workplace.registrationStatus === "registered";
 
-  let stage: CardStage = "initial";
-  if (isRegistered) {
-    stage = "registered";
-  } else if (isContractUploaded) {
-    stage = "contract-uploaded";
-  }
-
-  const contractButton: CardButtonState =
-    stage === "initial"
-      ? { variant: "primary", label: "계약서 업로드", isPressable: true }
-      : { variant: "outline", label: "계약서 수정", isPressable: true };
-
-  let registerButton: CardButtonState;
-  if (stage === "initial") {
-    // 4-B: 계약서 유무와 무관하게 항상 활성화 (계약서 없이도 등록 가능)
-    registerButton = {
-      variant: "primary",
-      label: "업장 등록",
-      isPressable: true,
-    };
-  } else if (stage === "contract-uploaded") {
-    registerButton = {
-      variant: "primary",
-      label: "업장 등록",
-      isPressable: true,
-    };
-  } else {
-    registerButton = {
-      variant: "success",
-      label: "등록 완료 ✓",
-      isPressable: false,
+  // 초기 (계약서 X / 등록 X): 단일 [업장 등록하기]
+  if (!hasContract && !isRegistered) {
+    return {
+      layout: "single",
+      primary: {
+        variant: "primary",
+        label: "업장 등록하기",
+        action: "open-gate",
+      },
     };
   }
 
-  return { stage, contractButton, registerButton };
+  // 계약서 없이 등록만 완료: [계약서 업로드] + [근무 대시보드]
+  if (!hasContract && isRegistered) {
+    return {
+      layout: "dual",
+      primary: {
+        variant: "outline",
+        label: "계약서 업로드",
+        action: "upload-contract",
+      },
+      secondary: {
+        variant: "primary",
+        label: "근무 대시보드",
+        action: "open-dashboard",
+      },
+    };
+  }
+
+  // 계약서만 업로드 / 등록 X: [계약서 수정] + [BSSID 등록]
+  if (hasContract && !isRegistered) {
+    return {
+      layout: "dual",
+      primary: {
+        variant: "outline",
+        label: "계약서 수정",
+        action: "edit-contract",
+      },
+      secondary: {
+        variant: "primary",
+        label: "BSSID 등록",
+        action: "register-bssid",
+      },
+    };
+  }
+
+  // 계약서 + 등록 모두 완료: [계약서 수정] + [근무 대시보드]
+  return {
+    layout: "dual",
+    primary: {
+      variant: "outline",
+      label: "계약서 수정",
+      action: "edit-contract",
+    },
+    secondary: {
+      variant: "primary",
+      label: "근무 대시보드",
+      action: "open-dashboard",
+    },
+  };
 }
 
 type Screen =
   | "list"
+  | "contract-gate"          // [업장 등록하기] 직후 — 계약서 있나요?
   | "upload"
   | "analysis"
   | "edit"
-  | "register-step1"
+  | "register-step1"         // 근무 정보 입력 (수동 입력 — 건너뛰기 path 전용)
+  | "register-step2-confirm" // 근무 정보 확인 (양쪽 path 공통, BSSID 직전)
   | "bssid-register"
   | "register-complete";
 
@@ -153,6 +199,17 @@ export function WorkplaceView(): JSX.Element {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const [currentScreen, setCurrentScreen] = useState<Screen>("list");
+  /** AsyncStorage에 남아있는 분석 완료된 사업장명 셋 — 목록 뱃지 표시용. */
+  const [pendingNames, setPendingNames] = useState<Set<string>>(new Set());
+
+  // 목록 진입/복귀 시 AsyncStorage pending 키 로드
+  useFocusEffect(
+    useCallback(() => {
+      void listPendingBusinessNames()
+        .then((names) => setPendingNames(new Set(names)))
+        .catch(() => setPendingNames(new Set()));
+    }, []),
+  );
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string | null>(
     null,
   );
@@ -161,6 +218,15 @@ export function WorkplaceView(): JSX.Element {
   const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
   const [pendingRegistration, setPendingRegistration] =
     useState<PendingRegistration | null>(null);
+  /**
+   * register-step2-confirm 화면이 보여줄 페이로드.
+   * - isFromContract=true: 계약서 분석에서 직접 derive — input 단계 건너뜀.
+   * - isFromContract=false: 사용자가 register-step1에서 입력한 값.
+   */
+  const [confirmPayload, setConfirmPayload] = useState<{
+    info: import("@/features/favorite-workplace").WorkInfoInput;
+    isFromContract: boolean;
+  } | null>(null);
 
   const selectedWorkplace = workplaces.find((w) => w.id === selectedWorkplaceId);
 
@@ -221,6 +287,21 @@ export function WorkplaceView(): JSX.Element {
     );
   };
 
+  if (currentScreen === "contract-gate" && pendingRegistration) {
+    const registration = pendingRegistration;
+    return (
+      <ContractGateView
+        workplaceName={registration.workplaceName}
+        onBack={() => {
+          setPendingRegistration(null);
+          setCurrentScreen("list");
+        }}
+        onUploadContract={() => setCurrentScreen("upload")}
+        onSkip={() => setCurrentScreen("register-step1")}
+      />
+    );
+  }
+
   if (currentScreen === "upload" && selectedWorkplace) {
     return (
       <ContractUploadView
@@ -236,6 +317,16 @@ export function WorkplaceView(): JSX.Element {
           }
           // 분석 완료 status 갱신 (analyzed 단계)
           updateContractStatus(selectedWorkplace.id, "analyzed");
+          // 4-C: AsyncStorage 캐시 저장 (업장 등록 1단계 pre-fill용, fire-and-forget)
+          void saveContractPending(
+            selectedWorkplace.name,
+            result.contractId,
+            result.extracted,
+          )
+            .then(() => {
+              setPendingNames((prev) => new Set(prev).add(selectedWorkplace.name));
+            })
+            .catch(() => {});
           setCurrentScreen("analysis");
         }}
       />
@@ -253,10 +344,18 @@ export function WorkplaceView(): JSX.Element {
       setCurrentScreen("list");
       return <View />;
     }
+    // 이미 등록된 업장에서 "계약서 업로드" 진입한 경우 — 사업장 등록 흐름이 아니라
+    // 계약서만 추가하는 경로. 하단 CTA를 "계약서 업로드 완료"로 바꿔주고
+    // 클릭 시엔 분석 결과를 store에 저장하고 list로 복귀.
+    const isAlreadyRegistered =
+      selectedWorkplace.registrationStatus === "registered";
     return (
       <ContractAnalysisView
         result={result}
         onBack={() => setCurrentScreen(fromEdit ? "edit" : "upload")}
+        submitLabel={
+          isAlreadyRegistered ? "계약서 업로드 완료" : "사업장 등록하기 →"
+        }
         onRegister={() => {
           if (!fromEdit && pendingImageUri !== null) {
             markContractUploaded(
@@ -266,11 +365,38 @@ export function WorkplaceView(): JSX.Element {
             );
           }
           setPendingImageUri(null);
+
+          if (isAlreadyRegistered) {
+            // 이미 등록된 업장 — 계약서 저장만 하고 list 복귀.
+            setCurrentScreen("list");
+            return;
+          }
+
+          // 신규 등록 path — 입력 단계 건너뛰고 바로 확인 화면으로.
+          // 분석 결과의 extracted 필드에서 WorkInfoInput을 derive.
           setPendingRegistration({
             workplaceId: selectedWorkplace.id,
             workplaceName: selectedWorkplace.name,
           });
-          setCurrentScreen("register-step1");
+          const ex = result.extracted;
+          const todayIso = (): string => {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          };
+          setConfirmPayload({
+            info: {
+              workDays: ex.workDays ?? [],
+              workStartTime: ex.workStartTime ?? "09:00",
+              workEndTime: ex.workEndTime ?? "18:00",
+              startDay: ex.employmentStartDate ?? todayIso(),
+              hourlyWage:
+                ex.hourlyWage !== null && ex.hourlyWage !== undefined
+                  ? ex.hourlyWage
+                  : undefined,
+            },
+            isFromContract: true,
+          });
+          setCurrentScreen("register-step2-confirm");
         }}
       />
     );
@@ -302,8 +428,44 @@ export function WorkplaceView(): JSX.Element {
         }}
         onNext={(info) => {
           setWorkInfo(registration.workplaceId, info);
+          setConfirmPayload({ info, isFromContract: false });
+          setCurrentScreen("register-step2-confirm");
+        }}
+        onGoToContractUpload={() => {
+          setSelectedWorkplaceId(registration.workplaceId);
+          setPendingRegistration(null);
+          setCurrentScreen("upload");
+        }}
+      />
+    );
+  }
+
+  if (
+    currentScreen === "register-step2-confirm" &&
+    pendingRegistration &&
+    confirmPayload
+  ) {
+    const registration = pendingRegistration;
+    const wp = workplaces.find((w) => w.id === registration.workplaceId);
+    return (
+      <WorkInfoConfirmView
+        workplaceName={registration.workplaceName}
+        workInfo={confirmPayload.info}
+        isFromContract={confirmPayload.isFromContract}
+        contractAnalysis={wp?.contractAnalysis}
+        onBack={() => {
+          // 계약서 path → analysis로 / 입력 path → register-step1로
+          setCurrentScreen(
+            confirmPayload.isFromContract ? "analysis" : "register-step1",
+          );
+        }}
+        onConfirm={(updated) => {
+          // 확인 완료 — 인라인 편집된 최종 값을 store에 저장 후 BSSID 단계로.
+          setWorkInfo(registration.workplaceId, updated);
+          setConfirmPayload({ ...confirmPayload, info: updated });
           setCurrentScreen("bssid-register");
         }}
+        onViewIssues={() => setCurrentScreen("analysis")}
       />
     );
   }
@@ -335,6 +497,16 @@ export function WorkplaceView(): JSX.Element {
               setPartTimeJobId(registration.workplaceId, res.partTimeJobId);
               setPendingRegistration({ ...registration, bssid, ssid });
               setCurrentScreen("register-complete");
+              // 4-C: 등록 성공 → AsyncStorage 캐시 삭제 (fire-and-forget)
+              void clearContractPending(registration.workplaceName)
+                .then(() => {
+                  setPendingNames((prev) => {
+                    const next = new Set(prev);
+                    next.delete(registration.workplaceName);
+                    return next;
+                  });
+                })
+                .catch(() => {});
             })
             .catch((err) => {
               if (isAxiosError(err)) {
@@ -456,19 +628,41 @@ export function WorkplaceView(): JSX.Element {
                 workplace={wp}
                 isLast={idx === workplaces.length - 1}
                 isDeleting={deletingId === wp.id}
+                hasContractPending={pendingNames.has(wp.name)}
                 onRemove={() => handleDelete(wp)}
-                onUploadContract={() => {
+                onAction={(action) => {
                   setSelectedWorkplaceId(wp.id);
-                  setCurrentScreen(
-                    wp.contractStatus === "none" ? "upload" : "edit",
-                  );
-                }}
-                onRegisterWorkplace={() => {
-                  setPendingRegistration({
-                    workplaceId: wp.id,
-                    workplaceName: wp.name,
-                  });
-                  setCurrentScreen("register-step1");
+                  switch (action) {
+                    case "open-gate":
+                      // 초기 [업장 등록하기] → 계약서 게이트 (있으세요? 화면)
+                      setPendingRegistration({
+                        workplaceId: wp.id,
+                        workplaceName: wp.name,
+                      });
+                      setCurrentScreen("contract-gate");
+                      return;
+                    case "upload-contract":
+                      // 등록 후 계약서 추가 업로드
+                      setCurrentScreen("upload");
+                      return;
+                    case "edit-contract":
+                      // 이미 업로드된 계약서 수정/재업로드
+                      setCurrentScreen("edit");
+                      return;
+                    case "register-bssid":
+                      // 계약서만 업로드된 상태 — 근무 정보 확인 거쳐 BSSID 등록.
+                      // WorkInfoInputView가 contract prefill을 그대로 보여주므로 register-step1로.
+                      setPendingRegistration({
+                        workplaceId: wp.id,
+                        workplaceName: wp.name,
+                      });
+                      setCurrentScreen("register-step1");
+                      return;
+                    case "open-dashboard":
+                      // 등록 완료 — 근무 대시보드 (work-record 탭)로 이동
+                      router.push("/(tabs)/work-record");
+                      return;
+                  }
                 }}
               />
             ))}
@@ -483,32 +677,22 @@ interface RowProps {
   workplace: FavoriteWorkplace;
   isLast: boolean;
   isDeleting: boolean;
+  /** 분석 완료된 계약서가 AsyncStorage 캐시에 남아있는지 — 뱃지 표시용. */
+  hasContractPending: boolean;
   onRemove: () => void;
-  onUploadContract: () => void;
-  onRegisterWorkplace: () => void;
+  /** 카드 버튼이 요청하는 액션을 상위가 받아서 적절한 화면으로 라우팅. */
+  onAction: (action: CardAction) => void;
 }
 
 function WorkplaceRow({
   workplace: wp,
   isLast,
   isDeleting,
+  hasContractPending,
   onRemove,
-  onUploadContract,
-  onRegisterWorkplace,
+  onAction,
 }: RowProps): JSX.Element {
-  const { stage, contractButton, registerButton } = getCardButtonStates(wp);
-  const contractStyle = BUTTON_STYLES[contractButton.variant];
-  const registerStyle = BUTTON_STYLES[registerButton.variant];
-
-  const handleRegisterPress = (): void => {
-    if (registerButton.isPressable) {
-      onRegisterWorkplace();
-      return;
-    }
-    if (stage === "initial") {
-      Alert.alert("안내", "먼저 계약서를 업로드하세요");
-    }
-  };
+  const states = getCardButtonStates(wp);
 
   return (
     <View
@@ -526,9 +710,28 @@ function WorkplaceRow({
           marginBottom: 10,
         }}
       >
-        <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
-          {wp.name}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
+            {wp.name}
+          </Text>
+          {hasContractPending ? (
+            <View
+              style={{
+                marginLeft: 6,
+                backgroundColor: "#DBEAFE",
+                paddingHorizontal: 6,
+                paddingVertical: 2,
+                borderRadius: 4,
+              }}
+            >
+              <Text
+                style={{ fontSize: 9, color: "#1D4ED8", fontWeight: "700" }}
+              >
+                📄 계약서 분석 완료
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <TouchableOpacity
           onPress={onRemove}
           hitSlop={8}
@@ -542,61 +745,59 @@ function WorkplaceRow({
         </TouchableOpacity>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <TouchableOpacity
-          onPress={() => {
-            if (contractButton.isPressable) onUploadContract();
-          }}
-          disabled={!contractButton.isPressable}
-          activeOpacity={0.8}
-          style={{
-            flex: 1,
-            paddingVertical: 10,
-            backgroundColor: contractStyle.backgroundColor,
-            borderRadius: 10,
-            borderWidth: contractStyle.borderWidth,
-            borderColor: contractStyle.borderColor,
-            opacity: contractStyle.opacity,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 13,
-              color: contractStyle.textColor,
-              fontWeight: "600",
-            }}
-          >
-            {contractButton.label}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={handleRegisterPress}
-          disabled={!registerButton.isPressable && stage !== "initial"}
-          activeOpacity={0.8}
-          style={{
-            flex: 1,
-            paddingVertical: 10,
-            backgroundColor: registerStyle.backgroundColor,
-            borderRadius: 10,
-            borderWidth: registerStyle.borderWidth,
-            borderColor: registerStyle.borderColor,
-            opacity: registerStyle.opacity,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 13,
-              color: registerStyle.textColor,
-              fontWeight: "600",
-            }}
-          >
-            {registerButton.label}
-          </Text>
-        </TouchableOpacity>
+        <ActionButton
+          state={states.primary}
+          onPress={() => onAction(states.primary.action)}
+          fullWidth={states.layout === "single"}
+        />
+        {states.layout === "dual" && states.secondary !== undefined ? (
+          <ActionButton
+            state={states.secondary}
+            onPress={() => onAction(states.secondary!.action)}
+          />
+        ) : null}
       </View>
     </View>
+  );
+}
+
+interface ActionButtonProps {
+  state: CardButtonState;
+  onPress: () => void;
+  fullWidth?: boolean;
+}
+
+function ActionButton({
+  state,
+  onPress,
+  fullWidth = false,
+}: ActionButtonProps): JSX.Element {
+  const style = BUTTON_STYLES[state.variant];
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={{
+        flex: fullWidth ? 1 : 1,
+        paddingVertical: 10,
+        backgroundColor: style.backgroundColor,
+        borderRadius: 10,
+        borderWidth: style.borderWidth,
+        borderColor: style.borderColor,
+        opacity: style.opacity,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 13,
+          color: style.textColor,
+          fontWeight: "600",
+        }}
+      >
+        {state.label}
+      </Text>
+    </TouchableOpacity>
   );
 }

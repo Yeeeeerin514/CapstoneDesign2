@@ -57,15 +57,15 @@ export type ReportStatus =
   | "UNRESOLVED";
 
 /**
- * 6단계 정의 (공동대응이 3번째에 위치).
- * 1: evidence_collection, 2: amount_calculation, 3: group_decision,
- * 4: complaint_draft (멘토 주 진입점),
- * 5: submission, 6: investigation (멘토 보조 진입점)
+ * 4단계 정의 — V2 신고 흐름. 금액 계산/공동대응 단계는 evidence/complaint_draft 안으로
+ * 흡수되어 별도 step에서 제거됨.
+ * 1: evidence_collection (1-A 피해유형 → 1-B 자유서술 → 1-C 진정내용 폼)
+ * 2: complaint_draft     (진정서 PDF 생성 — 멘토 주 진입점)
+ * 3: submission          (고용24 또는 노동지청 접수)
+ * 4: investigation       (출석조사 → 시정지시 → 해결 — 멘토 보조 진입점)
  */
 export type CaseStep =
   | "evidence_collection"
-  | "amount_calculation"
-  | "group_decision"
   | "complaint_draft"
   | "submission"
   | "investigation";
@@ -83,23 +83,8 @@ export type InvestigationSubStatus =
   | "under_correction"
   | "resolved_confirm";
 
-/**
- * Step 2 (amount_calculation) 내부 4단계 서브 상태.
- * - idle: 계산 시작 전 (헤더 금액 숨김, "금액 계산 시작" 버튼만 노출)
- * - calculating: 계산 중 (로딩)
- * - done: 계산 완료 → 사용자 확인 대기 (금액 표시 + "이 금액이 맞나요?" 확인 버튼)
- * - confirmed: 사용자 확인 완료 → 다음 단계 진행 (이후엔 일반 ready 상태로 표시)
- */
-export type AmountCalcState =
-  | "idle"
-  | "calculating"
-  | "done"
-  | "confirmed";
-
 export const STEP_ORDER: readonly CaseStep[] = [
   "evidence_collection",
-  "amount_calculation",
-  "group_decision",
   "complaint_draft",
   "submission",
   "investigation",
@@ -114,18 +99,8 @@ export interface CaseStepMeta {
 
 export const STEP_META: Record<CaseStep, CaseStepMeta> = {
   evidence_collection: {
-    label: "증거 수집",
-    description: "근무기록과 계약서가 자동 수집되었습니다",
-    hasMentorEntry: false,
-  },
-  amount_calculation: {
-    label: "미지급 금액 계산",
-    description: "근무시간과 시급을 계산해 미지급금을 산정합니다",
-    hasMentorEntry: false,
-  },
-  group_decision: {
-    label: "공동대응 여부 결정",
-    description: "같은 업장 피해자와 함께 신고하면 더 강한 압박이 됩니다",
+    label: "신고 정보 입력",
+    description: "피해 유형, 상황, 진정 내용을 차례대로 작성합니다",
     hasMentorEntry: false,
   },
   complaint_draft: {
@@ -406,6 +381,8 @@ export interface ReportCase {
   workplaceName: string;
   /** 사업자등록번호. 자동 검출 실패 시 null. */
   businessRegistrationNumber: string | null;
+  /** 백엔드 business 테이블 ID. 사업장 검색 연결 시 채워짐. 미연결이면 null. */
+  businessId: number | null;
   /** 업종 — 멘토 매칭 / 후기 필터링 기준 (예: "카페·음식점"). */
   industry: string;
   /** 지역 — 후기 필터 / 표시용 (예: "서울 강남구"). */
@@ -430,6 +407,11 @@ export interface ReportCase {
   evidence: EvidenceState;
   /** 실제 업로드된 증거 파일 목록 — evidence 카운트와 동기 갱신. */
   evidenceFiles: EvidenceFile[];
+  /**
+   * 자연어 증거 텍스트 목록 — Step 1에서 사용자가 자유롭게 작성.
+   * POST /api/reports description 필드로 `\n\n---\n\n` join 후 전송.
+   */
+  evidenceTexts: string[];
 
   // 금액 (모두 null 시작 — 증거 없이는 금액 표시 안 함)
   /** 받아야 할 금액 (시급 × 근무시간). 계약서 + 근무기록 또는 사용자 입력 있을 때만. */
@@ -455,9 +437,6 @@ export interface ReportCase {
   /** 노동청 제출 시각 (ISO). setSubmittedAt이 채움. */
   submittedAt?: string;
 
-  /** 공동대응 그룹 ID — 참여 시. */
-  groupId?: string;
-
   /** 진정서 초안 ID — ReportDraft entity 도입 시 사용. */
   draftId?: string;
 
@@ -468,14 +447,101 @@ export interface ReportCase {
   investigationStatus?: InvestigationSubStatus;
 
   /**
-   * Step 2 (amount_calculation) 서브 상태. 사건 생성 시 'idle'로 초기화.
-   * 사용자가 "금액 계산 시작" 누르면 calculating → done(확인 대기) → confirmed(다음 단계).
-   */
-  amountCalcState: AmountCalcState;
-
-  /**
    * 후기 작성 완료 여부. ReviewWriteView가 addReview 직후 true로 갱신.
    * 사건 상세/리스트 카드에서 "후기 쓰기" 버튼을 숨길지 결정하는 단일 기준.
    */
   hasWrittenReview?: boolean;
+
+  // ──────────────────────────────────────
+  // V2 신규 — 백엔드 통신 문서(2026-05-30)에 정의된 필드.
+  // 기존 V1 (calculatedUnpaid/evidence.bankRecords 등)은 deprecated이며
+  // ReportDetailView 등 화면이 새 흐름으로 마이그레이션될 때 제거 예정.
+  // ──────────────────────────────────────
+
+  /** 사업장 검색/등록 결과로 채워진 사업장 정보 — POST /reports/draft 응답에서 받음. */
+  business?: BusinessInfo;
+  /** 어떤 경로로 신고 생성되었는지. */
+  draftSource?: ReportDraftSource;
+
+  /** 1단계 1-A 다중 선택 결과 (백엔드 enum). */
+  damageTypeEnums?: DamageTypeEnum[];
+  /** 1단계 1-B 자유 서술 — 멘토 매칭 description으로도 그대로 사용. */
+  freeFormDescription?: string;
+  /** 1단계 1-C 피진정인 폼 — 계약서 있으면 자동 채움. */
+  respondent?: ComplaintRespondent;
+  /** 1단계 1-C 진정 내용 폼. */
+  facts?: ComplaintFacts;
+}
+
+// ──────────────────────────────────────
+// V2 신규 타입 (백엔드 enum/shape와 1:1 매칭)
+// ──────────────────────────────────────
+
+/** 사업장 정보 — POST /reports/draft 응답의 business 블록과 1:1. */
+export interface BusinessInfo {
+  name: string;
+  registrationNumber: string | null;
+  category: string | null;
+  address: string | null;
+  phone: string | null;
+  representativeName: string | null;
+  laborOffice: string | null;
+}
+
+/** 신고 사건 생성 경로. */
+export type ReportDraftSource = "search" | "registered" | "manual";
+
+/** 피해 유형 (백엔드 enum). 다중 선택 가능. */
+export type DamageTypeEnum =
+  | "BASE_WAGE"
+  | "WEEKLY_HOLIDAY"
+  | "OVERTIME"
+  | "NIGHT"
+  | "SEVERANCE";
+
+/** 사업체 구분 — 진정서 PDF 항목과 1:1. */
+export type BusinessType = "WORKPLACE" | "CONSTRUCTION_SITE";
+/** 퇴직 여부. */
+export type EmploymentStatusEnum = "CURRENT" | "FORMER";
+/** 근로계약 방법. */
+export type ContractMethod = "WRITTEN" | "ORAL";
+
+/** 진정서 PDF "2. 피진정인" 항목과 1:1. */
+export interface ComplaintRespondent {
+  representativeName: string | null;
+  phone: string | null;
+  address: string | null;
+  businessType: BusinessType;
+  workplaceName: string;
+  workplacePhone: string | null;
+  employeeCount: number | null;
+}
+
+/** 진정서 PDF "3. 진정 내용" 항목과 1:1. 사용자가 단계별로 채움. */
+export interface ComplaintFacts {
+  employmentStartDate: string | null;
+  employmentEndDate: string | null;
+  totalUnpaidWage: number | null;
+  employmentStatus: EmploymentStatusEnum | null;
+  unpaidSeverance: number | null;
+  otherUnpaid: number | null;
+  jobDescription: string | null;
+  wagePaymentDate: string | null;
+  contractMethod: ContractMethod | null;
+}
+
+/**
+ * 진정인(사용자 본인) 정보 — **프론트 로컬에만 저장**, 백엔드 절대 전송 X.
+ * AsyncStorage 키 "applicant_info_v1" 권장.
+ * PDF 생성 시점에만 ComplaintFacts/Respondent와 합쳐서 사용.
+ */
+export interface ApplicantInfo {
+  fullName: string;
+  rrn: string;
+  address: string;
+  phone: string;
+  email: string;
+  mobile: string;
+  wantsResultNotice: boolean;
+  wantsLaborOfficeNotice: boolean;
 }

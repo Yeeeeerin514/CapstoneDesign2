@@ -101,6 +101,19 @@ export interface ExtractedContract {
   workEndTime: string | null;
   /** "2020-03-05" (LocalDate). */
   employmentStartDate: string | null;
+  /** "2021-03-04" (LocalDate). */
+  contractEndDate: string | null;
+  /** "매월 5일" 등 자유 텍스트. */
+  wagePaymentDate: string | null;
+  /** "계좌이체" 등. */
+  wagePaymentMethod: string | null;
+  /** "12:00" (LocalTime). */
+  breakStartTime: string | null;
+  /** "13:00" (LocalTime). */
+  breakEndTime: string | null;
+  employerAddress: string | null;
+  employerPhone: string | null;
+  employerRepresentative: string | null;
 }
 
 export interface ContractAnalysisResult {
@@ -155,7 +168,7 @@ export interface ContractTextSegment {
 // ─────────────────────────────────────────────────────────────────────
 //  백엔드 응답 타입 (camelCase 그대로) + 매핑 함수
 // ─────────────────────────────────────────────────────────────────────
-const MIN_WAGE = 10030;
+import { getMinimumWage } from "@/shared/lib/minimum-wage-store";
 
 interface ApiLlmConcern {
   category: string;
@@ -309,7 +322,7 @@ export function mapJobPostingApiResponse(
     hasWeeklyHolidayPay,
     businessStatus,
     wageDelinquencyCount,
-    minimumWage2026: MIN_WAGE,
+    minimumWage2026: getMinimumWage().wage,
     issues,
     summary: api.finalSummary ?? "",
     overallAssessment: ex.overallAssessment ?? null,
@@ -359,6 +372,15 @@ interface ApiExtractedContractInfo {
   workStartTime: string | null;
   workEndTime: string | null;
   employmentStartDate: string | null;
+  // 명세 §2 추가 필드 — STEP 15
+  contractEndDate: string | null;
+  wagePaymentDate: string | null;
+  wagePaymentMethod: string | null;
+  breakStartTime: string | null;
+  breakEndTime: string | null;
+  employerAddress: string | null;
+  employerPhone: string | null;
+  employerRepresentative: string | null;
 }
 
 interface ApiRelatedCase {
@@ -475,6 +497,14 @@ export function mapContractApiResponse(
       workStartTime: info?.workStartTime ?? null,
       workEndTime: info?.workEndTime ?? null,
       employmentStartDate: info?.employmentStartDate ?? null,
+      contractEndDate: info?.contractEndDate ?? null,
+      wagePaymentDate: info?.wagePaymentDate ?? null,
+      wagePaymentMethod: info?.wagePaymentMethod ?? null,
+      breakStartTime: info?.breakStartTime ?? null,
+      breakEndTime: info?.breakEndTime ?? null,
+      employerAddress: info?.employerAddress ?? null,
+      employerPhone: info?.employerPhone ?? null,
+      employerRepresentative: info?.employerRepresentative ?? null,
     },
   };
 }

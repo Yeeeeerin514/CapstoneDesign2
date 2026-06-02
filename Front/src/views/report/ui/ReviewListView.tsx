@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
@@ -8,7 +8,8 @@ import { ReviewDetailView } from "./ReviewDetailView";
 
 interface ReviewListViewProps {
   onBack: () => void;
-  onConnectMentor?: () => void;
+  /** HomeView "맞춤 해결 사례 보기" 진입 시 초기 필터 — INDUSTRY_FILTERS 중 하나. */
+  initialIndustry?: "전체" | "카페·음식점" | "편의점" | "배달";
 }
 
 const INDUSTRY_FILTERS = ["전체", "카페·음식점", "편의점", "배달"] as const;
@@ -19,12 +20,14 @@ type RegionFilter = (typeof REGION_FILTERS)[number];
 
 export function ReviewListView({
   onBack,
-  onConnectMentor,
+  initialIndustry,
 }: ReviewListViewProps): JSX.Element {
   const reviews = useReviewStore((s) => s.reviews);
   const markHelpful = useReviewStore((s) => s.markHelpful);
 
-  const [industry, setIndustry] = useState<IndustryFilter>("전체");
+  const [industry, setIndustry] = useState<IndustryFilter>(
+    initialIndustry ?? "전체",
+  );
   const [region, setRegion] = useState<RegionFilter>("전체");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -45,7 +48,6 @@ export function ReviewListView({
       <ReviewDetailView
         reviewId={selectedId}
         onBack={() => setSelectedId(null)}
-        onConnectMentor={onConnectMentor}
       />
     );
   }
@@ -327,38 +329,6 @@ export function ReviewListView({
                     {`도움됐어요 ${r.helpfulCount}`}
                   </Text>
                 </Pressable>
-                {r.isMentor ? (
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      if (onConnectMentor !== undefined) {
-                        onConnectMentor();
-                      } else {
-                        Alert.alert(
-                          "준비 중",
-                          "멘토 연결 기능은 곧 출시됩니다.",
-                        );
-                      }
-                    }}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 9,
-                      borderRadius: 8,
-                      backgroundColor: "#3182F6",
-                      alignItems: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color: "#FFFFFF",
-                        fontWeight: "600",
-                      }}
-                    >
-                      멘토 연결 · ₩10,000
-                    </Text>
-                  </Pressable>
-                ) : null}
               </View>
             </Pressable>
           ))

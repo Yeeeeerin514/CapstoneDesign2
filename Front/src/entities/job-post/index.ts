@@ -33,3 +33,11 @@ export type {
 } from "./api/contracts-api";
 export { HighlightedContractText } from "./ui/HighlightedContractText";
 export { IssueDetailSheet } from "./ui/IssueDetailSheet";
+export {
+  saveContractPending,
+  loadContractPending,
+  clearContractPending,
+  listPendingBusinessNames,
+  cleanExpiredContractPending,
+} from "./lib/contract-pending-cache";
+export type { ContractPendingEntry } from "./lib/contract-pending-cache";

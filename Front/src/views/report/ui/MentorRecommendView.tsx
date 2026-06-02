@@ -16,6 +16,8 @@ import type { MentorProfile } from "@/entities/mentor";
 import { usePaymentStore } from "@/features/payment";
 import { PAYMENT_DISTRIBUTION } from "@/shared/lib/payment";
 import { useAuthStore } from "@/entities/user/model/auth-store";
+import { MentorBrowseView } from "./MentorBrowseView";
+import type { DamageTypeEnum } from "@/entities/report";
 
 interface MentorRecommendViewProps {
   caseId: string;
@@ -39,7 +41,6 @@ function getMatchReasons(
   if (mentor.damageTypes.some((d) => damageTypes.includes(d))) {
     reasons.push("같은 피해 유형 경험");
   }
-  if (mentor.wasGroupLeader) reasons.push("공동대응 대표 경험");
   if (mentor.resolvedDays <= 20) reasons.push("빠른 해결");
   return reasons;
 }
@@ -60,6 +61,19 @@ export function MentorRecommendView({
   const [selectedMentor, setSelectedMentor] = useState<MentorProfile | null>(
     null,
   );
+  const [showBrowse, setShowBrowse] = useState(false);
+
+  // damageTypes 라벨 → DamageTypeEnum 매핑 (browse 필터 prefill용)
+  const damageTypeEnums: DamageTypeEnum[] = damageTypes
+    .map((d): DamageTypeEnum | null => {
+      if (d.includes("주휴")) return "WEEKLY_HOLIDAY";
+      if (d.includes("연장")) return "OVERTIME";
+      if (d.includes("야간")) return "NIGHT";
+      if (d.includes("퇴직")) return "SEVERANCE";
+      if (d.includes("임금") || d.includes("체불")) return "BASE_WAGE";
+      return null;
+    })
+    .filter((d): d is DamageTypeEnum => d !== null);
 
   const recommended = getRecommended(industry, damageTypes);
 
@@ -185,6 +199,21 @@ export function MentorRecommendView({
     );
   }
 
+  // ───── 전체 멘토 검색 overlay ─────
+  if (showBrowse) {
+    return (
+      <MentorBrowseView
+        initialIndustry={industry}
+        initialDamageTypes={damageTypeEnums}
+        onBack={() => setShowBrowse(false)}
+        onSelect={(mentor) => {
+          setShowBrowse(false);
+          handleSelectMentor(mentor);
+        }}
+      />
+    );
+  }
+
   // ───── 리스트 화면 ─────
   return (
     <SafeAreaView
@@ -259,6 +288,31 @@ export function MentorRecommendView({
         >
           {`${industry} 업종, ${damageTypes.join("·")} 피해를 해결한 멘토를 찾았어요`}
         </Text>
+
+        {/* 전체 멘토 검색 진입 */}
+        <Pressable
+          onPress={() => setShowBrowse(true)}
+          style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: 10,
+            paddingVertical: 11,
+            paddingHorizontal: 12,
+            marginBottom: 12,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            borderWidth: 1,
+            borderColor: "#B5D4F4",
+          }}
+        >
+          <Ionicons name="search" size={13} color="#185FA5" />
+          <Text
+            style={{ fontSize: 13, color: "#185FA5", fontWeight: "600" }}
+          >
+            추천에 만족하지 못하셨나요? 전체 멘토 검색하기
+          </Text>
+        </Pressable>
 
         {/* 멘토 카드 리스트 */}
         {recommended.length === 0 ? (
@@ -335,11 +389,7 @@ export function MentorRecommendView({
                           fontWeight: "600",
                         }}
                       >
-                        {b === "인증멘토"
-                          ? "🛡 인증멘토"
-                          : b === "공동대응대표"
-                            ? "🏆 공동대응대표"
-                            : "⚡ 빠른해결"}
+                        {b === "인증멘토" ? "🛡 인증멘토" : "⚡ 빠른해결"}
                       </Text>
                     </View>
                   ))}

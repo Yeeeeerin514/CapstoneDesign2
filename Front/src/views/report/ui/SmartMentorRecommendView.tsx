@@ -47,6 +47,8 @@ interface Props {
   description?: string;
   onBack: () => void;
   onMatched?: (matchId: number, mentorNickname: string) => void;
+  /** Top-3 매칭에 마음에 드는 멘토가 없을 때 "멘토 더보기" → 부모가 전체 멘토 둘러보기 진입. */
+  onOpenBrowse?: () => void;
 }
 
 export function SmartMentorRecommendView({
@@ -60,6 +62,7 @@ export function SmartMentorRecommendView({
   description,
   onBack,
   onMatched,
+  onOpenBrowse,
 }: Props): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [envelope, setEnvelope] = useState<MatchResponseEnvelope | null>(null);
@@ -200,6 +203,32 @@ export function SmartMentorRecommendView({
               />
             ))
           )}
+
+          {/* 멘토 더보기 — 매칭 결과에 마음에 드는 멘토가 없을 때 전체 멘토 둘러보기로 이동 */}
+          {onOpenBrowse !== undefined ? (
+            <Pressable
+              onPress={onOpenBrowse}
+              style={{
+                marginTop: spacing.md,
+                paddingVertical: 14,
+                borderRadius: 12,
+                alignItems: "center",
+                backgroundColor: "#FFFFFF",
+                borderWidth: 1,
+                borderColor: "#3182F6",
+                flexDirection: "row",
+                justifyContent: "center",
+                gap: 6,
+              }}
+            >
+              <Ionicons name="search" size={14} color="#3182F6" />
+              <Text
+                style={{ color: "#3182F6", fontSize: 14, fontWeight: "700" }}
+              >
+                멘토 더보기 (전체 보기)
+              </Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
       )}
     </SafeAreaView>

@@ -9,6 +9,7 @@ import type {
   MatchRequestPayload,
   MatchResponseEnvelope,
   MentorRegistrationRequest,
+  MentorshipMatch,
 } from "../model/matching-types";
 
 /** 멘토 등록/수정 */
@@ -60,9 +61,9 @@ export async function submitMatchingFeedback(
   await apiClient.post("/mentoring/feedback", payload);
 }
 
-/** 내 매칭 이력 */
-export async function fetchMyMatches(): Promise<unknown[]> {
-  const { data } = await apiClient.get<unknown[]>("/mentoring/my-matches");
+/** 내 매칭 이력 — API-REFERENCE.md §7 MentorshipMatch[] */
+export async function fetchMyMatches(): Promise<MentorshipMatch[]> {
+  const { data } = await apiClient.get<MentorshipMatch[]>("/mentoring/my-matches");
   return data;
 }
 
@@ -80,7 +81,7 @@ export interface BackendChatMessage {
   id: number;
   matchId: number;
   senderUserId: number | null;
-  senderRole: "MENTOR" | "MENTEE" | "SYSTEM";
+  senderRole: "MENTOR" | "MENTEE";
   text: string;
   createdAt: string;
 }

@@ -3,6 +3,7 @@ import type {
   FavoriteWorkplace,
   JobPostAnalysisResult,
 } from "./types";
+import { getMinimumWage } from "@/shared/lib/minimum-wage-store";
 
 // 공고 분석 결과 목업 (개발 중 UI 미리보기 용도, 실서비스 호출은 analyzeJobPost 사용)
 export const MOCK_JOB_ANALYSIS: JobPostAnalysisResult = {
@@ -13,7 +14,7 @@ export const MOCK_JOB_ANALYSIS: JobPostAnalysisResult = {
   hasWeeklyHolidayPay: false,
   businessStatus: "정상",
   wageDelinquencyCount: 2,
-  minimumWage2026: 10030,
+  minimumWage2026: getMinimumWage().wage,
   summary: "임금체불 이력 2건, 최저임금 미달, 주휴수당 미언급",
   overallAssessment: null,
   userReport: "",
@@ -52,7 +53,7 @@ export const MOCK_CONTRACT_ANALYSIS: ContractAnalysisResult = {
   workplaceName: "OO카페 강남점",
   contractPeriod: "2026-04-01",
   hourlyWage: 10000,
-  minimumWage: 10030,
+  minimumWage: getMinimumWage().wage,
   estimatedMonthlyPay: 2080000,
   overallRisk: "high",
   summary: "최저임금 미달 + 주휴수당 미명시 + 연장수당 조항 누락",
@@ -119,6 +120,14 @@ export const MOCK_CONTRACT_ANALYSIS: ContractAnalysisResult = {
     workStartTime: "09:00",
     workEndTime: "18:00",
     employmentStartDate: "2026-04-01",
+    contractEndDate: null,
+    wagePaymentDate: null,
+    wagePaymentMethod: null,
+    breakStartTime: null,
+    breakEndTime: null,
+    employerAddress: null,
+    employerPhone: null,
+    employerRepresentative: null,
   },
 };
 

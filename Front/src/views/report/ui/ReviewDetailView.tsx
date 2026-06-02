@@ -1,4 +1,5 @@
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
@@ -7,13 +8,11 @@ import { useReviewStore } from "@/entities/review";
 interface ReviewDetailViewProps {
   reviewId: string;
   onBack: () => void;
-  onConnectMentor?: () => void;
 }
 
 export function ReviewDetailView({
   reviewId,
   onBack,
-  onConnectMentor,
 }: ReviewDetailViewProps): JSX.Element | null {
   const review = useReviewStore((s) => s.getById(reviewId));
   const markHelpful = useReviewStore((s) => s.markHelpful);
@@ -24,14 +23,6 @@ export function ReviewDetailView({
 
   const handleHelpful = (): void => {
     markHelpful(review.id);
-  };
-
-  const handleMentorConnect = (): void => {
-    if (onConnectMentor !== undefined) {
-      onConnectMentor();
-      return;
-    }
-    Alert.alert("준비 중", "멘토 연결 기능은 곧 출시됩니다.");
   };
 
   const tipRows: Array<{ label: string; text: string }> = [
@@ -367,25 +358,223 @@ export function ReviewDetailView({
           </Text>
         </Pressable>
 
-        {/* 멘토 연결 (isMentor=true만) */}
-        {review.isMentor ? (
-          <Pressable
-            onPress={handleMentorConnect}
-            style={{
-              backgroundColor: "#3182F6",
-              paddingVertical: 13,
-              borderRadius: 10,
-              alignItems: "center",
-            }}
-          >
-            <Text
-              style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}
-            >
-              이 분과 1:1 멘토 매칭하기 · ₩10,000
-            </Text>
-          </Pressable>
-        ) : null}
+        {/* Q&A 댓글 섹션 — 후기 작성자에게 질문하고 답변 받기 (커뮤니티) */}
+        <QnaCommentSection reviewId={review.id} />
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+// ──────────────────────────────────────
+// Q&A 댓글 — UI 스켈레톤. 백엔드 연동 전까지는 로컬 state만 유지.
+// 작성자(작성자 본인)와 다른 사용자가 댓글을 주고받는 커뮤니티 영역.
+// ──────────────────────────────────────
+
+interface QnaComment {
+  id: string;
+  authorNickname: string;
+  isAuthor: boolean;
+  body: string;
+  createdAt: string;
+}
+
+const MOCK_QNA: Record<string, QnaComment[]> = {
+  "review-001": [
+    {
+      id: "qna-1",
+      authorNickname: "닉네임C",
+      isAuthor: false,
+      body: "통장 내역을 첨부할 때 사장님 입금 내역만 따로 캡쳐해야 하나요?",
+      createdAt: "2026-05-15T10:00:00Z",
+    },
+    {
+      id: "qna-2",
+      authorNickname: "닉네임A",
+      isAuthor: true,
+      body: "저는 전체 내역 그대로 제출했는데 감독관이 직접 골라서 보더라고요. 색깔 표시만 해두시면 더 빨라요.",
+      createdAt: "2026-05-15T14:30:00Z",
+    },
+  ],
+};
+
+function QnaCommentSection({ reviewId }: { reviewId: string }): JSX.Element {
+  const initial = MOCK_QNA[reviewId] ?? [];
+  const [comments, setComments] = useState<QnaComment[]>(initial);
+  const [draft, setDraft] = useState("");
+
+  const handleSubmit = (): void => {
+    const trimmed = draft.trim();
+    if (trimmed.length === 0) {
+      Alert.alert("안내", "내용을 입력해주세요.");
+      return;
+    }
+    setComments((prev) => [
+      ...prev,
+      {
+        id: `local-${prev.length + 1}`,
+        authorNickname: "나",
+        isAuthor: false,
+        body: trimmed,
+        createdAt: new Date(0).toISOString(),
+      },
+    ]);
+    setDraft("");
+    Alert.alert(
+      "임시 동작",
+      "댓글이 로컬에만 추가되었어요. 백엔드 연동 후 영구 저장됩니다.",
+    );
+  };
+
+  return (
+    <View style={{ marginTop: 24 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          marginBottom: 10,
+        }}
+      >
+        <Ionicons name="chatbubbles" size={16} color="#0F172A" />
+        <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A" }}>
+          {`Q&A · ${comments.length}건`}
+        </Text>
+      </View>
+      <Text
+        style={{
+          fontSize: 12,
+          color: "#64748B",
+          marginBottom: 12,
+          lineHeight: 17,
+        }}
+      >
+        작성자에게 궁금한 점을 물어보세요. 답변은 작성자가 직접 달아드려요.
+      </Text>
+
+      {comments.length === 0 ? (
+        <View
+          style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: 12,
+            padding: 16,
+            alignItems: "center",
+            borderWidth: 0.5,
+            borderColor: "#E2E8F0",
+          }}
+        >
+          <Text style={{ fontSize: 12, color: "#94A3B8" }}>
+            첫 질문을 남겨보세요
+          </Text>
+        </View>
+      ) : (
+        comments.map((c) => (
+          <View
+            key={c.id}
+            style={{
+              backgroundColor: c.isAuthor ? "#EBF3FF" : "#FFFFFF",
+              borderRadius: 12,
+              padding: 12,
+              marginBottom: 8,
+              borderWidth: 0.5,
+              borderColor: c.isAuthor ? "#B5D4F4" : "#E2E8F0",
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                marginBottom: 4,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: "700",
+                  color: c.isAuthor ? "#185FA5" : "#0F172A",
+                }}
+              >
+                {c.authorNickname}
+              </Text>
+              {c.isAuthor ? (
+                <View
+                  style={{
+                    backgroundColor: "#3182F6",
+                    paddingHorizontal: 5,
+                    paddingVertical: 1,
+                    borderRadius: 4,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 9,
+                      color: "#FFFFFF",
+                      fontWeight: "700",
+                    }}
+                  >
+                    작성자
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <Text
+              style={{
+                fontSize: 13,
+                color: "#0F172A",
+                lineHeight: 19,
+              }}
+            >
+              {c.body}
+            </Text>
+          </View>
+        ))
+      )}
+
+      {/* 댓글 입력 — 백엔드 연동 전 스켈레톤 */}
+      <View
+        style={{
+          marginTop: 8,
+          flexDirection: "row",
+          alignItems: "flex-end",
+          gap: 8,
+        }}
+      >
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="질문이나 의견을 남겨주세요"
+          placeholderTextColor="#94A3B8"
+          multiline
+          style={{
+            flex: 1,
+            backgroundColor: "#FFFFFF",
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: "#E2E8F0",
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            fontSize: 13,
+            color: "#0F172A",
+            minHeight: 44,
+            maxHeight: 120,
+          }}
+        />
+        <Pressable
+          onPress={handleSubmit}
+          style={{
+            backgroundColor: "#3182F6",
+            paddingHorizontal: 14,
+            height: 44,
+            borderRadius: 10,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={{ color: "#FFFFFF", fontSize: 13, fontWeight: "700" }}>
+            등록
+          </Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }

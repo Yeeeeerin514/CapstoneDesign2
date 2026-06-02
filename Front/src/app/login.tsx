@@ -53,12 +53,26 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
 
   async function submit() {
     if (!email || !password) {
       Alert.alert("입력 오류", "이메일과 비밀번호를 입력해주세요.");
+      return;
+    }
+    // 회원가입 시 전화번호 유효성 검사 — 빈칸 허용, 입력 시 10~11자리 숫자
+    const trimmedPhone = phoneNumber.replace(/\D/g, "");
+    if (
+      mode === "signup" &&
+      trimmedPhone !== "" &&
+      (trimmedPhone.length < 10 || trimmedPhone.length > 11)
+    ) {
+      Alert.alert(
+        "입력 오류",
+        "올바른 전화번호 형식이 아닙니다 (예: 01012345678)",
+      );
       return;
     }
     setLoading(true);
@@ -71,7 +85,7 @@ export default function LoginScreen() {
               email,
               password,
               name: name || email.split("@")[0],
-              phoneNumber: "",
+              phoneNumber: trimmedPhone,
             };
 
       const { data } = await apiClient.post(path, body);
@@ -112,6 +126,16 @@ export default function LoginScreen() {
           placeholder="이름"
           value={name}
           onChangeText={setName}
+        />
+      )}
+      {mode === "signup" && (
+        <TextInput
+          style={styles.input}
+          placeholder="전화번호 (예: 01012345678)"
+          keyboardType="phone-pad"
+          maxLength={11}
+          value={phoneNumber}
+          onChangeText={(v) => setPhoneNumber(v.replace(/\D/g, ""))}
         />
       )}
       <TextInput
