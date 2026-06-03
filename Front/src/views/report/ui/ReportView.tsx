@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { useReportStore } from "@/features/report-submit";
 import { useReviewStore } from "@/entities/review";
+import { usePaymentStore } from "@/features/payment";
 import type { BusinessSearchResult } from "@/entities/business";
 import { ReportEmptyView } from "./ReportEmptyView";
 import { ReportListView } from "./ReportListView";
@@ -38,8 +39,9 @@ export function ReportView(): JSX.Element {
 
   useFocusEffect(
     useCallback(() => {
-      // 후기 목록을 백엔드에서 로드 (report 탭 진입 시마다)
+      // 후기 목록 + 내 결제 기록을 백엔드에서 로드 (report 탭 진입 시마다)
       void useReviewStore.getState().load();
+      void usePaymentStore.getState().load();
       const { shouldSkipNextFocusReset, setShouldSkipNextFocusReset } =
         useReportStore.getState();
       if (shouldSkipNextFocusReset) {
