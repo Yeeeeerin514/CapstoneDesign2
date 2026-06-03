@@ -83,6 +83,50 @@ jobs:
             sudo journalctl -u albasave --no-pager -n 50
             exit 1
 
+      # ───────────────────────────────────────────────────────────────
+      #  프론트엔드 (Expo web) 빌드 → EC2 정적 디렉터리 배포
+      #  CI(리눅스)에서 export 하므로 윈도우 백슬래시 경로 버그 없음.
+      # ───────────────────────────────────────────────────────────────
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build web (Expo export)
+        working-directory: Front
+        env:
+          EXPO_PUBLIC_API_URL: http://13.124.178.60:8080/api
+          EXPO_PUBLIC_APP_ENV: production
+        run: |
+          npm install --legacy-peer-deps
+          npx expo export -p web
+          tar -czf web.tgz -C dist .
+
+      - name: Upload web build to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "Front/web.tgz"
+          target: "/home/ubuntu/app/"
+          strip_components: 1
+          overwrite: true
+
+      - name: Deploy web on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            rm -rf /home/ubuntu/app/web
+            mkdir -p /home/ubuntu/app/web
+            tar -xzf /home/ubuntu/app/web.tgz -C /home/ubuntu/app/web
+            rm -f /home/ubuntu/app/web.tgz
+            echo "web deployed: $(ls /home/ubuntu/app/web | tr '\n' ' ')"
+
       - name: Cleanup old backups (keep last 3)
         if: success()
         uses: appleboy/ssh-action@v1.0.3
