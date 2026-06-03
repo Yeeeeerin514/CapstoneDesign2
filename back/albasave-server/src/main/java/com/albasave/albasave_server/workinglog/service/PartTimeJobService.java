@@ -1,5 +1,9 @@
 package com.albasave.albasave_server.workinglog.service;
 
+import com.albasave.albasave_server.business.domain.Business;
+import com.albasave.albasave_server.business.repository.BusinessRepository;
+import com.albasave.albasave_server.userinfo.domain.User;
+import com.albasave.albasave_server.userinfo.repository.UserRepository;
 import com.albasave.albasave_server.workinglog.domain.PartTimeJob;
 import com.albasave.albasave_server.workinglog.dto.PartTimeJobRequest;
 import com.albasave.albasave_server.workinglog.dto.PartTimeJobResponse;
@@ -15,15 +19,23 @@ import java.util.List;
 public class PartTimeJobService {
 
     private final PartTimeJobRepository partTimeJobRepository;
+    private final UserRepository userRepository;
+    private final BusinessRepository businessRepository;
 
     @Transactional
     public PartTimeJobResponse create(Long userId, PartTimeJobRequest req) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("유저를 찾을 수 없습니다."));
+        Business business = req.getBusinessId() != null
+                ? businessRepository.findById(req.getBusinessId()).orElse(null)
+                : null;
+
         PartTimeJob job = PartTimeJob.builder()
-                .userId(userId)
-                .businessId(req.getBusinessId())
+                .user(user)
+                .business(business)
                 .businessName(req.getBusinessName())
                 .hourlyWage(req.getHourlyWage())
-                .day(req.getDay())
+                .days(PartTimeJobResponse.dayStringToBitmask(req.getDay()))
                 .startTime(req.getStartTime())
                 .endTime(req.getEndTime())
                 .startDay(req.getStartDay())
@@ -45,7 +57,7 @@ public class PartTimeJobService {
     public void deactivate(Long userId, Long partTimeJobId) {
         PartTimeJob job = partTimeJobRepository.findById(partTimeJobId)
                 .orElseThrow(() -> new IllegalArgumentException("알바를 찾을 수 없습니다."));
-        if (!job.getUserId().equals(userId)) {
+        if (job.getUser() == null || !job.getUser().getId().equals(userId)) {
             throw new IllegalArgumentException("본인의 알바만 수정할 수 있습니다.");
         }
         job.setIsActive(false);

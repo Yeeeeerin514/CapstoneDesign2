@@ -1,5 +1,7 @@
 package com.albasave.albasave_server.workinglog.controller;
 
+import com.albasave.albasave_server.userinfo.domain.User;
+import com.albasave.albasave_server.userinfo.repository.UserRepository;
 import com.albasave.albasave_server.workinglog.domain.PartTimeJob;
 import com.albasave.albasave_server.workinglog.dto.*;
 import com.albasave.albasave_server.workinglog.repository.PartTimeJobRepository;
@@ -30,6 +32,7 @@ public class WorkingController {
 
     private final WorkingService workingService;
     private final PartTimeJobRepository partTimeJobRepository;
+    private final UserRepository userRepository;
 
     /**
      * 사업장 통합 등록 — BSSID 등록 화면 완료 시 호출.
@@ -46,10 +49,13 @@ public class WorkingController {
         if (bssid == null || bssid.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "BSSID is required"));
         }
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("유저를 찾을 수 없습니다."));
         PartTimeJob saved = partTimeJobRepository.save(PartTimeJob.builder()
-                .userId(userId)
+                .user(user)
                 .businessName(workplaceName)
                 .bssid(bssid)
+                .days(0)
                 .isActive(true)
                 .build());
         return ResponseEntity.ok(Map.of(

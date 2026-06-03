@@ -2,8 +2,8 @@ package com.albasave.albasave_server.report.service;
 
 import com.albasave.albasave_server.jobposting.config.OpenAiProperties;
 import com.albasave.albasave_server.report.domain.AnalysisLog;
-import com.albasave.albasave_server.workinglog.domain.User;
-import com.albasave.albasave_server.workinglog.repository.UserRepository;
+import com.albasave.albasave_server.userinfo.domain.User;
+import com.albasave.albasave_server.userinfo.repository.UserRepository;
 import com.albasave.albasave_server.workinglog.repository.WorkingRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,7 +34,7 @@ public class ComplaintDraftService {
     public String generateComplaintDraft(AnalysisLog log, WageCalculationService.WageCalculationResult wage) {
         User user = userRepository.findById(log.getUserId()).orElse(null);
         String userName = user != null ? user.getName() : "신청인";
-        String userPhone = user != null ? (user.getPhoneNumber() != null ? user.getPhoneNumber() : "") : "";
+        String userPhone = "";  // User 엔티티에 전화번호 필드 없음 — 진정서엔 빈 값으로 출력
 
         var workingRecords = workingRepository.findByPartTimeJobIdOrderByRealStartTimeDesc(
                 log.getPartTimeJobId() != null ? log.getPartTimeJobId() : 0L);

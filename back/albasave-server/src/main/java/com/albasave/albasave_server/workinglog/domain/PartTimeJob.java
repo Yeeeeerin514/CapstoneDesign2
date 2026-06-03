@@ -41,7 +41,8 @@ public class PartTimeJob {
      * 근무 요일 bitmask (MON=1, TUE=2, WED=4, THU=8, FRI=16, SAT=32, SUN=64)
      * 예: 월·수·금 → 1 | 4 | 16 = 21
      */
-    @Column(name = "days", nullable = false)
+    // nullable 허용: 기존 데이터가 있는 테이블에 ddl-auto=update 가 NOT NULL 컬럼을 추가하지 못하는 문제 회피
+    @Column(name = "days")
     private Integer days;
 
     /** 예정 출근 시각 */

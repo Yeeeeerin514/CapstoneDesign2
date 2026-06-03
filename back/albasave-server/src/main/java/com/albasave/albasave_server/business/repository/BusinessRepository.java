@@ -13,6 +13,9 @@ import java.util.Optional;
 public interface BusinessRepository extends JpaRepository<Business, Long> {
     Optional<Business> findBySourceFileAndManagementNumber(String sourceFile, String managementNumber);
 
+    /** 관리번호로 사업장 1건 조회 (관리번호는 sourceFile과 조합 시 유일 — 단독 조회는 첫 건 사용) */
+    Optional<Business> findFirstByManagementNumber(String managementNumber);
+
     /**
      * Null 대신 빈 문자열을 받는다. JPQL 파라미터의 PostgreSQL 타입 추론 실패를
      * 막기 위함. 빈 문자열은 "조건 미적용"으로 해석된다.

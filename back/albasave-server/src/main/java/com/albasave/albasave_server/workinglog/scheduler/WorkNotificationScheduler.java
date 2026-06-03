@@ -1,9 +1,9 @@
 package com.albasave.albasave_server.workinglog.scheduler;
 
 import com.albasave.albasave_server.workinglog.domain.PartTimeJob;
-import com.albasave.albasave_server.workinglog.domain.User;
+import com.albasave.albasave_server.userinfo.domain.User;
 import com.albasave.albasave_server.workinglog.repository.PartTimeJobRepository;
-import com.albasave.albasave_server.workinglog.repository.UserRepository;
+import com.albasave.albasave_server.userinfo.repository.UserRepository;
 import com.albasave.albasave_server.workinglog.service.FcmService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,13 +49,13 @@ public class WorkNotificationScheduler {
         List<PartTimeJob> activeJobs = partTimeJobRepository.findAllByIsActiveTrue();
 
         for (PartTimeJob job : activeJobs) {
-            // 1. 오늘 근무 요일인지 확인
-            if (!isWorkingDay(job.getDay(), today)) {
+            // 1. 오늘 근무 요일인지 확인 (days 비트마스크)
+            if (!isWorkingDay(job.getDays(), today)) {
                 continue;
             }
 
-            // 2. 사용자의 FCM 토큰 조회
-            User user = userRepository.findById(job.getUserId()).orElse(null);
+            // 2. 사용자의 FCM 토큰 조회 (PartTimeJob → User 연관)
+            User user = job.getUser();
             if (user == null || user.getFcmToken() == null) {
                 continue;
             }
@@ -64,35 +64,27 @@ public class WorkNotificationScheduler {
 
             // 3. 출근 알림 (출근 시각 == 현재 시각)
             if (job.getStartTime() != null && job.getStartTime().equals(now)) {
-                log.info("[스케줄러] 출근 알림 전송. userId={}, partTimeJobId={}", job.getUserId(), job.getId());
+                log.info("[스케줄러] 출근 알림 전송. userId={}, partTimeJobId={}", user.getId(), job.getId());
                 fcmService.sendClockInReminder(user.getFcmToken(), businessName);
             }
 
             // 4. 퇴근 알림 (퇴근 시각 == 현재 시각)
             if (job.getEndTime() != null && job.getEndTime().equals(now)) {
-                log.info("[스케줄러] 퇴근 알림 전송. userId={}, partTimeJobId={}", job.getUserId(), job.getId());
+                log.info("[스케줄러] 퇴근 알림 전송. userId={}, partTimeJobId={}", user.getId(), job.getId());
                 fcmService.sendClockOutReminder(user.getFcmToken(), businessName);
             }
         }
     }
 
     /**
-     * "MON,WED,FRI" 형식의 day 문자열을 파싱하여 오늘이 근무일인지 확인
+     * days 비트마스크(MON=1, TUE=2, WED=4, THU=8, FRI=16, SAT=32, SUN=64)로 오늘이 근무일인지 확인
      *
-     * @param dayString  Part_Time_Job.day 컬럼 값 (예: "MON,TUE,WED")
-     * @param today      오늘 요일 (DayOfWeek)
+     * @param daysBitmask  Part_Time_Job.days 컬럼 값
+     * @param today        오늘 요일 (DayOfWeek)
      */
-    private boolean isWorkingDay(String dayString, DayOfWeek today) {
-        if (dayString == null || dayString.isBlank()) return false;
-        try {
-            Set<DayOfWeek> workingDays = Arrays.stream(dayString.split(","))
-                    .map(String::trim)
-                    .map(DayOfWeek::valueOf)
-                    .collect(Collectors.toSet());
-            return workingDays.contains(today);
-        } catch (IllegalArgumentException e) {
-            log.warn("[스케줄러] 요일 파싱 실패. dayString={}", dayString);
-            return false;
-        }
+    private boolean isWorkingDay(Integer daysBitmask, DayOfWeek today) {
+        if (daysBitmask == null || daysBitmask == 0) return false;
+        int todayBit = 1 << (today.getValue() - 1); // MONDAY(1)→1, ..., SUNDAY(7)→64
+        return (daysBitmask & todayBit) != 0;
     }
 }

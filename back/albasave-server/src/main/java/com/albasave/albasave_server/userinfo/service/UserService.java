@@ -65,7 +65,7 @@ public class UserService {
                 .orElseThrow(() -> new IllegalArgumentException("유저를 찾을 수 없습니다."));
 
         Business business = businessRepository
-                .findByManagementNumber(req.getBusinessRegistrationNum())
+                .findFirstByManagementNumber(req.getBusinessRegistrationNum())
                 .orElseThrow(() -> new IllegalArgumentException("사업장을 찾을 수 없습니다."));
 
         // 근무 요일 bitmask Integer 변환

@@ -3,8 +3,8 @@ package com.albasave.albasave_server.auth;
 import com.albasave.albasave_server.auth.dto.AuthResponse;
 import com.albasave.albasave_server.auth.dto.LoginRequest;
 import com.albasave.albasave_server.auth.dto.SignupRequest;
-import com.albasave.albasave_server.workinglog.domain.User;
-import com.albasave.albasave_server.workinglog.repository.UserRepository;
+import com.albasave.albasave_server.userinfo.domain.User;
+import com.albasave.albasave_server.userinfo.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -27,7 +27,6 @@ public class AuthService {
                 .email(req.getEmail())
                 .password(passwordEncoder.encode(req.getPassword()))
                 .name(req.getName())
-                .phoneNumber(req.getPhoneNumber())
                 .build();
         User saved = userRepository.save(user);
         String token = jwtProvider.generateToken(saved.getId(), saved.getEmail());
