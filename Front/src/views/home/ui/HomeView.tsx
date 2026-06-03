@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -42,6 +42,11 @@ export function HomeView() {
   const [viewingReviewId, setViewingReviewId] = useState<string | null>(null);
   const addWorkplace = useFavoriteWorkplaceStore((s) => s.addWorkplace);
   const reviews = useReviewStore((s) => s.reviews);
+
+  // 홈 진입 시 후기 목록을 백엔드에서 로드 (홈에서 바로 후기 목록을 열어도 보이도록)
+  useEffect(() => {
+    void useReviewStore.getState().load();
+  }, []);
 
   async function pickFromCamera() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
