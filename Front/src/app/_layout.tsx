@@ -8,6 +8,10 @@ import { syncFcmToken } from "@/entities/user";
 import { cleanExpiredContractPending } from "@/entities/job-post";
 import { fetchMinimumWage } from "@/shared/api/minimum-wage-api";
 import { useMinimumWageStore } from "@/shared/lib/minimum-wage-store";
+import { installWebAlertPolyfill } from "@/shared/lib/web-alert";
+
+// 웹에서 Alert.alert 다중버튼(삭제/확인 등)이 동작하도록 전역 폴리필 설치 (네이티브 무영향)
+installWebAlertPolyfill();
 
 const MIN_WAGE_CACHE_KEY = "minimumWage_cache";
 const MIN_WAGE_TTL_MS = 24 * 60 * 60 * 1000;

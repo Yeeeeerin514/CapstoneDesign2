@@ -385,13 +385,46 @@ export interface ApiExtractedContractInfo {
  * 계약서 백엔드 응답 — POST /api/contracts/analyze.
  * extracted 필드 + LLM 요약/우려사항.
  */
+export interface ApiContractViolation {
+  type: string;
+  severity: "HIGH" | "MEDIUM" | "LOW";
+  description: string;
+  legalBasis: string | null;
+  legalBasisExcerpt: string | null;
+  relatedCases: RelatedCase[] | null;
+}
+
+/**
+ * 계약서 백엔드 응답 — POST /api/contracts/analyze (실제 백엔드 ContractAnalysisResponse 형태).
+ */
 export interface ApiContractAnalysisResponse {
   contractId: number | null;
-  imageUrl: string | null;
-  extracted: ExtractedContract;
-  overallRisk: "high" | "medium" | "low";
+  hasViolation: boolean;
+  extractedInfo: ApiExtractedContractInfo;
+  violations: ApiContractViolation[];
   summary: string;
-  issues: ContractIssue[];
+  minimumWage: number;
+  imageUrl: string | null;
+  /** 진정서용 정형 데이터 — 프론트 현재 미사용 (팀원 진정서 파트 담당). */
+  factSheet?: unknown;
+  createdAt?: string;
+}
+
+/** 백엔드 위반유형 enum → 사용자 표시용 한글 제목 */
+const CONTRACT_TYPE_LABEL: Record<string, string> = {
+  MINIMUM_WAGE: "최저임금 미달",
+  WEEKLY_HOLIDAY: "주휴수당 미보장",
+  OVERTIME_PAY: "연장·야간수당 누락",
+  REST_TIME: "휴게시간 미보장",
+  ANNUAL_LEAVE: "연차휴가 누락",
+  MANDATORY_ITEMS: "필수 기재사항 누락",
+  WORKING_HOURS: "법정 근로시간 위반",
+};
+
+function contractSeverityToLevel(s: string): ContractIssueLevel {
+  if (s === "HIGH") return "danger";
+  if (s === "MEDIUM") return "warning";
+  return "info";
 }
 
 /**
@@ -400,21 +433,42 @@ export interface ApiContractAnalysisResponse {
 export function mapContractApiResponse(
   api: ApiContractAnalysisResponse,
 ): ContractAnalysisResult {
+  const ex = api.extractedInfo ?? ({} as ApiExtractedContractInfo);
+  const violations = api.violations ?? [];
+
+  const issues: ContractIssue[] = violations.map((v, idx) => ({
+    id: `${v.type ?? "ISSUE"}-${idx}`,
+    number: idx + 1,
+    level: contractSeverityToLevel(v.severity),
+    type: v.type,
+    title: CONTRACT_TYPE_LABEL[v.type] ?? v.legalBasis ?? "계약서 확인 필요",
+    description: v.description,
+    legalBasis: v.legalBasis ?? undefined,
+    legalBasisExcerpt: v.legalBasisExcerpt ?? null,
+    relatedCases: v.relatedCases ?? undefined,
+  }));
+
+  let overallRisk: "high" | "medium" | "low" = "low";
+  if (violations.some((v) => v.severity === "HIGH")) overallRisk = "high";
+  else if (violations.some((v) => v.severity === "MEDIUM")) overallRisk = "medium";
+
+  const contractPeriod =
+    ex.employmentStartDate != null
+      ? `${ex.employmentStartDate} ~ ${ex.contractEndDate ?? "기간없음"}`
+      : "";
+
   return {
-    contractId: api.contractId,
-    workplaceName: api.extracted.employerName ?? "",
-    contractPeriod:
-      api.extracted.employmentStartDate !== null
-        ? `${api.extracted.employmentStartDate} ~ ${api.extracted.contractEndDate ?? "기간없음"}`
-        : "",
-    hourlyWage: api.extracted.hourlyWage ?? 0,
-    minimumWage: getMinimumWage().wage,
-    estimatedMonthlyPay: api.extracted.monthlyWage ?? 0,
-    issues: api.issues,
-    overallRisk: api.overallRisk,
-    summary: api.summary,
-    imageUrl: api.imageUrl,
-    extracted: api.extracted,
+    contractId: api.contractId ?? null,
+    workplaceName: ex.employerName ?? "",
+    contractPeriod,
+    hourlyWage: ex.hourlyWage ?? 0,
+    minimumWage: api.minimumWage ?? getMinimumWage().wage,
+    estimatedMonthlyPay: ex.monthlyWage ?? 0,
+    issues,
+    overallRisk,
+    summary: api.summary ?? "",
+    imageUrl: api.imageUrl ?? null,
+    extracted: ex,
   };
 }
 

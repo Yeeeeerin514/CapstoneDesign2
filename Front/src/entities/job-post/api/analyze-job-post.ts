@@ -10,7 +10,7 @@ import {
 } from "../model/types";
 import { MOCK_CONTRACT_ANALYSIS, MOCK_JOB_ANALYSIS } from "../model/mock-data";
 
-const USE_MOCK = true; // 백엔드 연결 시 false로 바꾸면 끝
+const USE_MOCK = false; // 실제 백엔드(/job-postings/analyze, /contracts/analyze) 연결
 
 async function buildImageFormData(
   imageUri: string,
