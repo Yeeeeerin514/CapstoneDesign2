@@ -38,30 +38,39 @@ export async function confirmMatch(matchId: number): Promise<MentorshipMatch> {
   return data;
 }
 
-/** POST /api/mentoring/match/{matchId}/feedback — 매칭 종료 후 별점/감사 메시지. */
+/**
+ * POST /api/mentoring/feedback — 매칭 종료 후 별점/해결여부 (Thompson Sampling 학습).
+ * 백엔드 FeedbackRequest: { matchId, rating, chatDays, resolved, comment }
+ */
 export async function submitMatchFeedback(
   matchId: number,
   payload: FeedbackPayload,
 ): Promise<void> {
-  await apiClient.post(`/mentoring/match/${matchId}/feedback`, payload);
+  await apiClient.post("/mentoring/feedback", {
+    matchId,
+    rating: payload.rating,
+    comment: payload.comment ?? "",
+    resolved: payload.resolved ?? false,
+    chatDays: 0,
+  });
 }
 
-/** GET /api/mentoring/mentors/{userId} — 단일 멘토 풀 프로필. */
+/** GET /api/mentoring/mentor-profile/me — 내 멘토 프로필 조회. */
 export async function fetchMentorProfileById(
-  userId: number,
+  _userId: number,
 ): Promise<BackendMentorProfile> {
   const { data } = await apiClient.get<BackendMentorProfile>(
-    `/mentoring/mentors/${userId}`,
+    "/mentoring/mentor-profile/me",
   );
   return data;
 }
 
-/** POST /api/mentoring/mentors — 멘토 신규 등록 (자격 증빙 첨부). */
+/** POST /api/mentoring/mentor-profile — 멘토 신규 등록/수정 (자격 증빙 첨부). */
 export async function registerMentor(
   payload: MentorRegistrationRequest,
 ): Promise<BackendMentorProfile> {
   const { data } = await apiClient.post<BackendMentorProfile>(
-    "/mentoring/mentors",
+    "/mentoring/mentor-profile",
     payload,
   );
   return data;
