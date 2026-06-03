@@ -1,4 +1,8 @@
 spring:
+  web:
+    resources:
+      # 프론트(Expo web export)를 EC2 외부 디렉터리에서 서빙. 로컬엔 없어도 무방.
+      static-locations: file:/home/ubuntu/app/web/,classpath:/static/
   servlet:
     multipart:
       max-file-size: 20MB

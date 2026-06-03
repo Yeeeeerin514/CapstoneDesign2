@@ -28,6 +28,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // 공개 API
                         .requestMatchers(
                                 "/api/auth/**",
                                 "/api/health",
@@ -36,7 +37,10 @@ public class SecurityConfig {
                                 "/api/contracts/**",
                                 "/api/dev/**"
                         ).permitAll()
-                        .anyRequest().authenticated()
+                        // 그 외 API 는 JWT 필요
+                        .requestMatchers("/api/**").authenticated()
+                        // 나머지(프론트 정적 파일 + SPA 라우트)는 공개
+                        .anyRequest().permitAll()
                 )
                 .addFilterBefore(new JwtFilter(jwtProvider), UsernamePasswordAuthenticationFilter.class);
         return http.build();
