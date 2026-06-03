@@ -95,6 +95,10 @@ export function WorkDashboardView({
       }
       setTotalMinutes(null);
       setWeeklyMinutes(null);
+      // 백엔드에서 현재 출근 상태 + 최근 이력 + 주간 통계 로드 (실제 데이터)
+      void useAttendanceStore
+        .getState()
+        .load(partTimeJobId, workplace?.workHourlyWage ?? 10030);
       fetchTotalMinutes(partTimeJobId)
         .then(setTotalMinutes)
         .catch(() => {
@@ -727,7 +731,7 @@ export function WorkDashboardView({
                 marginBottom: 8,
               }}
             >
-              🛠 DEV: 근무 상태 시뮬레이션
+              📶 근무 기록 (BSSID 검증 · 실제 서버)
             </Text>
             <Text
               style={{ fontSize: 10, color: "#92400E", marginBottom: 10 }}
@@ -736,7 +740,17 @@ export function WorkDashboardView({
             </Text>
             <View style={{ flexDirection: "row", gap: 6 }}>
               <Pressable
-                onPress={() => useAttendanceStore.getState().simulateCheckIn()}
+                onPress={() => {
+                  if (partTimeJobId === undefined) return;
+                  void useAttendanceStore
+                    .getState()
+                    .clockIn(
+                      partTimeJobId,
+                      workplace?.bssid ?? "",
+                      workplace?.workHourlyWage ?? 10030,
+                    )
+                    .catch(() => undefined);
+                }}
                 style={{
                   flex: 1,
                   padding: 8,
@@ -752,7 +766,15 @@ export function WorkDashboardView({
                 </Text>
               </Pressable>
               <Pressable
-                onPress={() => useAttendanceStore.getState().simulateCheckOut()}
+                onPress={() =>
+                  void useAttendanceStore
+                    .getState()
+                    .clockOut(
+                      workplace?.bssid ?? "",
+                      workplace?.workHourlyWage ?? 10030,
+                    )
+                    .catch(() => undefined)
+                }
                 style={{
                   flex: 1,
                   padding: 8,
@@ -768,7 +790,7 @@ export function WorkDashboardView({
                 </Text>
               </Pressable>
               <Pressable
-                onPress={() => useAttendanceStore.getState().simulateReset()}
+                onPress={() => useAttendanceStore.getState().reset()}
                 style={{
                   flex: 1,
                   padding: 8,

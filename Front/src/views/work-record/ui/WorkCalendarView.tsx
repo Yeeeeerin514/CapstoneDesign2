@@ -3,10 +3,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
-import {
-  MOCK_RECENT_ATTENDANCES,
-  type AttendanceRecord,
-} from "@/entities/attendance";
+import { useAttendanceStore, type AttendanceRecord } from "@/entities/attendance";
 
 interface WorkCalendarViewProps {
   workplaceId: string;
@@ -55,10 +52,11 @@ function toDateString(d: Date): string {
 }
 
 export function WorkCalendarView({
-  workplaceId,
   workplaceName,
   onBack,
 }: WorkCalendarViewProps): JSX.Element {
+  // 대시보드가 이미 store에 로드한 실제 출퇴근 이력을 공유해서 사용.
+  const recentAttendances = useAttendanceStore((s) => s.recentAttendances);
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -66,11 +64,9 @@ export function WorkCalendarView({
 
   const attendanceMap = useMemo(() => {
     const map = new Map<string, AttendanceRecord>();
-    MOCK_RECENT_ATTENDANCES.filter((a) => a.workplaceId === workplaceId).forEach(
-      (a) => map.set(a.date, a),
-    );
+    recentAttendances.forEach((a) => map.set(a.date, a));
     return map;
-  }, [workplaceId]);
+  }, [recentAttendances]);
 
   const matrix = useMemo(
     () => getMonthMatrix(viewYear, viewMonth),

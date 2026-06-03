@@ -108,3 +108,24 @@ export async function fetchTotalMinutes(partTimeJobId: number): Promise<number> 
   );
   return data.totalMinutes;
 }
+
+/**
+ * GET /api/working/current/{partTimeJobId}
+ * 현재 출근 중(미퇴근) 레코드. 없으면 null (백엔드가 빈 본문/ null 반환).
+ */
+export async function fetchCurrentWorking(
+  partTimeJobId: number,
+): Promise<AttendanceRecord | null> {
+  const { data } = await apiClient.get<WorkingResponse | "" | null>(
+    `/working/current/${partTimeJobId}`,
+  );
+  if (
+    data === null ||
+    data === undefined ||
+    typeof data === "string" ||
+    typeof (data as WorkingResponse).id !== "number"
+  ) {
+    return null;
+  }
+  return toAttendance(data as WorkingResponse);
+}
