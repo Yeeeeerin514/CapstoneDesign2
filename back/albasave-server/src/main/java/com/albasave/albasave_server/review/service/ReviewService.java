@@ -1,9 +1,15 @@
 package com.albasave.albasave_server.review.service;
 
 import com.albasave.albasave_server.review.domain.Review;
+import com.albasave.albasave_server.review.domain.ReviewComment;
+import com.albasave.albasave_server.review.dto.ReviewCommentCreateRequest;
+import com.albasave.albasave_server.review.dto.ReviewCommentResponse;
 import com.albasave.albasave_server.review.dto.ReviewCreateRequest;
 import com.albasave.albasave_server.review.dto.ReviewResponse;
+import com.albasave.albasave_server.review.repository.ReviewCommentRepository;
 import com.albasave.albasave_server.review.repository.ReviewRepository;
+import com.albasave.albasave_server.userinfo.domain.User;
+import com.albasave.albasave_server.userinfo.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -13,13 +19,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReviewService {
 
+    /** 지역 필터 "기타" = 아래 광역지역에 속하지 않는 모든 후기. */
+    private static final Set<String> NAMED_REGIONS = Set.of("서울", "경기");
+
     private final ReviewRepository reviewRepository;
+    private final ReviewCommentRepository reviewCommentRepository;
+    private final UserRepository userRepository;
 
     /** 앱 시작 시 후기 테이블이 비어 있으면 데모 후기 2건 시드. */
     @EventListener(ApplicationReadyEvent.class)
@@ -71,13 +83,82 @@ public class ReviewService {
         log.info("[Review] 데모 후기 2건 시드 완료");
     }
 
+    /**
+     * 후기 목록(최신순) — 업종/지역 옵션 필터.
+     * <ul>
+     *   <li>industry: null/빈값/"전체"이면 전체, 아니면 정확히 일치하는 업종만</li>
+     *   <li>region: null/빈값/"전체"이면 전체, "기타"이면 서울·경기가 <b>아닌</b> 후기,
+     *       그 외("서울"/"경기")는 정확히 일치하는 지역만</li>
+     * </ul>
+     */
     @Transactional(readOnly = true)
     public List<ReviewResponse> list(String industry, String region) {
         return reviewRepository.findAllByOrderByCreatedAtDesc().stream()
-                .filter(r -> industry == null || industry.isBlank() || industry.equals(r.getIndustry()))
-                .filter(r -> region == null || region.isBlank() || region.equals(r.getRegion()))
+                .filter(r -> matchesIndustry(r, industry))
+                .filter(r -> matchesRegion(r, region))
                 .map(ReviewResponse::from)
                 .toList();
+    }
+
+    private boolean matchesIndustry(Review r, String industry) {
+        if (industry == null || industry.isBlank() || "전체".equals(industry)) return true;
+        return industry.equals(r.getIndustry());
+    }
+
+    private boolean matchesRegion(Review r, String region) {
+        if (region == null || region.isBlank() || "전체".equals(region)) return true;
+        if ("기타".equals(region)) return !NAMED_REGIONS.contains(r.getRegion());
+        return region.equals(r.getRegion());
+    }
+
+    /** 단건 후기 조회. */
+    @Transactional(readOnly = true)
+    public ReviewResponse getOne(Long id) {
+        Review review = reviewRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("후기를 찾을 수 없습니다: " + id));
+        return ReviewResponse.from(review);
+    }
+
+    /** 단건 후기의 Q&A 댓글 목록(작성 순). 모든 사용자에게 동일하게 노출. */
+    @Transactional(readOnly = true)
+    public List<ReviewCommentResponse> listComments(Long reviewId) {
+        if (!reviewRepository.existsById(reviewId)) {
+            throw new IllegalArgumentException("후기를 찾을 수 없습니다: " + reviewId);
+        }
+        return reviewCommentRepository.findByReviewIdOrderByCreatedAtAsc(reviewId).stream()
+                .map(ReviewCommentResponse::from)
+                .toList();
+    }
+
+    /**
+     * Q&A 댓글 작성.
+     * 닉네임은 JWT(userId)로 User를 조회해 서버에서 채우고,
+     * 작성자 본인 여부(isAuthor)는 후기의 작성자 user.id와 비교해 판별한다.
+     */
+    @Transactional
+    public ReviewCommentResponse createComment(Long userId, Long reviewId, ReviewCommentCreateRequest req) {
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new IllegalArgumentException("후기를 찾을 수 없습니다: " + reviewId));
+
+        if (req.body() == null || req.body().isBlank()) {
+            throw new IllegalArgumentException("댓글 내용을 입력해주세요.");
+        }
+
+        String nickname = userRepository.findById(userId)
+                .map(User::getName)
+                .orElse("알 수 없음");
+        boolean isAuthor = review.getAuthorUserId() != null
+                && review.getAuthorUserId().equals(userId);
+
+        ReviewComment comment = ReviewComment.builder()
+                .reviewId(reviewId)
+                .authorUserId(userId)
+                .authorNickname(nickname)
+                .isAuthor(isAuthor)
+                .body(req.body().trim())
+                .createdAt(LocalDateTime.now())
+                .build();
+        return ReviewCommentResponse.from(reviewCommentRepository.save(comment));
     }
 
     @Transactional
