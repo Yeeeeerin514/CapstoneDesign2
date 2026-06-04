@@ -45,4 +45,9 @@ public interface BusinessRepository extends JpaRepository<Business, Long> {
     }
 
     long countBySourceFileIn(Collection<String> sourceFiles);
+
+    /**
+     * 사업자등록번호로 사업장 조회
+     */
+    Optional<Business> findByManagementNumber(String businessRegistrationNum);
 }

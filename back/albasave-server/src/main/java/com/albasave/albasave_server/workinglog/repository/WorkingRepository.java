@@ -19,4 +19,6 @@ public interface WorkingRepository extends JpaRepository<Working, Long>{
      * 진정서 작성용 근무 시간 합산에 사용
      */
     List<Working> findByPartTimeJobIdOrderByRealStartTimeDesc(Long partTimeJobId);
+
+    List<Working> findAllByPartTimeJobId(Long partTimeJobId);
 }
