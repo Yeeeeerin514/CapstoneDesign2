@@ -45,8 +45,9 @@ export function MentorChatView({
 
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<ScrollView | null>(null);
-  const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null);
   const seenBackendIdsRef = useRef<Set<number>>(new Set());
+  const sinceRef = useRef<string | undefined>(undefined);
+  const seededRef = useRef(false);
 
   // 백엔드 채팅 폴링 — backendMatchId 있을 때만
   const backendMatchId = match?.backendMatchId;
@@ -55,11 +56,32 @@ export function MentorChatView({
 
     let cancelled = false;
 
+    // 채팅 재진입 시 중복 방지 — store에 이미 있는 백엔드 메시지로 seen-set과
+    // since 커서를 1회 시드한다. remount로 ref가 비더라도 영속 store의 기존
+    // 메시지를 since=undefined로 다시 전체 fetch→재추가 하지 않도록.
+    if (!seededRef.current) {
+      const existing = useMentorMatchStore
+        .getState()
+        .matches.find((m) => m.id === matchId);
+      const backendMsgs = (existing?.chatMessages ?? []).filter(
+        (m) => m.backendId !== undefined,
+      );
+      for (const m of backendMsgs) {
+        if (m.backendId !== undefined) seenBackendIdsRef.current.add(m.backendId);
+      }
+      if (backendMsgs.length > 0) {
+        sinceRef.current = backendMsgs
+          .map((m) => m.timestamp)
+          .reduce((a, b) => (a > b ? a : b));
+      }
+      seededRef.current = true;
+    }
+
     async function tick(): Promise<void> {
       try {
         const msgs = await fetchChatMessages(
           backendMatchId as number,
-          lastFetchedAt ?? undefined,
+          sinceRef.current,
         );
         if (cancelled) return;
         for (const m of msgs) {
@@ -73,10 +95,11 @@ export function MentorChatView({
             senderRole: role,
             text: m.text,
             timestamp: m.createdAt,
+            backendId: m.id,
           });
         }
         if (msgs.length > 0) {
-          setLastFetchedAt(msgs[msgs.length - 1].createdAt);
+          sinceRef.current = msgs[msgs.length - 1].createdAt;
         }
       } catch {
         // 네트워크 에러는 조용히 — 다음 폴링에서 재시도
@@ -90,7 +113,7 @@ export function MentorChatView({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [backendMatchId, addMessage, matchId, lastFetchedAt]);
+  }, [backendMatchId, addMessage, matchId]);
 
   if (match === undefined) {
     return (
@@ -139,11 +162,13 @@ export function MentorChatView({
       try {
         const saved = await sendChatMessage(backendMatchId, trimmed);
         seenBackendIdsRef.current.add(saved.id);
+        sinceRef.current = saved.createdAt;
         addMessage(matchId, {
           senderId: userId,
           senderRole: "mentee",
           text: trimmed,
           timestamp: saved.createdAt,
+          backendId: saved.id,
         });
       } catch {
         // 전송 실패 시 로컬에만 추가 (UI 끊김 방지)

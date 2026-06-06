@@ -58,6 +58,12 @@ export interface MentorChatMessage {
   text: string;
   /** ISO date string. */
   timestamp: string;
+  /**
+   * 백엔드 chat_message.id — 폴링으로 수신했거나 전송 성공한 메시지에만 존재.
+   * 로컬 전용(system/intro/전송실패 fallback)은 undefined.
+   * 채팅 재진입·폴링 경합 시 중복 추가를 막는 dedup 키.
+   */
+  backendId?: number;
 }
 
 export type MentorMatchStatus = "active" | "completed" | "cancelled";
