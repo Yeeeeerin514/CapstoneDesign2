@@ -26,7 +26,7 @@ public class GeminiAiService {
 
     // 모델: gemini.model 프로퍼티(또는 GEMINI_MODEL 환경변수)로 변경 가능.
     // 기본값은 무료 쿼터 친화적인 gemini-1.5-flash. (2.0-flash는 키 프로젝트에 무료 쿼터가 없을 수 있음)
-    @Value("${gemini.model:gemini-1.5-flash}")
+    @Value("${gemini.model:gemini-2.5-flash}")
     private String model;
     private static final String BASE_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/";
