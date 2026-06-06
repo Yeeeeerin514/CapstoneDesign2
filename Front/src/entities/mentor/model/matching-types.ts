@@ -200,6 +200,26 @@ export interface MentorshipMatch {
   status: MatchStatus;
 }
 
+/**
+ * GET /api/mentoring/my-mentor-matches 응답 항목.
+ * 로그인한 멘토가 "본인이 멘토로 매칭된" 상담들을 받는 인박스 카드.
+ * 멘티 실명은 비공개라 menteeLabel + 상담 맥락(업종·피해유형·요청 설명)으로 구분.
+ */
+export interface MentorInboxMatch {
+  matchId: number;
+  status: MatchStatus; // ACTIVE | COMPLETED
+  createdAt: string;
+  matchedAt: string | null;
+  matchScore: number;
+  menteeLabel: string;
+  industry: string | null;
+  damageTypes: string[];
+  descriptionSnippet: string | null;
+  lastMessageText: string | null;
+  lastMessageAt: string | null;
+  messageCount: number;
+}
+
 /** GET /api/mentoring/mentors/{userId} — 백엔드 멘토 프로필 풀 응답. */
 export interface BackendMentorProfile {
   id: number;

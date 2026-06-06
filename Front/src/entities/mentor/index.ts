@@ -30,6 +30,7 @@ export type {
   FeedbackPayload,
   BackendMentorProfile,
   MentorshipMatch,
+  MentorInboxMatch,
 } from "./model/matching-types";
 export {
   INDUSTRY_LABEL,
@@ -43,6 +44,7 @@ export {
 export {
   registerMentor,
   fetchMentorProfileById as fetchMyMentorProfile,
+  fetchMyMentorMatches,
   requestMatch,
   confirmMatch,
   submitMatchFeedback as submitMatchingFeedback,

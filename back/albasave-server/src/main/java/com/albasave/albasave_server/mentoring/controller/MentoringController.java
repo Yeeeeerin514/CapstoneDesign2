@@ -6,6 +6,7 @@ import com.albasave.albasave_server.mentoring.domain.MentorProfile;
 import com.albasave.albasave_server.mentoring.domain.MentorshipMatch;
 import com.albasave.albasave_server.mentoring.dto.*;
 import com.albasave.albasave_server.mentoring.repository.ChatMessageRepository;
+import com.albasave.albasave_server.mentoring.repository.MentorProfileRepository;
 import com.albasave.albasave_server.mentoring.repository.MentorshipMatchRepository;
 import com.albasave.albasave_server.mentoring.service.MentoringService;
 import com.albasave.albasave_server.mentoring.service.ThompsonSamplingWeightStore;
@@ -41,6 +42,7 @@ public class MentoringController {
     private final JobPostingImageStorageService storage;
     private final ChatMessageRepository chatRepository;
     private final MentorshipMatchRepository matchRepository;
+    private final MentorProfileRepository mentorProfileRepository;
 
     @PostMapping("/mentor-profile")
     public ResponseEntity<MentorProfile> registerMentor(
@@ -82,6 +84,16 @@ public class MentoringController {
         return ResponseEntity.ok(mentoringService.findMyMatches(userId));
     }
 
+    /**
+     * 멘토 인박스 — 로그인한 사용자가 "멘토로서" 받은 매칭 목록.
+     * (mentorProfile.userId == 로그인 유저). 멘티가 확정한 ACTIVE/COMPLETED 매칭만.
+     * 멘토 프로필이 없으면 빈 배열. 양방향 실시간 채팅의 멘토 측 진입점.
+     */
+    @GetMapping("/my-mentor-matches")
+    public ResponseEntity<List<MentorInboxMatch>> myMentorMatches(@AuthenticationPrincipal Long userId) {
+        return ResponseEntity.ok(mentoringService.findMyMentorMatches(userId));
+    }
+
     /** 캡스톤 발표용 — 현재 가중치 분포 모니터링. */
     @GetMapping("/weights")
     public ResponseEntity<Map<String, Object>> weights() {
@@ -120,7 +132,7 @@ public class MentoringController {
             @AuthenticationPrincipal Long userId,
             @PathVariable Long matchId,
             @RequestParam(value = "since", required = false) String sinceIso) {
-        verifyParticipant(userId, matchId);
+        verifyParticipant(userId, matchId); // 멘티·멘토 본인만 조회 가능 (아니면 400 차단)
         if (sinceIso == null || sinceIso.isBlank()) {
             return ResponseEntity.ok(chatRepository.findByMatchIdOrderByCreatedAtAsc(matchId));
         }
@@ -138,34 +150,43 @@ public class MentoringController {
             @AuthenticationPrincipal Long userId,
             @PathVariable Long matchId,
             @RequestBody Map<String, String> body) {
-        MentorshipMatch match = verifyParticipant(userId, matchId);
+        Participant p = verifyParticipant(userId, matchId);
         String text = body.getOrDefault("text", "").trim();
         if (text.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        // 발신자 역할 결정: matchee면 MENTEE, 멘토 userId면 MENTOR
-        String role = userId.equals(match.getMenteeUserId()) ? "MENTEE" : "MENTOR";
         ChatMessage msg = chatRepository.save(ChatMessage.builder()
                 .matchId(matchId)
                 .senderUserId(userId)
-                .senderRole(role)
+                .senderRole(p.role()) // 검증으로 확정된 역할 (MENTEE | MENTOR)
                 .text(text)
                 .createdAt(java.time.LocalDateTime.now())
                 .build());
         return ResponseEntity.ok(msg);
     }
 
-    /** 멘티/멘토 본인 검증. matchId가 본인 매칭인지. */
-    private MentorshipMatch verifyParticipant(Long userId, Long matchId) {
+    /** 검증된 채팅 참여자 (매칭 + 확정된 역할). */
+    private record Participant(MentorshipMatch match, String role) {}
+
+    /**
+     * 멘티/멘토 본인 검증. 로그인 유저가 이 매칭의 멘티이거나, 이 매칭의
+     * 멘토 프로필 소유자인지 확인하고 역할을 확정한다. 둘 다 아니면 차단.
+     *   - 멘티: userId == match.menteeUserId
+     *   - 멘토: mentorProfileRepository.findByUserId(userId).id == match.mentorProfileId
+     */
+    private Participant verifyParticipant(Long userId, Long matchId) {
         MentorshipMatch match = matchRepository.findById(matchId)
                 .orElseThrow(() -> new IllegalArgumentException("매칭을 찾을 수 없습니다: " + matchId));
-        boolean isMentee = userId.equals(match.getMenteeUserId());
-        // 멘토 userId는 mentorProfileId로 조회해야 하지만, 일단 mentee만 직접 검증
-        // 멘토는 mentorshipMatch.mentorProfileId → MentorProfile.userId 매핑 필요
-        // 단순화: mentee가 아니면 멘토라고 가정 (운영시 강화)
-        if (!isMentee) {
-            // 멘토 측 — 별도 검증 생략 (운영 시 MentorProfileRepository.findByUserId로 강화)
+        if (userId != null && userId.equals(match.getMenteeUserId())) {
+            return new Participant(match, "MENTEE");
         }
-        return match;
+        boolean isMentor = mentorProfileRepository.findByUserId(userId)
+                .map(p -> p.getId().equals(match.getMentorProfileId()))
+                .orElse(false);
+        if (isMentor) {
+            return new Participant(match, "MENTOR");
+        }
+        // 멘티도 멘토도 아닌 접근 — 차단. (GlobalExceptionHandler가 400 + 메시지로 매핑)
+        throw new IllegalArgumentException("이 매칭의 참여자가 아닙니다.");
     }
 }

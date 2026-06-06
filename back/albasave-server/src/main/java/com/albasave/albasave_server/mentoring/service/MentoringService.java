@@ -30,6 +30,7 @@ public class MentoringService {
     private final MenteeMatchRequestRepository requestRepository;
     private final MentorshipMatchRepository matchRepository;
     private final MatchingFeedbackRepository feedbackRepository;
+    private final ChatMessageRepository chatRepository;
     private final GowerDistanceService gowerService;
     private final GaleShapleyMatcher matcher;
     private final ThompsonSamplingWeightStore weightStore;
@@ -373,5 +374,61 @@ public class MentoringService {
     @Transactional(readOnly = true)
     public List<MentorshipMatch> findMyMatches(Long userId) {
         return matchRepository.findByMenteeUserIdOrderByCreatedAtDesc(userId);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    //  멘토 인박스 — 내가 멘토로 받은 매칭 (양방향 실시간 채팅 진입점)
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * 로그인한 멘토의 매칭 목록. mentorProfile.userId == userId 인 매칭 중
+     * 멘티가 확정한(ACTIVE/COMPLETED) 건만 반환. 각 항목에 상담 맥락
+     * (멘티 요청서)과 마지막 채팅 메시지를 합쳐 인박스 카드로 만든다.
+     * 멘토 프로필이 없으면 빈 목록.
+     */
+    @Transactional(readOnly = true)
+    public List<MentorInboxMatch> findMyMentorMatches(Long userId) {
+        MentorProfile profile = mentorRepository.findByUserId(userId).orElse(null);
+        if (profile == null) return List.of();
+
+        List<MentorshipMatch> matches =
+                matchRepository.findByMentorProfileIdOrderByCreatedAtDesc(profile.getId());
+
+        List<MentorInboxMatch> result = new ArrayList<>();
+        for (MentorshipMatch m : matches) {
+            // 멘티가 확정한 매칭만 노출 (PROPOSED는 아직 추천 단계, CANCELED는 종료)
+            if (m.getStatus() != MatchStatus.ACTIVE && m.getStatus() != MatchStatus.COMPLETED) {
+                continue;
+            }
+            MenteeMatchRequest req = requestRepository.findById(m.getRequestId()).orElse(null);
+            ChatMessage last = chatRepository
+                    .findFirstByMatchIdOrderByCreatedAtDesc(m.getId()).orElse(null);
+
+            result.add(MentorInboxMatch.builder()
+                    .matchId(m.getId())
+                    .status(m.getStatus().name())
+                    .createdAt(m.getCreatedAt())
+                    .matchedAt(m.getMatchedAt())
+                    .matchScore(m.getMatchScore())
+                    .menteeLabel("익명 멘티")
+                    .industry(req != null && req.getIndustry() != null
+                            ? req.getIndustry().label() : null)
+                    .damageTypes(req != null && req.getDamageTypes() != null
+                            ? req.getDamageTypes().stream().map(DamageType::label).collect(Collectors.toList())
+                            : List.of())
+                    .descriptionSnippet(req != null ? snippet(req.getDescription()) : null)
+                    .lastMessageText(last != null ? last.getText() : null)
+                    .lastMessageAt(last != null ? last.getCreatedAt() : null)
+                    .messageCount((int) chatRepository.countByMatchId(m.getId()))
+                    .build());
+        }
+        return result;
+    }
+
+    private String snippet(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        if (t.isEmpty()) return null;
+        return t.length() <= 40 ? t : t.substring(0, 40) + "…";
     }
 }
