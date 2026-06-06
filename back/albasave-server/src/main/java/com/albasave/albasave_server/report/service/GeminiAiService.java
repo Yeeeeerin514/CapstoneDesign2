@@ -24,8 +24,10 @@ public class GeminiAiService {
     @Value("${gemini.api.key:}")
     private String apiKey;
 
-    // 모델 변경 시 이 값만 수정하면 됩니다
-    private static final String MODEL = "gemini-2.0-flash";
+    // 모델: gemini.model 프로퍼티(또는 GEMINI_MODEL 환경변수)로 변경 가능.
+    // 기본값은 무료 쿼터 친화적인 gemini-1.5-flash. (2.0-flash는 키 프로젝트에 무료 쿼터가 없을 수 있음)
+    @Value("${gemini.model:gemini-1.5-flash}")
+    private String model;
     private static final String BASE_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/";
 
@@ -63,7 +65,7 @@ public class GeminiAiService {
             throw new IllegalStateException("GEMINI_API_KEY가 설정되지 않았습니다.");
         }
 
-        String url = BASE_URL + MODEL + ":generateContent?key=" + apiKey;
+        String url = BASE_URL + model + ":generateContent?key=" + apiKey;
         String userMessage = buildUserMessage(ctx);
 
         Map<String, Object> requestBody = Map.of(

@@ -33,6 +33,7 @@ export function HomeView() {
   const [analysisResult, setAnalysisResult] =
     useState<JobPostAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [showResult, setShowResult] = useState(false);
   const [showWageAnalyzer, setShowWageAnalyzer] = useState(false);
   /** ReviewListView 진입 시 초기 industry 필터 ("전체"면 필터 없음). */
@@ -81,14 +82,25 @@ export function HomeView() {
   async function handleAnalyze() {
     if (selectedImage === null) return;
     setIsAnalyzing(true);
+    setAnalyzeProgress(3);
+    // 서버가 진행률을 주지 않으므로, 예상 소요(~40초)에 맞춰 95%까지 부드럽게 증가시키고
+    // 실제 응답이 오면 100%로 마무리한다(체감 대기시간 완화).
+    const timer = setInterval(() => {
+      setAnalyzeProgress((p) =>
+        p >= 95 ? 95 : Math.min(95, p + Math.max(1, Math.round((95 - p) * 0.06))),
+      );
+    }, 600);
     try {
       const result = await analyzeJobPost(selectedImage);
+      setAnalyzeProgress(100);
       setAnalysisResult(result);
       setShowResult(true);
     } catch {
       Alert.alert("분석 실패", "다시 시도해주세요");
     } finally {
+      clearInterval(timer);
       setIsAnalyzing(false);
+      setAnalyzeProgress(0);
     }
   }
 
@@ -242,7 +254,7 @@ export function HomeView() {
                   fontWeight: "700",
                 }}
               >
-                분석 중...
+                {`분석 중 ${analyzeProgress}%`}
               </Text>
             </View>
           ) : (
