@@ -8,6 +8,7 @@ import { useMentorMatchStore } from "@/features/mentor-match";
 import { useReportStore } from "@/features/report-submit";
 import { useAuthStore } from "@/entities/user/model/auth-store";
 import { MentorRegisterView } from "./MentorRegisterView";
+import { MentorInboxView } from "./MentorInboxView";
 import { EvidenceUploadView } from "./EvidenceUploadView";
 import { MyApplicantFormView } from "./MyApplicantFormView";
 import { ReviewWriteView } from "@/views/report/ui/ReviewWriteView";
@@ -46,6 +47,7 @@ export function MyView(): JSX.Element {
   }
 
   const [showMentorRegister, setShowMentorRegister] = useState(false);
+  const [showMentorInbox, setShowMentorInbox] = useState(false);
   const [showEvidenceUpload, setShowEvidenceUpload] = useState(false);
   const [showApplicantForm, setShowApplicantForm] = useState(false);
   const [showFreeReviewWrite, setShowFreeReviewWrite] = useState(false);
@@ -107,6 +109,10 @@ export function MyView(): JSX.Element {
         verification={mentorVerification ?? undefined}
       />
     );
+  }
+
+  if (showMentorInbox) {
+    return <MentorInboxView onBack={() => setShowMentorInbox(false)} />;
   }
 
   if (showEvidenceUpload) {
@@ -181,6 +187,44 @@ export function MyView(): JSX.Element {
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#fff" />
+        </Pressable>
+
+        {/* 멘토로 받은 상담 (멘토 인박스) */}
+        <Pressable
+          onPress={() => setShowMentorInbox(true)}
+          style={{
+            marginTop: 10,
+            backgroundColor: "#FFFFFF",
+            borderRadius: 12,
+            padding: 14,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            borderWidth: 0.5,
+            borderColor: "#E2E8F0",
+          }}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: "#EBF3FF",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={18} color="#1A5FAF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#0F172A" }}>
+              멘토로 받은 상담
+            </Text>
+            <Text style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
+              나를 멘토로 확정한 멘티와 1:1 채팅하기
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
         </Pressable>
 
         {/* 진정인 정보 카드 */}

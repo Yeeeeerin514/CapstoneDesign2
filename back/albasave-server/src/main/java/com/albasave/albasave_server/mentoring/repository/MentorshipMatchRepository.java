@@ -11,4 +11,7 @@ public interface MentorshipMatchRepository extends JpaRepository<MentorshipMatch
     List<MentorshipMatch> findByMenteeUserIdOrderByCreatedAtDesc(Long menteeUserId);
     List<MentorshipMatch> findByMentorProfileIdAndStatus(Long mentorProfileId, MatchStatus status);
     long countByMentorProfileIdAndStatus(Long mentorProfileId, MatchStatus status);
+
+    /** 멘토 인박스 — 내 멘토 프로필로 받은 모든 매칭 (최신순). */
+    List<MentorshipMatch> findByMentorProfileIdOrderByCreatedAtDesc(Long mentorProfileId);
 }

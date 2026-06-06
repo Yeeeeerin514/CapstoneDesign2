@@ -8,6 +8,7 @@ import type {
   FeedbackPayload,
   MatchRequestPayload,
   MatchResponseEnvelope,
+  MentorInboxMatch,
   MentorRegistrationRequest,
   MentorshipMatch,
 } from "../model/matching-types";
@@ -55,6 +56,17 @@ export async function submitMatchFeedback(
   });
 }
 
+/**
+ * GET /api/mentoring/my-mentor-matches — 내가 "멘토로서" 받은 매칭(상담) 목록.
+ * 멘토 프로필이 없거나 받은 매칭이 없으면 빈 배열. 멘토 측 채팅 인박스용.
+ */
+export async function fetchMyMentorMatches(): Promise<MentorInboxMatch[]> {
+  const { data } = await apiClient.get<MentorInboxMatch[]>(
+    "/mentoring/my-mentor-matches",
+  );
+  return data;
+}
+
 /** GET /api/mentoring/mentor-profile/me — 내 멘토 프로필 조회. */
 export async function fetchMentorProfileById(
   _userId: number,
@@ -89,8 +101,9 @@ export async function fetchMatchingWeights(): Promise<{
 export interface BackendChatMessage {
   id: number;
   matchId: number;
+  /** 시스템 메시지(senderRole === "SYSTEM")는 null. */
   senderUserId: number | null;
-  senderRole: "MENTOR" | "MENTEE";
+  senderRole: "MENTOR" | "MENTEE" | "SYSTEM";
   text: string;
   createdAt: string;
 }
