@@ -5,6 +5,9 @@ import type {
   MentorMatch,
 } from "@/entities/mentor";
 
+// 로컬 메시지 id 유일성 보장 — 같은 ms에 여러 메시지가 추가돼도 React key 충돌 없음.
+let msgSeq = 0;
+
 interface CreateMatchParams {
   caseId: string;
   menteeId: string;
@@ -82,22 +85,27 @@ export const useMentorMatchStore = create<MentorMatchState>((set, get) => ({
     return newMatch;
   },
 
-  addMessage: (matchId, message) => {
-    const id = `msg-${Date.now()}`;
-    const newMsg: MentorChatMessage = { ...message, id };
+  addMessage: (matchId, message) =>
     set((state) => ({
-      matches: state.matches.map((m) =>
-        m.id === matchId
-          ? {
-              ...m,
-              chatMessages: [...m.chatMessages, newMsg],
-              lastMessageAt: newMsg.timestamp,
-              lastMessagePreview: newMsg.text.slice(0, 30),
-            }
-          : m,
-      ),
-    }));
-  },
+      matches: state.matches.map((m) => {
+        if (m.id !== matchId) return m;
+        // 백엔드 메시지 중복 방지 — 채팅 재진입/폴링 경합 시 동일 backendId 재추가 차단.
+        if (
+          message.backendId !== undefined &&
+          m.chatMessages.some((x) => x.backendId === message.backendId)
+        ) {
+          return m;
+        }
+        msgSeq += 1;
+        const newMsg: MentorChatMessage = { ...message, id: `msg-${Date.now()}-${msgSeq}` };
+        return {
+          ...m,
+          chatMessages: [...m.chatMessages, newMsg],
+          lastMessageAt: newMsg.timestamp,
+          lastMessagePreview: newMsg.text.slice(0, 30),
+        };
+      }),
+    })),
 
   getMatchById: (matchId) => get().matches.find((m) => m.id === matchId),
 
