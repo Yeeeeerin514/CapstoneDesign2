@@ -15,6 +15,10 @@ import { useReportStore } from "@/features/report-submit";
 import { useMentorMatchStore } from "@/features/mentor-match";
 import type { ReportCase } from "@/entities/report";
 import type { MentorMatch } from "@/entities/mentor";
+import {
+  useFavoriteWorkplaceStore,
+  type FavoriteWorkplace,
+} from "@/features/favorite-workplace";
 
 // 웹에서 Alert.alert 다중버튼(삭제/확인 등)이 동작하도록 전역 폴리필 설치 (네이티브 무영향)
 installWebAlertPolyfill();
@@ -92,6 +96,11 @@ export default function RootLayout(): JSX.Element {
       if (!cancelled && Array.isArray(matches) && matches.length > 0) {
         useMentorMatchStore.setState({ matches });
       }
+      const workplaces =
+        await pullCloud<FavoriteWorkplace[]>("favorite-workplace");
+      if (!cancelled && Array.isArray(workplaces) && workplaces.length > 0) {
+        useFavoriteWorkplaceStore.setState({ workplaces });
+      }
     })();
     return () => {
       cancelled = true;
@@ -106,9 +115,13 @@ export default function RootLayout(): JSX.Element {
     const unsubMatch = useMentorMatchStore.subscribe((s) =>
       pushCloud("mentor-match", s.matches),
     );
+    const unsubFav = useFavoriteWorkplaceStore.subscribe((s) =>
+      pushCloud("favorite-workplace", s.workplaces),
+    );
     return () => {
       unsubReport();
       unsubMatch();
+      unsubFav();
     };
   }, []);
 
