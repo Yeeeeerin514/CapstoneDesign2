@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -19,7 +20,16 @@ import {
 import { useAuthStore } from "@/entities/user/model/auth-store";
 import { useMentorStore } from "@/features/mentor-match";
 import { useReportStore } from "@/features/report-submit";
-import { calcMentorScore, type MentorProfile } from "@/entities/mentor";
+import {
+  calcMentorScore,
+  registerMentor,
+  type MentorProfile,
+  type Industry,
+  type DamageType,
+  type Region,
+  type ResolutionMethod,
+  type DamageAmountRange,
+} from "@/entities/mentor";
 import { calcResolveDays, getAmountRange } from "@/shared/lib/utils";
 import type { ReportCase } from "@/entities/report";
 
@@ -79,6 +89,53 @@ const REGION_OPTIONS = [
   "기타",
 ];
 
+// ──────────────────────────────────────
+// 후기 화면의 한글 라벨 → 백엔드 멘토 enum 매핑.
+// 후기 옵션은 위 *_OPTIONS 고정 집합이라 1:1로 확정 가능(자유 입력 아님).
+// 예상치 못한 값이 들어와도 안전하도록 ?? 기본값을 둔다.
+// ──────────────────────────────────────
+const INDUSTRY_ENUM_MAP: Record<string, Industry> = {
+  "카페·음식점": "FOOD_SERVICE",
+  "편의점": "CONVENIENCE_RETAIL",
+  "배달": "DELIVERY",
+  "학원": "EDUCATION",
+  "PC방": "SERVICE",
+  "기타": "OTHER",
+};
+
+const REGION_ENUM_MAP: Record<string, Region> = {
+  "서울": "SEOUL",
+  "경기": "GYEONGGI",
+  "인천": "INCHEON",
+  "부산": "BUSAN",
+  "대구": "DAEGU",
+  "기타": "OTHER",
+};
+
+const DAMAGE_TYPE_ENUM_MAP: Record<string, DamageType> = {
+  "임금(기본급) 미지급": "WAGE_ARREARS",
+  "주휴수당 미지급": "WEEKLY_HOLIDAY",
+  "연장근로수당 미지급": "OVERTIME_PAY",
+  "야간근로수당 미지급": "OVERTIME_PAY",
+  "퇴직금 미지급": "SEVERANCE_PAY",
+};
+
+const RESOLUTION_METHOD_ENUM_MAP: Record<string, ResolutionMethod> = {
+  "노동청 진정": "LABOR_OFFICE_REPORT",
+  "합의": "SETTLEMENT",
+  "지급명령": "PAYMENT_ORDER",
+  "민사 소송": "CIVIL_LAWSUIT",
+  "노무사 상담": "LABOR_ATTORNEY",
+};
+
+const AMOUNT_RANGE_ENUM_MAP: Record<string, DamageAmountRange> = {
+  "50만원 미만": "KRW_100K_500K",
+  "50만원대": "KRW_500K_1M",
+  "100만원대": "KRW_1M_5M",
+  "300만원대": "KRW_1M_5M",
+  "500만원 이상": "OVER_5M",
+};
+
 /** ReportCase.damageTypes 첫 값을 DamageTypeLabel로 매핑. */
 function mapDamageType(raw: string | undefined): DamageTypeLabel {
   return DAMAGE_OPTIONS.find((l) => l === raw) ?? "임금(기본급) 미지급";
@@ -90,6 +147,7 @@ export function ReviewWriteView({
 }: ReviewWriteViewProps): JSX.Element {
   const addReview = useReviewStore((s) => s.addReview);
   const setHasWrittenReview = useReportStore((s) => s.setHasWrittenReview);
+  const cases = useReportStore((s) => s.cases);
   const nickname = useAuthStore((s) => s.nickname);
   const userId = useAuthStore((s) => s.userIdString);
 
@@ -128,6 +186,7 @@ export function ReviewWriteView({
   const [tipInvestigation, setTipInvestigation] = useState<string>("");
   const [tipNegotiation, setTipNegotiation] = useState<string>("");
   const [registerAsMentor, setRegisterAsMentor] = useState<boolean>(false);
+  const [submitting, setSubmitting] = useState<boolean>(false);
 
   const trimmedTitle = title.trim();
   const trimmedContent = content.trim();
@@ -141,7 +200,27 @@ export function ReviewWriteView({
     Number.isFinite(resolveDays) &&
     resolveDays > 0;
 
-  const handleSubmit = (): void => {
+  /**
+   * 백엔드 멘토 등록의 자격 검증용 caseId 수집.
+   * report store의 RESOLVED 사건 + (있으면) 현재 resolvedCase 중 백엔드 numeric id만.
+   * MyView의 게이트와 동일한 규칙. 클라 id(report-<ts>)는 NaN이라 제외됨.
+   */
+  const collectVerifiedCaseIds = (): number[] => {
+    const ids: number[] = [];
+    for (const c of cases) {
+      if (c.status === "RESOLVED") {
+        const n = Number(c.id);
+        if (Number.isFinite(n) && n > 0) ids.push(n);
+      }
+    }
+    if (resolvedCase !== undefined) {
+      const n = Number(resolvedCase.id);
+      if (Number.isFinite(n) && n > 0 && !ids.includes(n)) ids.push(n);
+    }
+    return ids;
+  };
+
+  const handleSubmit = async (): Promise<void> => {
     if (!canSubmit) {
       Alert.alert(
         "입력 확인",
@@ -149,6 +228,7 @@ export function ReviewWriteView({
       );
       return;
     }
+    if (submitting) return;
 
     if (resolvedCase !== undefined) {
       setHasWrittenReview(resolvedCase.id, true);
@@ -174,39 +254,83 @@ export function ReviewWriteView({
       mentorUserId: registerAsMentor ? userId : null,
     });
 
-    if (registerAsMentor) {
-      const mentorStore = useMentorStore.getState();
-      const existing = mentorStore.getMentorById(userId);
-      if (existing === undefined) {
-        const baseProfile: Omit<MentorProfile, "score"> = {
-          userId,
-          nickname,
-          isVerified: false,
-          wasGroupLeader: false,
-          averageRating: rating,
-          reviewCount: 1,
-          resolvedDays: resolveDays,
-          industry,
-          damageTypes: [damageType],
-          consultingFee: 10000,
-          badges: [],
-          bio: trimmedTitle,
-        };
-        const newProfile: MentorProfile = {
-          ...baseProfile,
-          score: calcMentorScore(baseProfile),
-        };
-        mentorStore.addMentor(newProfile);
-      }
+    if (!registerAsMentor) {
+      Alert.alert("등록 완료", "후기가 등록되었습니다. 감사해요!", [
+        { text: "확인", onPress: onBack },
+      ]);
+      return;
     }
 
-    Alert.alert(
-      "등록 완료",
-      registerAsMentor
-        ? "후기가 등록되었습니다. 멘토 등록도 함께 완료되었어요!"
-        : "후기가 등록되었습니다. 감사해요!",
-      [{ text: "확인", onPress: onBack }],
-    );
+    // 로컬 mock 멘토 store (레거시 추천 화면 호환) — 중복 방지 후 추가.
+    const mentorStore = useMentorStore.getState();
+    if (mentorStore.getMentorById(userId) === undefined) {
+      const baseProfile: Omit<MentorProfile, "score"> = {
+        userId,
+        nickname,
+        isVerified: false,
+        wasGroupLeader: false,
+        averageRating: rating,
+        reviewCount: 1,
+        resolvedDays: resolveDays,
+        industry,
+        damageTypes: [damageType],
+        consultingFee: 10000,
+        badges: [],
+        bio: trimmedTitle,
+      };
+      mentorStore.addMentor({
+        ...baseProfile,
+        score: calcMentorScore(baseProfile),
+      });
+    }
+
+    // 백엔드 멘토 등록 — 해결 경험(RESOLVED 사건)이 있어야 자격 통과.
+    // 없으면 정직하게 RESOLVED_CASE를 주장하지 않고 MY탭 정식 등록(증빙)으로 안내.
+    const hasResolvedExperience =
+      resolvedCase !== undefined || cases.some((c) => c.status === "RESOLVED");
+    if (!hasResolvedExperience) {
+      Alert.alert(
+        "후기 등록 완료",
+        "후기가 등록되었습니다. 멘토로 매칭되려면 MY 탭에서 해결한 사건 또는 증빙 자료로 멘토 등록을 완료해주세요.",
+        [{ text: "확인", onPress: onBack }],
+      );
+      return;
+    }
+
+    const verifiedCaseIds = collectVerifiedCaseIds();
+    setSubmitting(true);
+    try {
+      // 후기 화면에 없는 항목(고용형태/사업장규모)은 정식 등록 화면과 동일한 기본값.
+      await registerMentor({
+        nickname,
+        industry: INDUSTRY_ENUM_MAP[industry] ?? "OTHER",
+        damageTypes: [DAMAGE_TYPE_ENUM_MAP[damageType] ?? "OTHER"],
+        employmentType: "OTHER",
+        businessSize: "UNKNOWN",
+        region: REGION_ENUM_MAP[region] ?? "OTHER",
+        resolutionMethods: [RESOLUTION_METHOD_ENUM_MAP[resolutionMethod] ?? "OTHER"],
+        resolutionDays: Number.isFinite(resolveDays) ? resolveDays : 0,
+        damageAmountRange: AMOUNT_RANGE_ENUM_MAP[amountRange] ?? "UNDER_100K",
+        bio: trimmedContent.slice(0, 200),
+        capacity: 3,
+        consultingFee: 10000,
+        verificationMethod: "RESOLVED_CASE",
+        verifiedCaseIds: verifiedCaseIds.length > 0 ? verifiedCaseIds : [0],
+      });
+      Alert.alert(
+        "등록 완료",
+        "후기가 등록되었습니다. 멘토 등록도 함께 완료되었어요!",
+        [{ text: "확인", onPress: onBack }],
+      );
+    } catch {
+      Alert.alert(
+        "후기 등록 완료",
+        "후기는 등록되었지만 멘토 등록 중 문제가 발생했어요. MY 탭에서 다시 시도해주세요.",
+        [{ text: "확인", onPress: onBack }],
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -434,19 +558,23 @@ export function ReviewWriteView({
         </View>
 
         <Pressable
-          onPress={handleSubmit}
-          disabled={!canSubmit}
+          onPress={() => void handleSubmit()}
+          disabled={!canSubmit || submitting}
           style={{
-            backgroundColor: canSubmit ? "#3182F6" : "#CBD5E1",
+            backgroundColor: canSubmit && !submitting ? "#3182F6" : "#CBD5E1",
             paddingVertical: 14,
             borderRadius: 12,
             alignItems: "center",
             marginTop: 4,
           }}
         >
-          <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}>
-            후기 등록하기
-          </Text>
+          {submitting ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}>
+              후기 등록하기
+            </Text>
+          )}
         </Pressable>
       </ScrollView>
     </SafeAreaView>

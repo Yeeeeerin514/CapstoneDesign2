@@ -36,26 +36,38 @@ public class WorkingController {
 
     /**
      * 사업장 통합 등록 — BSSID 등록 화면 완료 시 호출.
-     * PartTimeJob 자동 생성 + BSSID 영속. 응답으로 생성된 partTimeJobId 반환.
+     * PartTimeJob 자동 생성 + BSSID 영속 + 근무 정보(요일/시간/시급) 저장.
+     * 응답으로 생성된 partTimeJobId 반환.
      *
-     * Request body: { "workplaceName": "OO카페", "bssid": "aa:bb:cc:dd:ee:ff", "ssid": "OOcafe_wifi" }
+     * Request body: {
+     *   "workplaceName": "OO카페", "bssid": "aa:bb:cc:dd:ee:ff", "ssid": "OOcafe_wifi",
+     *   "workDays": ["MONDAY","WEDNESDAY"], "workStartTime": "09:00",
+     *   "workEndTime": "18:00", "startDay": "2026-06-08", "hourlyWage": 10030
+     * }
+     * 근무 정보 필드는 모두 선택 — 미전송 시 null/0 로 저장(기존 동작 호환).
      */
     @PostMapping("/register-workplace")
     public ResponseEntity<Map<String, Object>> registerWorkplace(
             @AuthenticationPrincipal Long userId,
-            @RequestBody Map<String, String> body) {
-        String workplaceName = body.getOrDefault("workplaceName", "사업장");
-        String bssid = body.get("bssid");
+            @RequestBody RegisterWorkplaceRequest body) {
+        String workplaceName = body.getWorkplaceName() == null || body.getWorkplaceName().isBlank()
+                ? "사업장" : body.getWorkplaceName();
+        String bssid = body.getBssid();
         if (bssid == null || bssid.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "BSSID is required"));
         }
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("유저를 찾을 수 없습니다."));
+        Integer daysMask = body.toDaysBitmask();
         PartTimeJob saved = partTimeJobRepository.save(PartTimeJob.builder()
                 .user(user)
                 .businessName(workplaceName)
                 .bssid(bssid)
-                .days(0)
+                .days(daysMask != null ? daysMask : 0)
+                .startTime(body.toStartTime())
+                .endTime(body.toEndTime())
+                .startDay(body.toStartDay())
+                .hourlyWage(body.getHourlyWage())
                 .isActive(true)
                 .build());
         return ResponseEntity.ok(Map.of(

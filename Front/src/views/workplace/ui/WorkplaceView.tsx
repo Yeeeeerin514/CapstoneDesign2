@@ -487,10 +487,17 @@ export function WorkplaceView(): JSX.Element {
             Alert.alert("Wi-Fi 선택 필요", "Wi-Fi를 먼저 선택해주세요");
             return;
           }
+          // 근무 정보(요일/시간/시급)도 함께 전송 — 직전 확인 화면에서 확정된 값.
+          const workInfo = confirmPayload?.info;
           registerWorkplace({
             workplaceName: registration.workplaceName,
             bssid,
             ssid,
+            workDays: workInfo?.workDays,
+            workStartTime: workInfo?.workStartTime,
+            workEndTime: workInfo?.workEndTime,
+            startDay: workInfo?.startDay,
+            hourlyWage: workInfo?.hourlyWage,
           })
             .then((res) => {
               // 성공: 로컬 store 반영 + completion 화면

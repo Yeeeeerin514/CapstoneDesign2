@@ -16,6 +16,17 @@ export interface RegisterWorkplaceRequest {
   bssid: string;
   /** 선택 — 백엔드 저장 안 함, 전달만. */
   ssid?: string;
+  // ── 근무 정보 (선택) — 백엔드 PartTimeJob schedule/wage 컬럼에 저장됨 ──
+  /** 근무 요일 — DayOfWeek 이름 배열. 예: ["MONDAY","WEDNESDAY"]. 백엔드가 비트마스크로 변환. */
+  workDays?: string[];
+  /** 예정 출근 시각 "HH:mm". 예: "09:00". */
+  workStartTime?: string;
+  /** 예정 퇴근 시각 "HH:mm". 예: "18:00". */
+  workEndTime?: string;
+  /** 알바 시작일 "yyyy-MM-dd". 예: "2026-06-08". */
+  startDay?: string;
+  /** 시급(원). 미입력이면 백엔드 null. */
+  hourlyWage?: number;
 }
 
 export interface RegisterWorkplaceResponse {
