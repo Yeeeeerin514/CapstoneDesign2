@@ -10,6 +10,14 @@ import {
 } from "@/features/favorite-workplace";
 import { useReportStore } from "@/features/report-submit";
 import { fetchContractFactSheet } from "@/entities/job-post";
+import { createReportDraft } from "@/entities/report";
+
+/** 주소에서 시·도 + 시·군·구 두 토큰만 추출 ("서울특별시 강남구 ..." → "서울특별시 강남구"). 없으면 "". */
+function regionFromAddress(address: string | null | undefined): string {
+  if (address === null || address === undefined) return "";
+  const parts = address.trim().split(/\s+/).filter((p) => p.length > 0);
+  return parts.slice(0, 2).join(" ");
+}
 
 interface WorkplaceSelectForReportViewProps {
   /** 뒤로가기 — Empty 상태로 복귀. */
@@ -28,46 +36,68 @@ export function WorkplaceSelectForReportView({
 }: WorkplaceSelectForReportViewProps): JSX.Element {
   const workplaces = useFavoriteWorkplaceStore((s) => s.workplaces);
   const startReport = useReportStore((s) => s.startReport);
+  const createDraft = useReportStore((s) => s.createReportDraft);
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
   const eligibleWorkplaces = workplaces.filter(
     (w) => w.registrationStatus === "registered",
   );
 
-  const handleReport = (wp: FavoriteWorkplace): void => {
-    const hasContract = wp.contractStatus === "uploaded";
-    const initialEvidence = hasContract ? { contracts: 1 } : {};
+  const handleReport = async (wp: FavoriteWorkplace): Promise<void> => {
+    setLoadingId(wp.id);
+    try {
+      // 1) 백엔드에 등록된 알바(partTimeJobId)면 V2 draft(source=registered)로 생성.
+      //    → 백엔드가 PartTimeJob의 근무정보(시급/요일/근무시간/시작일)와 사업장 정보를
+      //      진정서(AI 진정내용 생성)에 그대로 활용한다. 실패 시 아래 로컬 폴백.
+      if (wp.partTimeJobId !== undefined) {
+        try {
+          const res = await createReportDraft({
+            source: "registered",
+            partTimeJobId: wp.partTimeJobId,
+          });
+          createDraft({
+            caseId: String(res.caseId),
+            source: "registered",
+            business: res.business,
+            partTimeJobId: wp.partTimeJobId,
+            industry: res.business.category ?? "",
+            region: regionFromAddress(res.business.address),
+          });
+          onCaseCreated(String(res.caseId));
+          return;
+        } catch {
+          // 백엔드 draft 실패(네트워크/서버) → 로컬 V1 폴백으로 진행
+        }
+      }
 
-    const createCase = (
-      override?: { name?: string; brn?: string | null },
-    ): void => {
+      // 2) 폴백: 로컬(V1) 사건. 계약서 factsheet로 업장명·사업자번호·지역을 최대한 보완.
+      const hasContract = wp.contractStatus === "uploaded";
+      const initialEvidence = hasContract ? { contracts: 1 } : {};
+      let name = wp.name;
+      let brn: string | null = null;
+      let region = "";
+      if (wp.contractId !== undefined) {
+        try {
+          const fs = await fetchContractFactSheet(wp.contractId);
+          name = fs.employerName ?? wp.name;
+          brn = fs.businessRegistrationNumber ?? null;
+          region = regionFromAddress(fs.employerAddress);
+        } catch {
+          // factsheet 조회 실패 — 기본값 유지
+        }
+      }
       const caseId = startReport({
-        workplaceName: override?.name ?? wp.name,
-        businessRegistrationNumber: override?.brn ?? null,
-        industry: "카페·음식점",
-        region: "서울 강남구",
+        workplaceName: name,
+        businessRegistrationNumber: brn,
+        industry: "",
+        region,
         damageTypes: ["임금체불"],
         initialEvidence,
       });
       onCaseCreated(caseId);
-    };
-
-    if (wp.contractId === undefined) {
-      createCase();
-      return;
+    } finally {
+      setLoadingId(null);
     }
-    setLoadingId(wp.id);
-    void fetchContractFactSheet(wp.contractId)
-      .then((fs) => {
-        createCase({
-          name: fs.employerName ?? wp.name,
-          brn: fs.businessRegistrationNumber ?? null,
-        });
-      })
-      .catch(() => {
-        createCase();
-      })
-      .finally(() => setLoadingId(null));
   };
 
   return (
@@ -172,7 +202,7 @@ export function WorkplaceSelectForReportView({
               key={wp.id}
               workplace={wp}
               isLoading={loadingId === wp.id}
-              onReport={() => handleReport(wp)}
+              onReport={() => void handleReport(wp)}
             />
           ))
         )}
