@@ -159,6 +159,7 @@ export interface MatchRecommendation {
   matchScore: number;            // 0~1 (앙상블 최종)
   ruleBasedScore?: number | null; // Gower 점수 (앙상블 분해 시각화용)
   neuralScore?: number | null;    // Two-tower 점수 (가용 시)
+  collaborativeScore?: number | null; // 협업 필터링(콜드스타트) 점수 (유사 멘티 피드백 있을 때)
   contributions: MatchContribution;
   matchReasons: string[];
   rank: number;                   // 1-based

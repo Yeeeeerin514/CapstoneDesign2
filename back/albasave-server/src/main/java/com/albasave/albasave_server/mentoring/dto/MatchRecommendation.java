@@ -39,6 +39,8 @@ public class MatchRecommendation {
     private final Double ruleBasedScore;
     /** Two-tower 신경망 점수 (가용 시. 분해 시각화용) */
     private final Double neuralScore;
+    /** 협업 필터링(콜드스타트) 점수 (0~1, 유사 멘티 피드백 있을 때. 분해 시각화용) */
+    private final Double collaborativeScore;
     /** 항목별 기여도 (matchScore 합산 가능) */
     private final Map<String, Double> contributions;
     /** 사용자 친화적 추천 이유 텍스트 (예: ["같은 업종(배달)", "같은 사업장 규모(5인 미만)"]) */

@@ -372,6 +372,14 @@ function MentorMatchCard({
                   </Text>
                 </View>
               )}
+              {rec.collaborativeScore !== null && rec.collaborativeScore !== undefined && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 2 }}>
+                  <Text style={{ fontSize: 11, color: colors.text }}>🤝 협업 신호 (콜드스타트)</Text>
+                  <Text style={{ fontSize: 11, color: colors.text, fontWeight: "600" }}>
+                    {(rec.collaborativeScore * 100).toFixed(1)}%
+                  </Text>
+                </View>
+              )}
             </View>
           )}
 

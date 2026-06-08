@@ -35,10 +35,17 @@ public class MentoringService {
     private final GaleShapleyMatcher matcher;
     private final ThompsonSamplingWeightStore weightStore;
     private final TwoTowerInferenceService twoTower;
+    private final CollaborativeFilteringService collaborativeService;
     private final ObjectMapper objectMapper;
 
     /** 앙상블 가중치: finalScore = α·gower + (1-α)·neural. 신경망 미적재 시 α=1로 자동 폴백. */
     private static final double ENSEMBLE_GOWER_WEIGHT = 0.5;
+
+    /**
+     * 협업 신호 최대 반영 비율. 실제 반영 = COLLAB_WEIGHT × confidence(유효표본).
+     * 콜드스타트(피드백 0)면 협업맵이 비어 자동으로 0 → 기존 동작과 동일.
+     */
+    private static final double COLLAB_WEIGHT = 0.4;
 
     // ─────────────────────────────────────────────────────────────────
     //  멘토 등록
@@ -159,16 +166,33 @@ public class MentoringService {
         boolean neuralOn = twoTower.isReady();
         double gowerW = neuralOn ? ENSEMBLE_GOWER_WEIGHT : 1.0;
 
+        // 콜드스타트 협업 신호 (CROWN 영감): 유사 멘티들의 피드백을 attention 가중 집계.
+        // 피드백이 없으면 빈 맵 → 기존 앙상블과 100% 동일하게 동작(graceful).
+        Map<Long, CollaborativeFilteringService.CollabResult> collabMap =
+                collaborativeService.scoresForCandidates(
+                        request,
+                        candidates.stream().map(c -> c.mentor().getId()).collect(Collectors.toList()));
+
         // 앙상블 점수로 candidates 재정렬
-        record ScoredCandidate(GaleShapleyMatcher.Candidate cand, double gower, Double neural, double finalScore) {}
+        record ScoredCandidate(GaleShapleyMatcher.Candidate cand, double gower, Double neural,
+                               Double collab, double finalScore) {}
         List<ScoredCandidate> scored = new ArrayList<>();
         for (GaleShapleyMatcher.Candidate c : candidates) {
             double g = c.distance().matchScore();
             Double n = twoTower.score(c.mentor(), request);
-            double finalScore = neuralOn && n != null
-                    ? gowerW * g + (1 - gowerW) * n
-                    : g;
-            scored.add(new ScoredCandidate(c, g, n, finalScore));
+            double base = neuralOn && n != null ? gowerW * g + (1 - gowerW) * n : g;
+
+            // 협업 신호 블렌딩 (있을 때만): finalScore = (1-cw)·base + cw·collab,
+            // cw = COLLAB_WEIGHT × confidence. 유사 피드백 적으면 confidence↓ → 거의 영향 없음.
+            CollaborativeFilteringService.CollabResult cr = collabMap.get(c.mentor().getId());
+            Double collabScore = null;
+            double finalScore = base;
+            if (cr != null) {
+                collabScore = cr.score();
+                double cw = COLLAB_WEIGHT * cr.confidence();
+                finalScore = (1 - cw) * base + cw * cr.score();
+            }
+            scored.add(new ScoredCandidate(c, g, n, collabScore, finalScore));
         }
         scored.sort((a, b) -> Double.compare(b.finalScore(), a.finalScore()));
 
@@ -186,6 +210,7 @@ public class MentoringService {
                     .matchScore(sc.finalScore())
                     .ruleBasedScore(sc.gower())
                     .neuralScore(sc.neural())
+                    .collaborativeScore(sc.collab())
                     .featureContributionsJson(contributionsJson)
                     .status(MatchStatus.PROPOSED)
                     .rankInRecommendation(rank)
@@ -194,12 +219,15 @@ public class MentoringService {
             match = matchRepository.save(match);
 
             recs.add(buildRecommendation(match.getId(), sc.cand(), rank, request,
-                    sc.finalScore(), sc.gower(), sc.neural()));
+                    sc.finalScore(), sc.gower(), sc.neural(), sc.collab()));
         }
 
         String algorithm = neuralOn
                 ? "Gower + Gale-Shapley + Thompson Sampling + Two-tower NN ensemble"
                 : "Gower + Gale-Shapley + Thompson Sampling";
+        if (!collabMap.isEmpty()) {
+            algorithm += " + Collaborative Attention (cold-start)";
+        }
 
         return MatchResponseEnvelope.builder()
                 .requestId(request.getId())
@@ -217,7 +245,8 @@ public class MentoringService {
             MenteeMatchRequest request,
             double finalScore,
             double ruleBasedScore,
-            Double neuralScore
+            Double neuralScore,
+            Double collaborativeScore
     ) {
         MentorProfile m = cand.mentor();
         Map<String, Double> contributions = cand.distance().contributions();
@@ -241,6 +270,7 @@ public class MentoringService {
                 .matchScore(finalScore)
                 .ruleBasedScore(ruleBasedScore)
                 .neuralScore(neuralScore)
+                .collaborativeScore(collaborativeScore)
                 .contributions(contributions)
                 .matchReasons(reasons)
                 .rank(rank)
