@@ -295,11 +295,11 @@ export function EvidenceFlowView({
     //   - 퇴직 시 퇴사일
     const respondentOk = respondent.workplaceName.trim().length > 0;
     const factsOk =
-      facts.employmentStartDate !== null &&
+      isCompleteDate(facts.employmentStartDate) &&
       facts.totalUnpaidWage !== null &&
       facts.employmentStatus !== null &&
       (facts.employmentStatus !== "FORMER" ||
-        facts.employmentEndDate !== null);
+        isCompleteDate(facts.employmentEndDate));
     return respondentOk && factsOk;
   })();
 
@@ -730,9 +730,10 @@ function ComplaintStep({
         label="입사일"
         required
         value={facts.employmentStartDate}
-        onPress={() => setShowStartPicker(true)}
+        onChange={(v) => onPatchFacts({ employmentStartDate: v })}
+        onPressPicker={() => setShowStartPicker(true)}
       />
-      {showStartPicker ? (
+      {Platform.OS !== "web" && showStartPicker ? (
         <DateTimePicker
           value={
             facts.employmentStartDate !== null
@@ -805,9 +806,10 @@ function ComplaintStep({
             label="퇴사일"
             required
             value={facts.employmentEndDate}
-            onPress={() => setShowEndPicker(true)}
+            onChange={(v) => onPatchFacts({ employmentEndDate: v })}
+            onPressPicker={() => setShowEndPicker(true)}
           />
-          {showEndPicker ? (
+          {Platform.OS !== "web" && showEndPicker ? (
             <DateTimePicker
               value={
                 facts.employmentEndDate !== null
@@ -1029,16 +1031,39 @@ function LabeledNumberInput({
   );
 }
 
+/** 입력 문자열 → YYYY-MM-DD 정규화 (숫자만 추출 후 자동 하이픈 삽입). */
+function formatDateInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  let out = digits.slice(0, 4);
+  if (digits.length > 4) out += "-" + digits.slice(4, 6);
+  if (digits.length > 6) out += "-" + digits.slice(6, 8);
+  return out;
+}
+
+/** 완전한 YYYY-MM-DD 형식인지(필수 검증용). */
+function isCompleteDate(value: string | null): boolean {
+  return value !== null && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+/**
+ * 날짜 입력 행 — 모든 플랫폼에서 직접 타이핑 가능(웹 포함).
+ * 네이티브(iOS/Android)에서는 달력 아이콘으로 네이티브 picker도 열 수 있다.
+ * (웹은 @react-native-community/datetimepicker 미지원이라 수동 입력만 제공)
+ */
 function DateRow({
   label,
   required,
   value,
-  onPress,
+  onChange,
+  onPressPicker,
 }: {
   label: string;
   required?: boolean;
   value: string | null;
-  onPress: () => void;
+  /** 수동 입력. 빈 값이면 null. */
+  onChange: (v: string | null) => void;
+  /** 네이티브 달력 picker 열기(웹에선 버튼 미표시). */
+  onPressPicker?: () => void;
 }): JSX.Element {
   return (
     <View style={{ marginBottom: 8, marginTop: 8 }}>
@@ -1061,30 +1086,40 @@ function DateRow({
           </Text>
         ) : null}
       </View>
-      <Pressable
-        onPress={onPress}
+      <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          justifyContent: "space-between",
           backgroundColor: "#FFFFFF",
           borderRadius: 10,
           borderWidth: 1,
           borderColor: "#E2E8F0",
           paddingHorizontal: 12,
-          paddingVertical: 12,
         }}
       >
-        <Text
-          style={{
-            fontSize: 14,
-            color: value !== null ? "#0F172A" : "#94A3B8",
+        <TextInput
+          value={value ?? ""}
+          onChangeText={(t) => {
+            const formatted = formatDateInput(t);
+            onChange(formatted.length > 0 ? formatted : null);
           }}
-        >
-          {value ?? "날짜 선택"}
-        </Text>
-        <Ionicons name="calendar" size={16} color="#94A3B8" />
-      </Pressable>
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor="#94A3B8"
+          keyboardType="number-pad"
+          maxLength={10}
+          style={{
+            flex: 1,
+            fontSize: 14,
+            color: "#0F172A",
+            paddingVertical: 12,
+          }}
+        />
+        {Platform.OS !== "web" && onPressPicker !== undefined ? (
+          <Pressable onPress={onPressPicker} hitSlop={8}>
+            <Ionicons name="calendar" size={18} color="#94A3B8" />
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
