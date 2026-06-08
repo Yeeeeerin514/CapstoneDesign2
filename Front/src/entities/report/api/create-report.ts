@@ -86,9 +86,13 @@ export async function createReport(input: CreateReportInput): Promise<BackendRep
   return data;
 }
 
-export async function generateReportDraft(reportId: string): Promise<{ pdfUrl: string }> {
+/**
+ * POST /api/reports/{caseId}/complaint-draft — Gemini가 생성한 진정 내용 본문(줄글) 반환.
+ * caseId는 백엔드 사건 id여야 함(사업장 검색으로 시작한 신고). 클라이언트 id면 서버가 거부.
+ */
+export async function generateReportDraft(reportId: string): Promise<string> {
   const { data } = await apiClient.post<{ complaintDraft: string }>(
     `/reports/${reportId}/complaint-draft`,
   );
-  return { pdfUrl: data.complaintDraft ?? "" };
+  return data.complaintDraft ?? "";
 }

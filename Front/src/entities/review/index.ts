@@ -6,3 +6,8 @@ export type {
 } from "./model/types";
 export { MOCK_REVIEWS } from "./model/mock-data";
 export { useReviewStore } from "./model/store";
+export {
+  fetchReviewComments,
+  createReviewComment,
+  type ReviewComment,
+} from "./api/reviews-api";

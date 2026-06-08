@@ -1,9 +1,13 @@
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
-import { useReviewStore } from "@/entities/review";
+import {
+  useReviewStore,
+  fetchReviewComments,
+  createReviewComment,
+} from "@/entities/review";
 
 interface ReviewDetailViewProps {
   reviewId: string;
@@ -378,51 +382,43 @@ interface QnaComment {
   createdAt: string;
 }
 
-const MOCK_QNA: Record<string, QnaComment[]> = {
-  "review-001": [
-    {
-      id: "qna-1",
-      authorNickname: "닉네임C",
-      isAuthor: false,
-      body: "통장 내역을 첨부할 때 사장님 입금 내역만 따로 캡쳐해야 하나요?",
-      createdAt: "2026-05-15T10:00:00Z",
-    },
-    {
-      id: "qna-2",
-      authorNickname: "닉네임A",
-      isAuthor: true,
-      body: "저는 전체 내역 그대로 제출했는데 감독관이 직접 골라서 보더라고요. 색깔 표시만 해두시면 더 빨라요.",
-      createdAt: "2026-05-15T14:30:00Z",
-    },
-  ],
-};
-
 function QnaCommentSection({ reviewId }: { reviewId: string }): JSX.Element {
-  const initial = MOCK_QNA[reviewId] ?? [];
-  const [comments, setComments] = useState<QnaComment[]>(initial);
+  const [comments, setComments] = useState<QnaComment[]>([]);
   const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (): void => {
+  const load = useCallback(async (): Promise<void> => {
+    try {
+      const data = await fetchReviewComments(reviewId);
+      setComments(data);
+    } catch {
+      /* 실패 시 빈 목록 유지 */
+    }
+  }, [reviewId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const handleSubmit = async (): Promise<void> => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) {
       Alert.alert("안내", "내용을 입력해주세요.");
       return;
     }
-    setComments((prev) => [
-      ...prev,
-      {
-        id: `local-${prev.length + 1}`,
-        authorNickname: "나",
-        isAuthor: false,
-        body: trimmed,
-        createdAt: new Date(0).toISOString(),
-      },
-    ]);
-    setDraft("");
-    Alert.alert(
-      "임시 동작",
-      "댓글이 로컬에만 추가되었어요. 백엔드 연동 후 영구 저장됩니다.",
-    );
+    setSubmitting(true);
+    try {
+      const created = await createReviewComment(reviewId, trimmed);
+      setComments((prev) => [...prev, created]);
+      setDraft("");
+    } catch (err) {
+      Alert.alert(
+        "전송 실패",
+        err instanceof Error ? err.message : "잠시 후 다시 시도해주세요",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -560,9 +556,10 @@ function QnaCommentSection({ reviewId }: { reviewId: string }): JSX.Element {
           }}
         />
         <Pressable
-          onPress={handleSubmit}
+          onPress={() => void handleSubmit()}
+          disabled={submitting}
           style={{
-            backgroundColor: "#3182F6",
+            backgroundColor: submitting ? "#94A3B8" : "#3182F6",
             paddingHorizontal: 14,
             height: 44,
             borderRadius: 10,
