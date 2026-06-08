@@ -124,6 +124,27 @@ public class GowerDistanceService {
         return new DistanceResult(totalDistance, matchScore, rawDist, contributions);
     }
 
+    /**
+     * 멘티 요청 간 유사도 (0~1) — 협업 필터링(CROWN cold-start)의 attention 가중치용.
+     * 멘토-멘티 distance와 동일한 항목별 거리 함수를 멘티-멘티에 적용(멘토 전용 resolutionMethods 제외).
+     */
+    public double requestSimilarity(MenteeMatchRequest a, MenteeMatchRequest b) {
+        Map<String, Double> w = DEFAULT_WEIGHTS;
+        double dIndustry = a.getIndustry() == b.getIndustry() ? 0.0 : 1.0;
+        double dDamage = 1.0 - jaccard(a.getDamageTypes(), b.getDamageTypes());
+        double dBiz = businessSizeDistance(a.getBusinessSize(), b.getBusinessSize());
+        double dEmp = Objects.equals(a.getEmploymentType(), b.getEmploymentType()) ? 0.0 : 1.0;
+        double dAmount = ordinalDistance(a.getDamageAmountRange(), b.getDamageAmountRange());
+        double dRegion = regionDistance(a.getRegion(), b.getRegion());
+
+        double wInd = w.get("industry"), wDmg = w.get("damageTypes"), wBiz = w.get("businessSize"),
+                wEmp = w.get("employmentType"), wAmt = w.get("damageAmountRange"), wReg = w.get("region");
+        double wsum = wInd + wDmg + wBiz + wEmp + wAmt + wReg;
+        double dist = (wInd * dIndustry + wDmg * dDamage + wBiz * dBiz
+                + wEmp * dEmp + wAmt * dAmount + wReg * dRegion) / wsum;
+        return Math.max(0.0, Math.min(1.0, 1.0 - dist));
+    }
+
     // ─────────────────────────────────────────────────────────────────
     //  항목별 거리 함수
     // ─────────────────────────────────────────────────────────────────

@@ -52,6 +52,13 @@ public class MentorshipMatch {
     private Double neuralScore;
 
     /**
+     * 협업 필터링(CROWN cold-start 영감) 점수 (0~1).
+     * 유사 멘티들의 피드백을 attention 가중 집계한 값. 피드백 없으면 null.
+     */
+    @Column(name = "collaborative_score")
+    private Double collaborativeScore;
+
+    /**
      * 항목별 기여도 JSON (SHAP-style).
      * 예: {"damageTypes": 0.35, "industry": 0.28, "businessSize": 0.20, ...}
      */
