@@ -32,8 +32,11 @@ public class User {
     @Column(name = "fcm_token")
     private String fcmToken;
 
+    // columnDefinition에 default false를 명시 — 기존 데이터가 있는 user 테이블에
+    // ddl-auto=update가 NOT NULL 컬럼을 추가할 때 기존 행에 default가 채워져 실패하지 않음.
+    // (nullable=false만 주면 ALTER ADD COLUMN ... NOT NULL 이 기존 행 때문에 실패 → 컬럼 미생성 → INSERT 500)
     @Builder.Default
-    @Column(name = "role", nullable = false)
+    @Column(name = "role", columnDefinition = "boolean not null default false")
     private boolean isMentor = false;
 
     // business 테이블과 N:M 매핑
