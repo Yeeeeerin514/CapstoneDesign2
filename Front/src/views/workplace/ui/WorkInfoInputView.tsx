@@ -67,6 +67,22 @@ function formatDateIso(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+/** 입력 문자열 → HH:mm 정규화 (숫자만 추출 후 자동 콜론). 웹 수동 입력용. */
+function formatTimeInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return digits.slice(0, 2) + ":" + digits.slice(2, 4);
+}
+
+/** 입력 문자열 → YYYY-MM-DD 정규화. 웹 수동 입력용. */
+function formatDateInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  let out = digits.slice(0, 4);
+  if (digits.length > 4) out += "-" + digits.slice(4, 6);
+  if (digits.length > 6) out += "-" + digits.slice(6, 8);
+  return out;
+}
+
 /** "09:00" → 분(0~1440). 비교용. */
 function minutesFromHHMM(value: string): number {
   const [h, m] = value.split(":").map((s) => parseInt(s, 10));
@@ -140,6 +156,10 @@ export function WorkInfoInputView({
     // 유효성 검사
     if (selectedDays.length === 0) {
       Alert.alert("입력 필요", "근무 요일을 1개 이상 선택해주세요.");
+      return;
+    }
+    if (!/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
+      Alert.alert("입력 필요", "출근·퇴근 시각을 HH:MM 형식으로 입력해주세요.");
       return;
     }
     if (minutesFromHHMM(endTime) <= minutesFromHHMM(startTime)) {
@@ -288,16 +308,25 @@ export function WorkInfoInputView({
           })}
         </View>
 
-        {/* 출근 시각 */}
+        {/* 출근 시각 — 웹 포함 직접 입력, 네이티브는 시계 아이콘으로 picker도 가능 */}
         <SectionLabel label="출근 시각" required />
-        <Pressable
-          onPress={() => setShowStartPicker(true)}
-          style={inputBoxStyle}
-        >
-          <Text style={inputValueStyle}>{startTime}</Text>
-          <Ionicons name="time-outline" size={18} color="#64748B" />
-        </Pressable>
-        {showStartPicker ? (
+        <View style={fieldRowStyle}>
+          <TextInput
+            value={startTime}
+            onChangeText={(v) => setStartTime(formatTimeInput(v))}
+            placeholder="09:00"
+            placeholderTextColor="#94A3B8"
+            keyboardType="number-pad"
+            maxLength={5}
+            style={fieldTextStyle}
+          />
+          {Platform.OS !== "web" ? (
+            <Pressable onPress={() => setShowStartPicker(true)} hitSlop={8}>
+              <Ionicons name="time-outline" size={18} color="#64748B" />
+            </Pressable>
+          ) : null}
+        </View>
+        {Platform.OS !== "web" && showStartPicker ? (
           <DateTimePicker
             value={parseHHMM(startTime)}
             mode="time"
@@ -311,14 +340,23 @@ export function WorkInfoInputView({
 
         {/* 퇴근 시각 */}
         <SectionLabel label="퇴근 시각" required />
-        <Pressable
-          onPress={() => setShowEndPicker(true)}
-          style={inputBoxStyle}
-        >
-          <Text style={inputValueStyle}>{endTime}</Text>
-          <Ionicons name="time-outline" size={18} color="#64748B" />
-        </Pressable>
-        {showEndPicker ? (
+        <View style={fieldRowStyle}>
+          <TextInput
+            value={endTime}
+            onChangeText={(v) => setEndTime(formatTimeInput(v))}
+            placeholder="18:00"
+            placeholderTextColor="#94A3B8"
+            keyboardType="number-pad"
+            maxLength={5}
+            style={fieldTextStyle}
+          />
+          {Platform.OS !== "web" ? (
+            <Pressable onPress={() => setShowEndPicker(true)} hitSlop={8}>
+              <Ionicons name="time-outline" size={18} color="#64748B" />
+            </Pressable>
+          ) : null}
+        </View>
+        {Platform.OS !== "web" && showEndPicker ? (
           <DateTimePicker
             value={parseHHMM(endTime)}
             mode="time"
@@ -332,14 +370,23 @@ export function WorkInfoInputView({
 
         {/* 근무 시작일 */}
         <SectionLabel label="근무 시작일" required />
-        <Pressable
-          onPress={() => setShowDatePicker(true)}
-          style={inputBoxStyle}
-        >
-          <Text style={inputValueStyle}>{startDay}</Text>
-          <Ionicons name="calendar-outline" size={18} color="#64748B" />
-        </Pressable>
-        {showDatePicker ? (
+        <View style={fieldRowStyle}>
+          <TextInput
+            value={startDay}
+            onChangeText={(v) => setStartDay(formatDateInput(v))}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor="#94A3B8"
+            keyboardType="number-pad"
+            maxLength={10}
+            style={fieldTextStyle}
+          />
+          {Platform.OS !== "web" ? (
+            <Pressable onPress={() => setShowDatePicker(true)} hitSlop={8}>
+              <Ionicons name="calendar-outline" size={18} color="#64748B" />
+            </Pressable>
+          ) : null}
+        </View>
+        {Platform.OS !== "web" && showDatePicker ? (
           <DateTimePicker
             value={parseDateIso(startDay)}
             mode="date"
@@ -439,21 +486,20 @@ function SectionLabel({
   );
 }
 
-const inputBoxStyle = {
+const fieldRowStyle = {
   flexDirection: "row" as const,
   alignItems: "center" as const,
-  justifyContent: "space-between" as const,
   backgroundColor: "#FFFFFF",
   borderRadius: 10,
   borderWidth: 1,
   borderColor: "#E2E8F0",
   paddingHorizontal: 14,
-  paddingVertical: 14,
   marginBottom: 16,
 };
 
-const inputValueStyle = {
+const fieldTextStyle = {
+  flex: 1,
   fontSize: 15,
   color: "#0F172A",
-  fontWeight: "500" as const,
+  paddingVertical: 14,
 };

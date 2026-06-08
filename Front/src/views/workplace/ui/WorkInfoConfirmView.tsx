@@ -75,6 +75,83 @@ function formatDateIso(date: Date): string {
   )}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+/** 입력 문자열 → HH:mm 정규화 (숫자만 추출 후 자동 콜론). 웹 수동 입력용. */
+function formatTimeInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return digits.slice(0, 2) + ":" + digits.slice(2, 4);
+}
+
+/** 입력 문자열 → YYYY-MM-DD 정규화. 웹 수동 입력용. */
+function formatDateInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  let out = digits.slice(0, 4);
+  if (digits.length > 4) out += "-" + digits.slice(4, 6);
+  if (digits.length > 6) out += "-" + digits.slice(6, 8);
+  return out;
+}
+
+/** 시간/날짜 수동 입력 행 (웹용) — TextInput + 완료 버튼. 시급 편집 UI와 동일 톤. */
+function InlineEditField({
+  value,
+  onChangeText,
+  placeholder,
+  maxLength,
+  onDone,
+}: {
+  value: string;
+  onChangeText: (v: string) => void;
+  placeholder: string;
+  maxLength: number;
+  onDone: () => void;
+}): JSX.Element {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingBottom: 12,
+      }}
+    >
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#94A3B8"
+        keyboardType="number-pad"
+        maxLength={maxLength}
+        autoFocus
+        style={{
+          flex: 1,
+          fontSize: 15,
+          color: "#0F172A",
+          backgroundColor: "#F8FAFC",
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: "#3182F6",
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+        }}
+      />
+      <Pressable
+        onPress={onDone}
+        style={{
+          backgroundColor: "#3182F6",
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          borderRadius: 8,
+        }}
+      >
+        <Text style={{ color: "#FFFFFF", fontSize: 13, fontWeight: "600" }}>
+          완료
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 type EditField =
   | "workDays"
   | "workStartTime"
@@ -283,26 +360,44 @@ export function WorkInfoConfirmView({
             }}
           >
             {showTimePicker === "workStartTime" ? (
-              <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
-                <DateTimePicker
-                  value={parseHHMM(info.workStartTime)}
-                  mode="time"
-                  is24Hour
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={(_, selected) => {
-                    if (Platform.OS === "android") {
-                      setShowTimePicker(null);
-                      setEditing(null);
-                    }
-                    if (selected !== undefined) {
-                      setInfo((prev) => ({
-                        ...prev,
-                        workStartTime: formatHHMM(selected),
-                      }));
-                    }
+              Platform.OS === "web" ? (
+                <InlineEditField
+                  value={info.workStartTime}
+                  onChangeText={(v) =>
+                    setInfo((prev) => ({
+                      ...prev,
+                      workStartTime: formatTimeInput(v),
+                    }))
+                  }
+                  placeholder="09:00"
+                  maxLength={5}
+                  onDone={() => {
+                    setShowTimePicker(null);
+                    setEditing(null);
                   }}
                 />
-              </View>
+              ) : (
+                <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
+                  <DateTimePicker
+                    value={parseHHMM(info.workStartTime)}
+                    mode="time"
+                    is24Hour
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    onChange={(_, selected) => {
+                      if (Platform.OS === "android") {
+                        setShowTimePicker(null);
+                        setEditing(null);
+                      }
+                      if (selected !== undefined) {
+                        setInfo((prev) => ({
+                          ...prev,
+                          workStartTime: formatHHMM(selected),
+                        }));
+                      }
+                    }}
+                  />
+                </View>
+              )
             ) : null}
           </Row>
           <RowDivider />
@@ -320,26 +415,44 @@ export function WorkInfoConfirmView({
             }}
           >
             {showTimePicker === "workEndTime" ? (
-              <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
-                <DateTimePicker
-                  value={parseHHMM(info.workEndTime)}
-                  mode="time"
-                  is24Hour
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={(_, selected) => {
-                    if (Platform.OS === "android") {
-                      setShowTimePicker(null);
-                      setEditing(null);
-                    }
-                    if (selected !== undefined) {
-                      setInfo((prev) => ({
-                        ...prev,
-                        workEndTime: formatHHMM(selected),
-                      }));
-                    }
+              Platform.OS === "web" ? (
+                <InlineEditField
+                  value={info.workEndTime}
+                  onChangeText={(v) =>
+                    setInfo((prev) => ({
+                      ...prev,
+                      workEndTime: formatTimeInput(v),
+                    }))
+                  }
+                  placeholder="18:00"
+                  maxLength={5}
+                  onDone={() => {
+                    setShowTimePicker(null);
+                    setEditing(null);
                   }}
                 />
-              </View>
+              ) : (
+                <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
+                  <DateTimePicker
+                    value={parseHHMM(info.workEndTime)}
+                    mode="time"
+                    is24Hour
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    onChange={(_, selected) => {
+                      if (Platform.OS === "android") {
+                        setShowTimePicker(null);
+                        setEditing(null);
+                      }
+                      if (selected !== undefined) {
+                        setInfo((prev) => ({
+                          ...prev,
+                          workEndTime: formatHHMM(selected),
+                        }));
+                      }
+                    }}
+                  />
+                </View>
+              )
             ) : null}
           </Row>
           <RowDivider />
@@ -355,25 +468,40 @@ export function WorkInfoConfirmView({
             }}
           >
             {showDatePicker ? (
-              <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
-                <DateTimePicker
-                  value={parseDateIso(info.startDay)}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={(_, selected) => {
-                    if (Platform.OS === "android") {
-                      setShowDatePicker(false);
-                      setEditing(null);
-                    }
-                    if (selected !== undefined) {
-                      setInfo((prev) => ({
-                        ...prev,
-                        startDay: formatDateIso(selected),
-                      }));
-                    }
+              Platform.OS === "web" ? (
+                <InlineEditField
+                  value={info.startDay}
+                  onChangeText={(v) =>
+                    setInfo((prev) => ({ ...prev, startDay: formatDateInput(v) }))
+                  }
+                  placeholder="YYYY-MM-DD"
+                  maxLength={10}
+                  onDone={() => {
+                    setShowDatePicker(false);
+                    setEditing(null);
                   }}
                 />
-              </View>
+              ) : (
+                <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
+                  <DateTimePicker
+                    value={parseDateIso(info.startDay)}
+                    mode="date"
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    onChange={(_, selected) => {
+                      if (Platform.OS === "android") {
+                        setShowDatePicker(false);
+                        setEditing(null);
+                      }
+                      if (selected !== undefined) {
+                        setInfo((prev) => ({
+                          ...prev,
+                          startDay: formatDateIso(selected),
+                        }));
+                      }
+                    }}
+                  />
+                </View>
+              )
             ) : null}
           </Row>
           <RowDivider />
