@@ -9,12 +9,6 @@ import lombok.*;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
-/**
- * 사용자의 알바 정보 테이블
- * ※ DB 마이그레이션 필요: bssid 컬럼 추가
- *    ALTER TABLE part_time_job ADD COLUMN bssid VARCHAR(255);
- *    ALTER TABLE part_time_job ADD COLUMN fcm_token VARCHAR(512); -- User 테이블에 넣어도 됨
- */
 @Entity
 @Table(name = "part_time_job")
 @Getter
@@ -32,8 +26,10 @@ public class PartTimeJob {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;                      // User → PartTimeJob : 1:N 관계의 N쪽
 
+    // nullable 허용: register-workplace 흐름은 사업장명만 받고 Business 엔티티를 생성하지 않으므로
+    // business 없이 PartTimeJob을 저장한다. NOT NULL 이면 INSERT 시 제약 위반으로 500이 발생한다.
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "business_id", nullable = false)   // DB 컬럼명 오타 그대로 유지
+    @JoinColumn(name = "business_id")
     private Business business;              // Business → PartTimeJob : 1:N 관계의 N쪽
 
 
