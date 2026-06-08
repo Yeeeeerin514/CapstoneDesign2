@@ -23,6 +23,7 @@ import {
   type Region,
 } from "@/entities/mentor";
 import { useMentorMatchStore } from "@/features/mentor-match";
+import { usePaymentStore } from "@/features/payment";
 import { useAuthStore } from "@/entities/user/model/auth-store";
 import { router } from "expo-router";
 
@@ -70,6 +71,7 @@ export function SmartMentorRecommendView({
   const [stage, setStage] = useState<"검색" | "필터" | "매칭" | "완료">("검색");
   const userId = useAuthStore((s) => s.userIdString);
   const createMentorMatch = useMentorMatchStore((s) => s.createMatch);
+  const chargeMentorFee = usePaymentStore((s) => s.chargeMentorFee);
 
   useEffect(() => {
     (async () => {
@@ -109,6 +111,17 @@ export function SmartMentorRecommendView({
   async function handleConfirm(rec: MatchRecommendation): Promise<void> {
     setConfirmingId(rec.matchId);
     try {
+      // 0) 멘토 상담료 결제 (mock PG → PaymentRecord 영속, 해결 시 ₩3,000 환급과 연결)
+      const charge = await chargeMentorFee({
+        menteeId: userId,
+        mentorId: String(rec.mentorUserId),
+        caseId:
+          caseId !== null && caseId !== undefined ? String(caseId) : "ai-match",
+      });
+      if (!charge.success) {
+        setConfirmingId(null);
+        return;
+      }
       // 1) 백엔드 매칭 확정 (PROPOSED → ACTIVE)
       await confirmMatch(rec.matchId);
 

@@ -22,6 +22,7 @@ import type {
   DamageTypeEnum,
   ReportCase,
 } from "@/entities/report";
+import { generateReportDraft } from "@/entities/report";
 import {
   buildComplaintHtml,
   type NegotiationStatus,
@@ -570,6 +571,31 @@ function ComplaintPreview({
 }: PreviewProps): JSX.Element {
   const [isEditing, setIsEditing] = useState(false);
   const [draftText, setDraftText] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+
+  // AI(Gemini) 진정 내용 생성 — 서버에 저장된 사건(사업장 검색으로 시작)에서 동작.
+  // 성공 시 본문을 AI 줄글로 채움. 클라이언트 전용 사건이면 서버가 거부 → 안내.
+  const handleGenerateAi = async (): Promise<void> => {
+    setAiGenerating(true);
+    try {
+      const text = await generateReportDraft(reportCase.id);
+      if (text.trim().length > 0) {
+        onSaveCustom(text);
+      } else {
+        Alert.alert(
+          "생성 실패",
+          "AI 진정 내용을 받지 못했어요. 잠시 후 다시 시도해주세요.",
+        );
+      }
+    } catch {
+      Alert.alert(
+        "AI 생성 불가",
+        "서버에 저장된 신고에서만 AI 생성을 쓸 수 있어요. '사업장 찾기'로 시작한 신고에서 사용해보세요.",
+      );
+    } finally {
+      setAiGenerating(false);
+    }
+  };
 
   const damages = reportCase.damageTypeEnums ?? [];
   const facts = reportCase.facts;
@@ -675,6 +701,28 @@ function ComplaintPreview({
             marginBottom: 8,
           }}
         >
+          <Pressable
+            onPress={() => void handleGenerateAi()}
+            disabled={aiGenerating}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              borderRadius: 8,
+              backgroundColor: aiGenerating ? "#A5B4FC" : "#6366F1",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            {aiGenerating ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="sparkles-outline" size={12} color="#FFFFFF" />
+            )}
+            <Text style={{ fontSize: 12, color: "#FFFFFF", fontWeight: "600" }}>
+              {aiGenerating ? "생성 중…" : "AI로 생성"}
+            </Text>
+          </Pressable>
           {customBodyText !== null ? (
             <Pressable
               onPress={onResetCustom}

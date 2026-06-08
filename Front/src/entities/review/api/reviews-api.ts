@@ -79,3 +79,34 @@ export async function createReview(input: ReviewInput): Promise<ResolveReview> {
 export async function markReviewHelpful(id: string): Promise<void> {
   await apiClient.post(`/reviews/${id}/helpful`);
 }
+
+/** Q&A 댓글 — 백엔드 ReviewCommentResponse와 1:1. */
+export interface ReviewComment {
+  id: string;
+  authorNickname: string;
+  isAuthor: boolean;
+  body: string;
+  createdAt: string;
+}
+
+/** GET /api/reviews/{id}/comments — Q&A 댓글 목록(공개). */
+export async function fetchReviewComments(
+  reviewId: string,
+): Promise<ReviewComment[]> {
+  const { data } = await apiClient.get<ReviewComment[]>(
+    `/reviews/${reviewId}/comments`,
+  );
+  return data;
+}
+
+/** POST /api/reviews/{id}/comments — Q&A 댓글 작성(본문만; 작성자 판별은 서버 JWT). */
+export async function createReviewComment(
+  reviewId: string,
+  body: string,
+): Promise<ReviewComment> {
+  const { data } = await apiClient.post<ReviewComment>(
+    `/reviews/${reviewId}/comments`,
+    { body },
+  );
+  return data;
+}
