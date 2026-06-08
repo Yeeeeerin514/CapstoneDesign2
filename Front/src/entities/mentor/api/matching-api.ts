@@ -52,7 +52,7 @@ export async function submitMatchFeedback(
     rating: payload.rating,
     comment: payload.comment ?? "",
     resolved: payload.resolved ?? false,
-    chatDays: 0,
+    chatDays: payload.chatDays ?? 0,
   });
 }
 

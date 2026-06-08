@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
+import { searchBusinesses } from "@/entities/business";
 
 interface Props {
   /** 미리 알고 있는 사업장명. 있으면 초기값으로 사용. */
@@ -83,14 +84,34 @@ export function ManualBusinessInputView({
       return;
     }
     setIsSearching(true);
-    // TODO: GET /api/businesses/search 연결 예정
-    setTimeout(() => {
-      setIsSearching(false);
-      Alert.alert(
-        "검색 결과",
-        "해당 사업장 정보를 찾지 못했습니다. 사업자등록번호를 직접 입력해주세요.",
-      );
-    }, 500);
+    void (async () => {
+      try {
+        const res = await searchBusinesses({
+          q: name.trim(),
+          region: [sido, gugun].filter((s) => s.length > 0).join(" "),
+        });
+        const first = res.results[0];
+        if (first !== undefined && first.businessRegistrationNumber.length > 0) {
+          setBrnInput(first.businessRegistrationNumber);
+          Alert.alert(
+            "사업장을 찾았어요",
+            `${first.name}\n사업자등록번호 ${first.businessRegistrationNumber} 를 자동 입력했어요.`,
+          );
+        } else {
+          Alert.alert(
+            "검색 결과",
+            "해당 사업장 정보를 찾지 못했습니다. 사업자등록번호를 직접 입력해주세요.",
+          );
+        }
+      } catch {
+        Alert.alert(
+          "검색 실패",
+          "잠시 후 다시 시도하거나, 사업자등록번호를 직접 입력해주세요.",
+        );
+      } finally {
+        setIsSearching(false);
+      }
+    })();
   };
 
   const handleContinue = (): void => {

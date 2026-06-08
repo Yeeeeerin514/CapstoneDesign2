@@ -255,6 +255,8 @@ export interface FeedbackPayload {
   rating: number;
   comment?: string;
   resolved?: boolean;
+  /** 대화 지속 일수 (Thompson Sampling 활성도 신호). 미입력 시 0. */
+  chatDays?: number;
 }
 
 /** POST /api/mentoring/mentors — 멘토 신규 등록. */
