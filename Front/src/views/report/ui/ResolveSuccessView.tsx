@@ -164,7 +164,7 @@ export function ResolveSuccessView({
               lineHeight: 18,
             }}
           >
-            {`💰 멘토 매칭 결제 이력이 있으면 ₩${PAYMENT_DISTRIBUTION.menteeRefund.toLocaleString()}이 자동 환급됩니다.`}
+            {`💰 멘토 매칭 결제 이력이 있으면 멘토에게 성과보수 ₩${PAYMENT_DISTRIBUTION.mentorBonus.toLocaleString()}이 자동 지급됩니다.`}
           </Text>
         </View>
 

@@ -354,7 +354,7 @@ export function WorkplaceView(): JSX.Element {
         result={result}
         onBack={() => setCurrentScreen(fromEdit ? "edit" : "upload")}
         submitLabel={
-          isAlreadyRegistered ? "계약서 업로드 완료" : "사업장 등록하기 →"
+          isAlreadyRegistered ? "계약서 업로드 완료" : "내 일터로 등록하기 →"
         }
         onRegister={() => {
           if (!fromEdit && pendingImageUri !== null) {

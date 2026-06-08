@@ -11,6 +11,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
 import { useReportStore } from "@/features/report-submit";
+import { usePaymentStore } from "@/features/payment";
+import { PAYMENT_DISTRIBUTION } from "@/shared/lib/payment";
 import { useAuthStore } from "@/entities/user/model/auth-store";
 import { router } from "expo-router";
 import { MentorRecommendView } from "./MentorRecommendView";
@@ -34,7 +36,6 @@ import { MentorQuickMatchModal } from "./MentorQuickMatchModal";
 import type { DamageTypeEnum } from "@/entities/report";
 import {
   STEP_ORDER,
-  STEP_META,
   type CaseStep,
   type InvestigationSubStatus,
   type ReportStatus,
@@ -185,9 +186,6 @@ export function ReportDetailView({
   );
   const advanceStep = useReportStore((s) => s.advanceStep);
   const closeCase = useReportStore((s) => s.closeCase);
-  const updateInvestigationStatus = useReportStore(
-    (s) => s.updateInvestigationStatus,
-  );
   const updateCaseStatus = useReportStore((s) => s.updateCaseStatus);
   const navigateToStep = useReportStore((s) => s.navigateToStep);
   const userId = useAuthStore((s) => s.userIdString);
@@ -201,9 +199,8 @@ export function ReportDetailView({
   const [showResolveConfirm, setShowResolveConfirm] = useState(false);
   const [showSubmissionResult, setShowSubmissionResult] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
-  /** Step 6 사건 진행 상태 업데이트 박스 — 인라인 예/아니오 확인 대기 중인 항목. */
-  const [pendingInvestigationStatus, setPendingInvestigationStatus] =
-    useState<InvestigationSubStatus | null>(null);
+  /** @deprecated Step 6 inline status 카드 제거됨. 호환을 위해 미사용 ref만 유지. */
+  void ({} as InvestigationSubStatus | null);
   const createMentorMatch = useMentorMatchStore((s) => s.createMatch);
   const caseMentorMatches = useMentorMatchStore((s) =>
     s.matches.filter(
@@ -214,6 +211,28 @@ export function ReportDetailView({
   const [showReviewWrite, setShowReviewWrite] = useState(false);
   /** V2 신고 정보 입력 흐름 (1-A 피해유형 / 1-B 자유서술 / 1-C 진정내용) */
   const [showEvidenceFlow, setShowEvidenceFlow] = useState(false);
+
+  // 미해결 종결 — 멘티 환급 + UNRESOLVED 전환
+  const handleSettleUnresolved = async (): Promise<void> => {
+    if (reportCase === undefined) return;
+    updateCaseStatus(reportCase.id, "UNRESOLVED");
+    const relatedPayment = usePaymentStore
+      .getState()
+      .records.find(
+        (p) => p.caseId === reportCase.id && p.status === "paid",
+      );
+    if (relatedPayment !== undefined) {
+      await usePaymentStore
+        .getState()
+        .settleOnUnresolved(relatedPayment.id);
+      Alert.alert(
+        "미해결 종결 처리됨",
+        `₩${PAYMENT_DISTRIBUTION.menteeRefund.toLocaleString()}이 환급되었습니다.\n사건이 종결되었습니다.`,
+      );
+    } else {
+      Alert.alert("미해결 종결 처리됨", "사건이 종결되었습니다.");
+    }
+  };
 
   if (reportCase === undefined) {
     return null;
@@ -411,17 +430,15 @@ export function ReportDetailView({
 
   /**
   /**
-   * 진행 단계 리스트/네비게이터에서 호출. Alert 없이 즉시 이동.
-   * 이전 단계로 가도 입력 데이터/amountCalcState는 그대로 유지 (변경 안 함).
-   * "금액이 다른 것 같아요" 버튼 등 명시적 사용자 액션만 데이터를 리셋.
+   * @deprecated 진행 단계 네비게이터 카드 제거됨. handler는 미사용 — 향후 다른 화면 재사용에 대비해 보존.
    */
-  const handleNavigateToStep = (targetStep: CaseStep): void => {
+  void ((targetStep: CaseStep): void => {
     const targetIdx = STEP_ORDER.indexOf(targetStep);
     const curIdx = STEP_ORDER.indexOf(reportCase.currentStep);
     if (targetIdx === curIdx) return;
     navigateToStep(reportCase.id, targetStep);
     scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-  };
+  });
 
   const currentTask = getCurrentTaskByStep(currentStep, {
     onAdvance: handleAdvance,
@@ -797,690 +814,152 @@ export function ReportDetailView({
           </View>
         )}
 
-        {/* Step 6 (investigation) 수동 상태 업데이트 — 종결된 사건은 숨김 */}
-        {currentStep === "investigation" &&
-        reportCase.status !== "RESOLVED" &&
+
+        {/* V2 — "증거 내용 작성" 섹션 제거. evidence 입력은 EvidenceFlowView로 단일화됨. */}
+
+
+
+        {/* 임금 수령 여부 메인 카드 — 종결된 사건이 아니면 항상 노출 */}
+        {reportCase.status !== "RESOLVED" &&
         reportCase.status !== "UNRESOLVED" ? (
           <View
             style={{
               backgroundColor: "#FFFFFF",
               borderRadius: 14,
-              padding: 16,
+              padding: 18,
               marginBottom: 12,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: "700",
-                color: "#0F172A",
-                marginBottom: 4,
-              }}
-            >
-              사건 진행 상태 업데이트
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: "#64748B",
-                lineHeight: 17,
-                marginBottom: 12,
-              }}
-            >
-              노동청·사업주로부터 변동이 있으면 직접 갱신해주세요
-            </Text>
-
-            {(() => {
-              const SUB_STATUS_ORDER: InvestigationSubStatus[] = [
-                "waiting_inspector",
-                "awaiting_hearing",
-                "under_correction",
-                "resolved_confirm",
-              ];
-              const curSubIdx = SUB_STATUS_ORDER.indexOf(
-                reportCase.investigationStatus ?? "waiting_inspector",
-              );
-              const items: Array<{
-                key: InvestigationSubStatus;
-                label: string;
-                desc: string;
-                tappableWhenStatus: (s: InvestigationSubStatus) => boolean;
-                confirm: () => void;
-              }> = [
-                {
-                  key: "awaiting_hearing",
-                  label: "출석요구서를 받았어요",
-                  desc: "출석조사 단계로 전환",
-                  tappableWhenStatus: (s) => s === "waiting_inspector",
-                  confirm: () =>
-                    updateInvestigationStatus(
-                      reportCase.id,
-                      "awaiting_hearing",
-                    ),
-                },
-                {
-                  key: "under_correction",
-                  label: "시정지시가 완료됐어요",
-                  desc: "사업주에게 지급 시정지시 발부됨",
-                  tappableWhenStatus: (s) => s === "awaiting_hearing",
-                  confirm: () => {
-                    updateInvestigationStatus(
-                      reportCase.id,
-                      "under_correction",
-                    );
-                    updateCaseStatus(reportCase.id, "CORRECTION_ORDERED");
-                  },
-                },
-                {
-                  key: "resolved_confirm",
-                  label: "돈을 받았어요 (해결 확인)",
-                  desc: "해결 확인 화면으로 이동",
-                  tappableWhenStatus: (s) =>
-                    s === "awaiting_hearing" || s === "under_correction",
-                  confirm: () => {
-                    updateInvestigationStatus(
-                      reportCase.id,
-                      "resolved_confirm",
-                    );
-                    setShowResolveConfirm(true);
-                  },
-                },
-              ];
-              return items.map((item) => {
-                const itemIdx = SUB_STATUS_ORDER.indexOf(item.key);
-                const isCompleted = curSubIdx >= itemIdx;
-                const isPending = pendingInvestigationStatus === item.key;
-                const isTappable =
-                  !isCompleted &&
-                  item.tappableWhenStatus(
-                    reportCase.investigationStatus ?? "waiting_inspector",
-                  );
-                return (
-                  <View key={item.key} style={{ marginBottom: 8 }}>
-                    <Pressable
-                      onPress={
-                        isTappable
-                          ? () => setPendingInvestigationStatus(item.key)
-                          : undefined
-                      }
-                      disabled={!isTappable}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: isPending
-                          ? "#1A5FAF"
-                          : isTappable
-                            ? "#3182F6"
-                            : "#E2E8F0",
-                        backgroundColor: isCompleted ? "#F5F5F0" : "#FFFFFF",
-                        borderRadius: 10,
-                        paddingVertical: 12,
-                        paddingHorizontal: 14,
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        // 펜딩 행은 아래 확인 영역과 자연스럽게 이어지도록 하단 둥글기 제거
-                        borderBottomLeftRadius: isPending ? 0 : 10,
-                        borderBottomRightRadius: isPending ? 0 : 10,
-                        borderBottomWidth: isPending ? 0 : 1,
-                      }}
-                    >
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 12,
-                          flex: 1,
-                        }}
-                      >
-                        <View
-                          style={{
-                            width: 22,
-                            height: 22,
-                            borderRadius: 11,
-                            backgroundColor: isCompleted
-                              ? "#3B6D11"
-                              : "#FFFFFF",
-                            borderWidth: 1.5,
-                            borderColor: isCompleted
-                              ? "#3B6D11"
-                              : isPending
-                                ? "#1A5FAF"
-                                : "#C5C4BE",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          {isCompleted ? (
-                            <Ionicons
-                              name="checkmark"
-                              size={12}
-                              color="#FFFFFF"
-                            />
-                          ) : null}
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={{
-                              fontSize: 13,
-                              fontWeight: "600",
-                              color: isCompleted
-                                ? "#888888"
-                                : isTappable
-                                  ? "#0F172A"
-                                  : "#94A3B8",
-                              textDecorationLine: isCompleted
-                                ? "line-through"
-                                : "none",
-                              marginBottom: 2,
-                            }}
-                          >
-                            {item.label}
-                          </Text>
-                          <Text
-                            style={{
-                              fontSize: 11,
-                              color: isCompleted
-                                ? "#CBD5E1"
-                                : isTappable
-                                  ? "#64748B"
-                                  : "#CBD5E1",
-                            }}
-                          >
-                            {item.desc}
-                          </Text>
-                        </View>
-                      </View>
-                      {!isCompleted && !isPending ? (
-                        <Ionicons
-                          name="chevron-forward"
-                          size={16}
-                          color={isTappable ? "#3182F6" : "#CBD5E1"}
-                        />
-                      ) : null}
-                    </Pressable>
-
-                    {/* 인라인 예/아니오 확인 */}
-                    {isPending ? (
-                      <View
-                        style={{
-                          backgroundColor: "#EBF3FF",
-                          borderWidth: 1,
-                          borderTopWidth: 0,
-                          borderColor: "#1A5FAF",
-                          borderBottomLeftRadius: 10,
-                          borderBottomRightRadius: 10,
-                          paddingHorizontal: 14,
-                          paddingVertical: 12,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 13,
-                            color: "#185FA5",
-                            fontWeight: "500",
-                            marginBottom: 10,
-                          }}
-                        >
-                          {`정말 "${item.label}" 상태로 업데이트할까요?`}
-                        </Text>
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            gap: 8,
-                            justifyContent: "flex-end",
-                          }}
-                        >
-                          <Pressable
-                            onPress={() =>
-                              setPendingInvestigationStatus(null)
-                            }
-                            style={{
-                              paddingHorizontal: 16,
-                              paddingVertical: 8,
-                              borderRadius: 8,
-                              backgroundColor: "#FFFFFF",
-                              borderWidth: 0.5,
-                              borderColor: "#C5C4BE",
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 13,
-                                color: "#666666",
-                                fontWeight: "500",
-                              }}
-                            >
-                              아니오
-                            </Text>
-                          </Pressable>
-                          <Pressable
-                            onPress={() => {
-                              setPendingInvestigationStatus(null);
-                              item.confirm();
-                            }}
-                            style={{
-                              paddingHorizontal: 16,
-                              paddingVertical: 8,
-                              borderRadius: 8,
-                              backgroundColor: "#1A5FAF",
-                            }}
-                          >
-                            <Text
-                              style={{
-                                fontSize: 13,
-                                color: "#FFFFFF",
-                                fontWeight: "600",
-                              }}
-                            >
-                              예, 맞아요
-                            </Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    ) : null}
-                  </View>
-                );
-              });
-            })()}
-          </View>
-        ) : null}
-
-        {/* V2 — "증거 내용 작성" 섹션 제거. evidence 입력은 EvidenceFlowView로 단일화됨. */}
-
-        {/* 진행 단계 체크리스트 */}
-        <View
-          style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: 14,
-            padding: 16,
-            marginBottom: 12,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "600",
-              color: "#0F172A",
-              marginBottom: 12,
-            }}
-          >
-            진행 단계
-          </Text>
-
-          {/* StepNavigator — ‹ N/M 단계명 › . 다음 버튼은 highestStep 이하만 활성. */}
-          {(() => {
-            const navCurIdx = STEP_ORDER.indexOf(reportCase.currentStep);
-            const navHighIdx = STEP_ORDER.indexOf(reportCase.highestStep);
-            const canPrev = navCurIdx > 0;
-            const canNext = navCurIdx < navHighIdx;
-            const navEditMode = navCurIdx < navHighIdx;
-            const navCurMeta = STEP_META[reportCase.currentStep];
-            const goPrev = (): void => {
-              if (!canPrev) return;
-              handleNavigateToStep(STEP_ORDER[navCurIdx - 1]);
-            };
-            const goNext = (): void => {
-              if (!canNext) return;
-              handleNavigateToStep(STEP_ORDER[navCurIdx + 1]);
-            };
-            return (
-              <View style={{ marginBottom: 14 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    backgroundColor: "#F5F5F0",
-                    borderRadius: 12,
-                    padding: 10,
-                  }}
-                >
-                  <Pressable
-                    onPress={goPrev}
-                    disabled={!canPrev}
-                    hitSlop={8}
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 8,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: canPrev ? "#FFFFFF" : "#F5F5F0",
-                      borderWidth: canPrev ? 0.5 : 0,
-                      borderColor: "#E0E0DC",
-                    }}
-                  >
-                    <Ionicons
-                      name="chevron-back"
-                      size={20}
-                      color={canPrev ? "#1A5FAF" : "#C5C4BE"}
-                    />
-                  </Pressable>
-
-                  <View style={{ flex: 1, alignItems: "center", gap: 2 }}>
-                    {navEditMode ? (
-                      <View
-                        style={{
-                          backgroundColor: "#FAEEDA",
-                          borderRadius: 8,
-                          paddingHorizontal: 8,
-                          paddingVertical: 2,
-                          marginBottom: 2,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            color: "#BA7517",
-                            fontWeight: "600",
-                          }}
-                        >
-                          ✏️ 수정 중
-                        </Text>
-                      </View>
-                    ) : null}
-                    <Text style={{ fontSize: 11, color: "#AAAAAA" }}>
-                      {`${navCurIdx + 1} / ${STEP_ORDER.length}`}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        fontWeight: "600",
-                        color: "#0F172A",
-                      }}
-                    >
-                      {navCurMeta.label}
-                    </Text>
-                  </View>
-
-                  <Pressable
-                    onPress={goNext}
-                    disabled={!canNext}
-                    hitSlop={8}
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 8,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: canNext ? "#FFFFFF" : "#F5F5F0",
-                      borderWidth: canNext ? 0.5 : 0,
-                      borderColor: "#E0E0DC",
-                    }}
-                  >
-                    <Ionicons
-                      name="chevron-forward"
-                      size={20}
-                      color={canNext ? "#1A5FAF" : "#C5C4BE"}
-                    />
-                  </Pressable>
-                </View>
-
-                {navEditMode ? (
-                  <Pressable
-                    onPress={() =>
-                      handleNavigateToStep(reportCase.highestStep)
-                    }
-                    hitSlop={6}
-                    style={{
-                      alignSelf: "flex-end",
-                      paddingTop: 6,
-                      paddingRight: 4,
-                    }}
-                  >
-                    <Text style={{ fontSize: 12, color: "#1A5FAF" }}>
-                      {`현재 진행 단계(${STEP_META[reportCase.highestStep].label})로 →`}
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            );
-          })()}
-          {STEP_ORDER.map((stepId, idx) => {
-            const isCompleted = reportCase.completedSteps.includes(stepId);
-            const isActive = reportCase.currentStep === stepId;
-            const isPending = !isCompleted && !isActive;
-            const meta = STEP_META[stepId];
-
-            // 수정 모드: 현재 활성 단계가 highestStep보다 앞에 있을 때
-            const highestIdx = STEP_ORDER.indexOf(reportCase.highestStep);
-            const isEditMode = isActive && idx < highestIdx;
-            const isTappable = isCompleted || isActive;
-
-            // 활성 단계 일반 inline 액션 버튼 (complaint_draft / investigation 멘토 진입점)
-            let inlineAction:
-              | { label: string; onPress: () => void }
-              | undefined;
-            if (isActive) {
-              if (stepId === "complaint_draft") {
-                inlineAction = {
-                  label: "멘토와 함께 작성 · 10,000원",
-                  onPress: handleConnectMentor,
-                };
-              } else if (stepId === "investigation") {
-                inlineAction = {
-                  label: "출석조사 멘토 연결",
-                  onPress: handleConnectMentor,
-                };
-              }
-            }
-
-            return (
-              <Pressable
-                key={stepId}
-                onPress={
-                  isTappable ? () => handleNavigateToStep(stepId) : undefined
-                }
-                disabled={!isTappable}
-                style={{
-                  flexDirection: "row",
-                  gap: 12,
-                  marginBottom: 14,
-                  paddingLeft: 8,
-                  paddingVertical: 2,
-                  borderLeftWidth: 3,
-                  borderLeftColor: isEditMode
-                    ? "#BA7517"
-                    : isActive
-                      ? "#3182F6"
-                      : "transparent",
-                  backgroundColor: isEditMode
-                    ? "rgba(250, 238, 218, 0.4)"
-                    : "transparent",
-                }}
-              >
-                <View style={{ alignItems: "center" }}>
-                  <View
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 12,
-                      backgroundColor:
-                        isCompleted || isActive ? "#3182F6" : "#FFFFFF",
-                      borderWidth: isPending ? 1 : 0,
-                      borderColor: "#CBD5E1",
-                      justifyContent: "center",
-                      alignItems: "center",
-                    }}
-                  >
-                    {isCompleted ? (
-                      <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                    ) : (
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          fontWeight: "700",
-                          color: isActive ? "#FFFFFF" : "#94A3B8",
-                        }}
-                      >
-                        {idx + 1}
-                      </Text>
-                    )}
-                  </View>
-                  {idx < STEP_ORDER.length - 1 ? (
-                    <View
-                      style={{
-                        width: 2,
-                        flex: 1,
-                        backgroundColor: isCompleted ? "#3182F6" : "#F1F5F9",
-                        marginTop: 4,
-                        minHeight: 16,
-                      }}
-                    />
-                  ) : null}
-                </View>
-
-                <View style={{ flex: 1, paddingBottom: 6 }}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: 6,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 14,
-                        fontWeight: isActive ? "700" : "600",
-                        color: isActive
-                          ? "#0F172A"
-                          : isPending
-                            ? "#94A3B8"
-                            : "#64748B",
-                      }}
-                    >
-                      {meta.label}
-                    </Text>
-                    {/* 수정 모드 — 현재 활성 단계가 highestStep보다 이전 */}
-                    {isEditMode ? (
-                      <View
-                        style={{
-                          backgroundColor: "#FAEEDA",
-                          borderRadius: 8,
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            color: "#BA7517",
-                            fontWeight: "600",
-                          }}
-                        >
-                          ✏️ 수정 중
-                        </Text>
-                      </View>
-                    ) : isCompleted ? (
-                      <View
-                        style={{
-                          backgroundColor: "#EBF3FF",
-                          borderRadius: 8,
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            color: "#185FA5",
-                            fontWeight: "500",
-                          }}
-                        >
-                          수정 가능
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  {/* pending 단계는 description 숨김 (스펙) */}
-                  {isCompleted || isActive ? (
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        color: isActive ? "#475569" : "#94A3B8",
-                        marginTop: 2,
-                        lineHeight: 17,
-                      }}
-                    >
-                      {meta.description}
-                    </Text>
-                  ) : null}
-
-
-                  {/* complaint_draft / investigation 단계의 멘토 진입 버튼 */}
-                  {inlineAction !== undefined ? (
-                    <Pressable
-                      onPress={inlineAction.onPress}
-                      style={{
-                        marginTop: 10,
-                        alignSelf: "flex-start",
-                        paddingHorizontal: 12,
-                        paddingVertical: 7,
-                        borderWidth: 1,
-                        borderColor: "#3182F6",
-                        borderRadius: 8,
-                        backgroundColor: "#FFFFFF",
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 12,
-                          fontWeight: "600",
-                          color: "#3182F6",
-                        }}
-                      >
-                        {inlineAction.label}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-
-
-        {/* 사건 해결 확인 진입점 — 노동청 시정지시 이후 단계에서만 노출 */}
-        {reportCase.status === "INSPECTING" ||
-        reportCase.status === "CORRECTION_ORDERED" ? (
-          <Pressable
-            onPress={() => setShowResolveConfirm(true)}
-            style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: 14,
-              padding: 16,
-              marginBottom: 12,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-              borderWidth: 1,
+              borderWidth: 1.5,
               borderColor: "#BBF7D0",
             }}
           >
             <View
               style={{
-                width: 40,
-                height: 40,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 6,
+              }}
+            >
+              <Ionicons name="cash-outline" size={20} color="#16A34A" />
+              <Text
+                style={{ fontSize: 16, fontWeight: "700", color: "#0F172A" }}
+              >
+                임금을 받으셨어요?
+              </Text>
+            </View>
+            <Text
+              style={{
+                fontSize: 12,
+                color: "#475569",
+                lineHeight: 18,
+                marginBottom: 14,
+              }}
+            >
+              사업주로부터 임금이 입금되면 아래로 알려주세요.{"\n"}
+              아직이면 그대로 두셔도 됩니다 — 다음 방문 시 다시 물어볼게요.
+            </Text>
+
+            {/* 네, 받았어요 */}
+            <Pressable
+              onPress={() => setShowResolveConfirm(true)}
+              style={{
+                backgroundColor: "#16A34A",
+                paddingVertical: 14,
                 borderRadius: 10,
-                backgroundColor: "#DCFCE7",
+                alignItems: "center",
+                marginBottom: 8,
+                flexDirection: "row",
                 justifyContent: "center",
+                gap: 6,
+              }}
+            >
+              <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+              <Text
+                style={{
+                  color: "#FFFFFF",
+                  fontSize: 14,
+                  fontWeight: "700",
+                }}
+              >
+                네, 받았어요
+              </Text>
+            </Pressable>
+
+            {/* 아직 못 받았어요 — 단순 no-op (시각적 토스트만) */}
+            <Pressable
+              onPress={() => {
+                Alert.alert(
+                  "확인했습니다",
+                  "임금 수령 시 다시 알려주세요. 사건은 그대로 유지됩니다.",
+                );
+              }}
+              style={{
+                backgroundColor: "#FFFFFF",
+                paddingVertical: 12,
+                borderRadius: 10,
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: "#CBD5E1",
+                marginBottom: 14,
+              }}
+            >
+              <Text
+                style={{ color: "#475569", fontSize: 13, fontWeight: "600" }}
+              >
+                아직 못 받았어요
+              </Text>
+            </Pressable>
+
+            {/* 미해결 종결 — 멘티 환급 트리거 */}
+            <View
+              style={{
+                borderTopWidth: 1,
+                borderTopColor: "#F1F5F9",
+                paddingTop: 12,
                 alignItems: "center",
               }}
             >
-              <Ionicons name="checkmark-done" size={20} color="#16A34A" />
-            </View>
-            <View style={{ flex: 1 }}>
               <Text
-                style={{ fontSize: 14, fontWeight: "600", color: "#0F172A" }}
+                style={{
+                  fontSize: 11,
+                  color: "#94A3B8",
+                  marginBottom: 6,
+                }}
               >
-                임금을 받으셨나요?
+                더 이상 받기 어렵다고 판단되시면
               </Text>
-              <Text style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
-                해결 확인 시 멘토 결제 ₩3,000 환급
-              </Text>
+              <Pressable
+                onPress={() => {
+                  Alert.alert(
+                    "미해결로 종결",
+                    `사건을 미해결로 종결하시겠어요?\n\n· 멘토 매칭 결제 시 보관된 ₩${PAYMENT_DISTRIBUTION.menteeRefund.toLocaleString()}이 환급됩니다.\n· 사건이 닫혀 더 이상 진행되지 않습니다.`,
+                    [
+                      { text: "취소", style: "cancel" },
+                      {
+                        text: "미해결 종결",
+                        style: "destructive",
+                        onPress: () => {
+                          void handleSettleUnresolved();
+                        },
+                      },
+                    ],
+                  );
+                }}
+                hitSlop={6}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: "#DC2626",
+                    fontWeight: "600",
+                    textDecorationLine: "underline",
+                  }}
+                >
+                  미해결로 종결하기
+                </Text>
+              </Pressable>
             </View>
-            <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
-          </Pressable>
+          </View>
         ) : null}
 
         {/* 연결된 멘토 — 활성 매칭이 있으면 채팅방 빠른 진입 카드 */}

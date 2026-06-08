@@ -4,7 +4,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Switch,
   Text,
   TextInput,
   View,
@@ -306,32 +305,17 @@ export function EvidenceFlowView({
     if (subStep === "damage") return damageTypes.length > 0;
     if (subStep === "freeform") return freeForm.trim().length >= 10;
     // 1-C 진정 내용 필수 조건:
-    //   - 진정인: 성명·주소·휴대전화·주민등록번호
-    //   - 진정 내용: 입사일·재직여부·체불임금 총액
+    //   - 사업장명
+    //   - 입사일·재직여부·체불임금 총액
     //   - 퇴직 시 퇴사일
-    //   - SEVERANCE 선택 시 체불 퇴직금
-    //   - WEEKLY_HOLIDAY/OVERTIME/NIGHT 선택 시 기타 체불금
-    const applicantOk =
-      applicant.fullName.trim().length > 0 &&
-      applicant.address.trim().length > 0 &&
-      applicant.mobile.trim().length > 0 &&
-      applicant.rrn.trim().length > 0;
-    const respondentOk =
-      respondent.workplaceName.trim().length > 0 &&
-      (respondent.address ?? "").trim().length > 0;
+    const respondentOk = respondent.workplaceName.trim().length > 0;
     const factsOk =
       facts.employmentStartDate !== null &&
       facts.totalUnpaidWage !== null &&
       facts.employmentStatus !== null &&
       (facts.employmentStatus !== "FORMER" ||
         facts.employmentEndDate !== null);
-    const severanceOk =
-      !damageTypes.includes("SEVERANCE") || facts.unpaidSeverance !== null;
-    const otherOk =
-      !damageTypes.some((d) =>
-        ["WEEKLY_HOLIDAY", "OVERTIME", "NIGHT"].includes(d),
-      ) || facts.otherUnpaid !== null;
-    return applicantOk && respondentOk && factsOk && severanceOk && otherOk;
+    return respondentOk && factsOk;
   })();
 
   return (
@@ -419,14 +403,9 @@ export function EvidenceFlowView({
           <FreeFormStep value={freeForm} onChange={setFreeForm} />
         ) : (
           <ComplaintStep
-            applicant={applicant}
             respondent={respondent}
             facts={facts}
-            damageTypes={damageTypes}
             hasContract={hasContract}
-            onPatchApplicant={(patch) =>
-              setApplicant((prev) => ({ ...prev, ...patch }))
-            }
             onPatchRespondent={(patch) =>
               setRespondent((prev) => ({ ...prev, ...patch }))
             }
@@ -685,34 +664,22 @@ function FreeFormStep({
 // ──────────────────────────────────────
 
 interface ComplaintStepProps {
-  applicant: ApplicantInfo;
   respondent: ComplaintRespondent;
   facts: ComplaintFacts;
-  damageTypes: DamageTypeEnum[];
   hasContract: boolean;
-  onPatchApplicant: (patch: Partial<ApplicantInfo>) => void;
   onPatchRespondent: (patch: Partial<ComplaintRespondent>) => void;
   onPatchFacts: (patch: Partial<ComplaintFacts>) => void;
 }
 
 function ComplaintStep({
-  applicant,
   respondent,
   facts,
-  damageTypes,
   hasContract,
-  onPatchApplicant,
   onPatchRespondent,
   onPatchFacts,
 }: ComplaintStepProps): JSX.Element {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
-  const [showPaymentDatePicker, setShowPaymentDatePicker] = useState(false);
-
-  const needsSeverance = damageTypes.includes("SEVERANCE");
-  const needsOther = damageTypes.some((d) =>
-    ["WEEKLY_HOLIDAY", "OVERTIME", "NIGHT"].includes(d),
-  );
 
   return (
     <>
@@ -758,64 +725,7 @@ function ComplaintStep({
         </View>
       ) : null}
 
-      {/* 진정인(나) */}
-      <SectionHeader title="진정인 (본인)" />
-      <View
-        style={{
-          backgroundColor: "#FFFBEB",
-          borderRadius: 10,
-          padding: 10,
-          marginBottom: 10,
-          flexDirection: "row",
-          gap: 6,
-          alignItems: "flex-start",
-        }}
-      >
-        <Ionicons
-          name="lock-closed"
-          size={12}
-          color="#92400E"
-          style={{ marginTop: 1 }}
-        />
-        <Text
-          style={{ flex: 1, fontSize: 11, color: "#92400E", lineHeight: 16 }}
-        >
-          이 정보는 이 기기에만 저장됩니다 (서버 전송 X). 다음 사건부터 자동으로 채워져요.
-        </Text>
-      </View>
-
-      <LabeledTextInput
-        label="성명"
-        required
-        value={applicant.fullName}
-        onChange={(v) => onPatchApplicant({ fullName: v })}
-        placeholder="예: 홍길동"
-      />
-      <LabeledTextInput
-        label="주소 (송달용)"
-        required
-        value={applicant.address}
-        onChange={(v) => onPatchApplicant({ address: v })}
-        placeholder="예: 서울 강남구 ..."
-      />
-      <LabeledTextInput
-        label="휴대전화"
-        required
-        value={applicant.mobile}
-        onChange={(v) => onPatchApplicant({ mobile: v })}
-        placeholder="010-1234-5678"
-        keyboardType="phone-pad"
-      />
-      <LabeledTextInput
-        label="주민등록번호"
-        required
-        value={applicant.rrn}
-        onChange={(v) => onPatchApplicant({ rrn: v })}
-        placeholder="000000-0000000"
-      />
-
       {/* 피진정인(사업주) */}
-      <View style={{ height: 18 }} />
       <SectionHeader title="피진정인 (사업주)" />
 
       <LabeledTextInput
@@ -824,34 +734,6 @@ function ComplaintStep({
         value={respondent.workplaceName}
         onChange={(v) => onPatchRespondent({ workplaceName: v })}
         placeholder="예: OO카페 강남점"
-      />
-      <LabeledTextInput
-        label="사업장 주소 (실근무 장소)"
-        required
-        value={respondent.address ?? ""}
-        onChange={(v) => onPatchRespondent({ address: v.trim() || null })}
-        placeholder="관할 노동청이 자동 결정되는 칸이에요"
-      />
-      <LabeledTextInput
-        label="사업장 연락처"
-        value={respondent.workplacePhone ?? ""}
-        onChange={(v) =>
-          onPatchRespondent({ workplacePhone: v.trim() || null })
-        }
-        placeholder="02-1234-5678 (선택)"
-        keyboardType="phone-pad"
-      />
-      <LabeledTextInput
-        label="대표자 성명"
-        value={respondent.representativeName ?? ""}
-        onChange={(v) =>
-          onPatchRespondent({ representativeName: v.trim() || null })
-        }
-        placeholder={
-          hasContract
-            ? "계약서에서 자동으로 가져와요"
-            : "모르면 비워두세요 (있으면 입력)"
-        }
       />
 
       {/* 진정 내용 */}
@@ -973,31 +855,6 @@ function ComplaintStep({
         </>
       ) : null}
 
-      {/* 임금 지급일 (계약서 prefill 가능) */}
-      <View style={{ height: 6 }} />
-      <DateRow
-        label="임금 정기 지급일"
-        value={facts.wagePaymentDate}
-        onPress={() => setShowPaymentDatePicker(true)}
-      />
-      {showPaymentDatePicker ? (
-        <DateTimePicker
-          value={
-            facts.wagePaymentDate !== null
-              ? parseDateIso(facts.wagePaymentDate)
-              : new Date()
-          }
-          mode="date"
-          display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={(_, d) => {
-            if (Platform.OS === "android") setShowPaymentDatePicker(false);
-            if (d !== undefined) {
-              onPatchFacts({ wagePaymentDate: formatDateIso(d) });
-            }
-          }}
-        />
-      ) : null}
-
       {/* 체불 금액 */}
       <View style={{ height: 6 }} />
       <LabeledNumberInput
@@ -1007,34 +864,6 @@ function ComplaintStep({
         onChange={(n) => onPatchFacts({ totalUnpaidWage: n })}
         placeholder="예: 1200000"
         suffix="원"
-      />
-      {needsSeverance ? (
-        <LabeledNumberInput
-          label="체불 퇴직금"
-          required
-          value={facts.unpaidSeverance}
-          onChange={(n) => onPatchFacts({ unpaidSeverance: n })}
-          placeholder="퇴직금 미지급액"
-          suffix="원"
-        />
-      ) : null}
-      {needsOther ? (
-        <LabeledNumberInput
-          label="기타 체불금 (주휴/연장/야간수당 합계)"
-          required
-          value={facts.otherUnpaid}
-          onChange={(n) => onPatchFacts({ otherUnpaid: n })}
-          placeholder="해당 수당 미지급액 합계"
-          suffix="원"
-        />
-      ) : null}
-
-      {/* 처리결과 수신 동의 */}
-      <View style={{ height: 14 }} />
-      <ToggleRow
-        label="처리 결과를 SMS·이메일로 받기 (권장)"
-        value={applicant.wantsResultNotice}
-        onChange={(v) => onPatchApplicant({ wantsResultNotice: v })}
       />
 
       <View
@@ -1271,42 +1100,6 @@ function DateRow({
         </Text>
         <Ionicons name="calendar" size={16} color="#94A3B8" />
       </Pressable>
-    </View>
-  );
-}
-
-function ToggleRow({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: boolean;
-  onChange: (v: boolean) => void;
-}): JSX.Element {
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        backgroundColor: "#FFFFFF",
-        borderRadius: 10,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderWidth: 1,
-        borderColor: "#E2E8F0",
-      }}
-    >
-      <Text style={{ fontSize: 13, color: "#0F172A", flex: 1, paddingRight: 8 }}>
-        {label}
-      </Text>
-      <Switch
-        value={value}
-        onValueChange={onChange}
-        trackColor={{ false: "#CBD5E1", true: "#3182F6" }}
-        thumbColor="#FFFFFF"
-      />
     </View>
   );
 }

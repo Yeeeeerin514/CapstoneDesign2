@@ -23,10 +23,9 @@ import { ReviewListView } from "@/views/report/ui/ReviewListView";
 import { ReviewDetailView } from "@/views/report/ui/ReviewDetailView";
 import { ResolveReviewCard } from "@/views/report/ui/ResolveReviewCard";
 import { JobAnalysisResultView } from "./JobAnalysisResultView";
-import {
-  WageIssueAnalyzerView,
-  type ReviewIndustry,
-} from "./WageIssueAnalyzerView";
+
+/** 후기 목록 필터용 업종 (ReviewListView.initialIndustry와 동일). */
+type ReviewIndustry = "전체" | "카페·음식점" | "편의점" | "배달";
 
 export function HomeView() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -35,7 +34,6 @@ export function HomeView() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [showResult, setShowResult] = useState(false);
-  const [showWageAnalyzer, setShowWageAnalyzer] = useState(false);
   /** ReviewListView 진입 시 초기 industry 필터 ("전체"면 필터 없음). */
   const [reviewListIndustry, setReviewListIndustry] =
     useState<ReviewIndustry | null>(null);
@@ -122,7 +120,7 @@ export function HomeView() {
 
   const canSubmit = selectedImage !== null && !isAnalyzing;
 
-  // ReviewListView 오버레이 — 전체 보기 / 맞춤 분석 결과 진입 모두 이 분기 사용
+  // ReviewListView 오버레이 — 후기 전체 보기 진입
   if (reviewListIndustry !== null) {
     return (
       <ReviewListView
@@ -138,18 +136,6 @@ export function HomeView() {
       <ReviewDetailView
         reviewId={viewingReviewId}
         onBack={() => setViewingReviewId(null)}
-      />
-    );
-  }
-
-  if (showWageAnalyzer) {
-    return (
-      <WageIssueAnalyzerView
-        onClose={() => setShowWageAnalyzer(false)}
-        onShowSimilarCases={({ industry }) => {
-          setShowWageAnalyzer(false);
-          setReviewListIndustry(industry);
-        }}
       />
     );
   }
@@ -304,27 +290,6 @@ export function HomeView() {
             <Ionicons name="chevron-forward" size={14} color="#64748B" />
           </Pressable>
         </View>
-
-        {/* 맞춤 해결 사례 CTA */}
-        <Pressable
-          onPress={() => setShowWageAnalyzer(true)}
-          style={{
-            backgroundColor: "#1A5FAF",
-            borderRadius: 14,
-            padding: 14,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-          }}
-        >
-          <Ionicons name="sparkles" size={16} color="#FFFFFF" />
-          <Text
-            style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "700" }}
-          >
-            내 임금체불 유형 분석하여 맞춤 해결 사례 보기
-          </Text>
-        </Pressable>
 
         {/* Top 2 후기 카드 — ResolveReviewCard 공용 컴포넌트 */}
         {reviews.slice(0, 2).map((r) => (

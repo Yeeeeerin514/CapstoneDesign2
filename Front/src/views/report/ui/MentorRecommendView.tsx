@@ -428,16 +428,10 @@ export function MentorRecommendView({
                 }}
               >
                 <Text style={{ fontSize: 12, color: "#64748B" }}>
-                  해결 후 환급 예정
+                  멘토 즉시 지급
                 </Text>
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: "#16A34A",
-                    fontWeight: "600",
-                  }}
-                >
-                  {`+ ₩${PAYMENT_DISTRIBUTION.menteeRefund.toLocaleString()}`}
+                <Text style={{ fontSize: 12, color: "#64748B" }}>
+                  {`₩${PAYMENT_DISTRIBUTION.mentor.toLocaleString()}`}
                 </Text>
               </View>
               <View
@@ -448,10 +442,16 @@ export function MentorRecommendView({
                 }}
               >
                 <Text style={{ fontSize: 12, color: "#64748B" }}>
-                  멘토 수령
+                  사건 해결 시 멘토 성과보수
                 </Text>
-                <Text style={{ fontSize: 12, color: "#64748B" }}>
-                  {`₩${PAYMENT_DISTRIBUTION.mentor.toLocaleString()}`}
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: "#16A34A",
+                    fontWeight: "600",
+                  }}
+                >
+                  {`+ ₩${PAYMENT_DISTRIBUTION.mentorBonus.toLocaleString()}`}
                 </Text>
               </View>
               <View
@@ -460,11 +460,15 @@ export function MentorRecommendView({
                   justifyContent: "space-between",
                 }}
               >
-                <Text style={{ fontSize: 12, color: "#64748B" }}>
-                  플랫폼 수수료
+                <Text
+                  style={{ fontSize: 11, color: "#94A3B8", lineHeight: 16 }}
+                >
+                  미해결 종결 시 멘티 환급
                 </Text>
-                <Text style={{ fontSize: 12, color: "#64748B" }}>
-                  {`₩${PAYMENT_DISTRIBUTION.platform.toLocaleString()}`}
+                <Text
+                  style={{ fontSize: 11, color: "#94A3B8", lineHeight: 16 }}
+                >
+                  {`₩${PAYMENT_DISTRIBUTION.menteeRefund.toLocaleString()}`}
                 </Text>
               </View>
             </View>
