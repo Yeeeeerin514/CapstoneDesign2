@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { persistStorage } from "@/shared/lib/zustand-storage";
 import type {
   MentorBadge,
   MentorChatMessage,
@@ -41,7 +43,9 @@ interface MentorMatchState {
   markFeedbackSubmitted: (matchId: string) => void;
 }
 
-export const useMentorMatchStore = create<MentorMatchState>((set, get) => ({
+export const useMentorMatchStore = create<MentorMatchState>()(
+  persist(
+    (set, get) => ({
   matches: [],
 
   createMatch: ({
@@ -134,4 +138,11 @@ export const useMentorMatchStore = create<MentorMatchState>((set, get) => ({
         m.id === matchId ? { ...m, feedbackSubmitted: true } : m,
       ),
     })),
-}));
+    }),
+    {
+      name: "albasave-mentor-match",
+      storage: persistStorage,
+      partialize: (state) => ({ matches: state.matches }),
+    },
+  ),
+);
