@@ -11,7 +11,7 @@ interface Props {
   /** 하단 CTA 진입 — detail view에서는 생략 시 하단 버튼 미노출. */
   onRegister?: () => void;
   /**
-   * 하단 CTA 라벨 — 미지정 시 "사업장 등록하기 →".
+   * 하단 CTA 라벨 — 미지정 시 "내 일터로 등록하기 →".
    * 이미 등록된 업장에서 계약서만 추가하는 경우 "계약서 업로드 완료" 등으로 override.
    */
   submitLabel?: string;
@@ -549,7 +549,7 @@ export function ContractAnalysisView({
             <Text
               style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}
             >
-              {submitLabel ?? "사업장 등록하기 →"}
+              {submitLabel ?? "내 일터로 등록하기 →"}
             </Text>
           </TouchableOpacity>
         </View>

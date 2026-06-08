@@ -3,12 +3,16 @@ import { paymentProvider, PAYMENT_DISTRIBUTION } from "@/shared/lib/payment";
 import {
   createPayment,
   fetchMyPayments,
-  refundPayment,
+  settlePayment,
 } from "../api/payments-api";
 
 export type PaymentRecordStatus =
   | "paid"
+  | "settled_resolved"
+  | "settled_unresolved"
+  /** @deprecated 레거시 호환용. */
   | "refunded_partial"
+  /** @deprecated 레거시 호환용. */
   | "refunded_full";
 
 export interface PaymentRecord {
@@ -41,7 +45,19 @@ interface PaymentState {
     caseId: string;
   }) => Promise<ChargeResult>;
 
-  /** 사건 해결 후 멘티에게 일부 환급 (PAYMENT_DISTRIBUTION.menteeRefund). */
+  /**
+   * 사건 RESOLVED — 에스크로(₩4,000)를 멘토에게 성과보수로 추가 지급.
+   * 결제 status: paid → settled_resolved.
+   */
+  settleOnResolved: (paymentId: string) => Promise<void>;
+
+  /**
+   * 사건 UNRESOLVED — 에스크로(₩4,000)를 멘티에게 환급.
+   * 결제 status: paid → settled_unresolved.
+   */
+  settleOnUnresolved: (paymentId: string) => Promise<void>;
+
+  /** @deprecated 호환용. settleOnUnresolved와 동일 (기존 ResolveConfirmView 흐름). */
   refundAfterResolved: (paymentId: string) => Promise<void>;
 }
 
@@ -103,13 +119,15 @@ export const usePaymentStore = create<PaymentState>((set) => ({
     }
   },
 
-  refundAfterResolved: async (paymentId) => {
-    const refundAmount = PAYMENT_DISTRIBUTION.menteeRefund;
-    // 1) mock 환급
-    await paymentProvider.refund({ paymentId, amount: refundAmount });
+  settleOnResolved: async (paymentId) => {
+    // 1) mock PG — 멘토 추가 지급 (환급 API를 mock 멘토 보너스로 재사용)
+    await paymentProvider.refund({
+      paymentId,
+      amount: PAYMENT_DISTRIBUTION.mentorBonus,
+    });
     // 2) 백엔드 반영
     try {
-      const updated = await refundPayment(paymentId);
+      const updated = await settlePayment(paymentId, "RESOLVED");
       set((state) => ({
         records: state.records.map((r) => (r.id === paymentId ? updated : r)),
       }));
@@ -119,12 +137,44 @@ export const usePaymentStore = create<PaymentState>((set) => ({
           r.id === paymentId
             ? {
                 ...r,
-                status: "refunded_partial",
+                status: "settled_resolved",
                 refundedAt: new Date().toISOString(),
               }
             : r,
         ),
       }));
     }
+  },
+
+  settleOnUnresolved: async (paymentId) => {
+    // 1) mock PG — 멘티 환급
+    await paymentProvider.refund({
+      paymentId,
+      amount: PAYMENT_DISTRIBUTION.menteeRefund,
+    });
+    // 2) 백엔드 반영
+    try {
+      const updated = await settlePayment(paymentId, "UNRESOLVED");
+      set((state) => ({
+        records: state.records.map((r) => (r.id === paymentId ? updated : r)),
+      }));
+    } catch {
+      set((state) => ({
+        records: state.records.map((r) =>
+          r.id === paymentId
+            ? {
+                ...r,
+                status: "settled_unresolved",
+                refundedAt: new Date().toISOString(),
+              }
+            : r,
+        ),
+      }));
+    }
+  },
+
+  refundAfterResolved: async (paymentId) => {
+    // 호환 alias — 기존 호출자(ResolveConfirmView legacy)는 UNRESOLVED 경로로.
+    await usePaymentStore.getState().settleOnUnresolved(paymentId);
   },
 }));

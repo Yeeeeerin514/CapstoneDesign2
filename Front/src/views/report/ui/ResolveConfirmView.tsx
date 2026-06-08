@@ -13,16 +13,22 @@ interface ResolveConfirmViewProps {
   onAfterResolved?: () => void;
 }
 
+/**
+ * 임금 수령 확정 화면.
+ *  - "네, 받았어요" → 사건 RESOLVED + 멘토 성과보수(₩4,000) 추가 지급.
+ *  - "아직 못 받았어요" → 사건 상세로 복귀 (상태 변경 없음). 미해결 종결은
+ *    상세 화면의 별도 "미해결로 종결하기" 액션에서만 트리거.
+ */
 export function ResolveConfirmView({
   caseId,
   onBack,
   onAfterResolved,
 }: ResolveConfirmViewProps): JSX.Element {
   const updateCaseStatus = useReportStore((s) => s.updateCaseStatus);
-  const refundAfterResolved = usePaymentStore((s) => s.refundAfterResolved);
+  const settleOnResolved = usePaymentStore((s) => s.settleOnResolved);
 
   const handleConfirmResolved = async (): Promise<void> => {
-    // 1. 사건 상태 resolved로 변경 (resolvedAt 자동 채움)
+    // 1. 사건 상태 RESOLVED로 변경 (resolvedAt 자동 채움)
     updateCaseStatus(caseId, "RESOLVED");
 
     // 2. 이 사건에 연결된 결제 기록 찾기
@@ -31,12 +37,12 @@ export function ResolveConfirmView({
       (p) => p.caseId === caseId && p.status === "paid",
     );
 
-    // 3. 결제 기록 있으면 즉시 환급 처리
+    // 3. 결제 기록 있으면 멘토 성과보수 즉시 지급
     if (relatedPayment !== undefined) {
-      await refundAfterResolved(relatedPayment.id);
+      await settleOnResolved(relatedPayment.id);
       Alert.alert(
         "해결 확인",
-        `₩${PAYMENT_DISTRIBUTION.menteeRefund.toLocaleString()}이 환급되었습니다.\n경험을 나눠 다른 분들을 도와주세요.`,
+        `멘토에게 성과보수 ₩${PAYMENT_DISTRIBUTION.mentorBonus.toLocaleString()}이 지급되었습니다.\n함께 해결해주신 멘토에게 고마움을 전해주세요.`,
         [
           {
             text: "확인",
@@ -65,9 +71,9 @@ export function ResolveConfirmView({
     );
   };
 
-  const handleUnresolved = (): void => {
-    // 의도적으로 비어있음 — 화면 그대로 유지, 상태 변경 없음.
-    // 추후 별도 UnresolvedGuide 화면이 생기면 이 함수에 진입 로직 추가.
+  const handleStillWaiting = (): void => {
+    // "아직 못 받았어요" — 상태 변경 없이 사건 상세로 복귀.
+    onBack();
   };
 
   return (
@@ -168,28 +174,27 @@ export function ResolveConfirmView({
         </Pressable>
 
         <Pressable
-          onPress={handleUnresolved}
+          onPress={handleStillWaiting}
           style={{
             backgroundColor: "#FFFFFF",
             paddingVertical: 13,
             borderRadius: 10,
             alignItems: "center",
-            borderWidth: 1.5,
-            borderColor: "#DC2626",
+            borderWidth: 1,
+            borderColor: "#CBD5E1",
             flexDirection: "row",
             justifyContent: "center",
             gap: 6,
           }}
         >
-          <Ionicons name="warning-outline" size={16} color="#DC2626" />
           <Text
-            style={{ color: "#DC2626", fontSize: 14, fontWeight: "600" }}
+            style={{ color: "#475569", fontSize: 14, fontWeight: "600" }}
           >
             아직 못 받았어요
           </Text>
         </Pressable>
 
-        {/* 환급 안내 */}
+        {/* 멘토 성과보수 안내 */}
         <View
           style={{
             backgroundColor: "#EFF6FF",
@@ -215,7 +220,7 @@ export function ResolveConfirmView({
               lineHeight: 17,
             }}
           >
-            {`멘토 매칭 결제 이력이 있으면 해결 확인 시 ₩${PAYMENT_DISTRIBUTION.menteeRefund.toLocaleString()}이 자동 환급됩니다.`}
+            {`멘토 매칭 결제 이력이 있으면 해결 확인 시 멘토에게 성과보수 ₩${PAYMENT_DISTRIBUTION.mentorBonus.toLocaleString()}이 자동 지급됩니다.`}
           </Text>
         </View>
       </ScrollView>

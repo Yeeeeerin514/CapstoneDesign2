@@ -7,53 +7,20 @@ import { useReportStore } from "@/features/report-submit";
 interface SubmissionResultViewProps {
   caseId: string;
   onGoCaseDetail: () => void;
-  onConnectMentor: () => void;
+  /** 호환 prop — 더 이상 화면에서 사용하지 않음. 부모가 detail에서 처리. */
+  onConnectMentor?: () => void;
 }
 
-interface TimelineEntry {
-  number: string;
-  title: string;
-  desc: string;
-  timing: string;
-}
-
-const TIMELINE: TimelineEntry[] = [
-  {
-    number: "1",
-    title: "근로감독관 배정",
-    desc: "1~2주 이내 사건이 담당 감독관에게 배정됩니다",
-    timing: "약 1~2주 후",
-  },
-  {
-    number: "2",
-    title: "출석요구서 수신",
-    desc: "사업주와 근로자 모두에게 출석요구서가 발송됩니다",
-    timing: "배정 후 1~2주",
-  },
-  {
-    number: "3",
-    title: "출석조사",
-    desc: "지정된 날짜에 노동청에 출석해 조사를 받습니다",
-    timing: "요구서 수신 후",
-  },
-  {
-    number: "4",
-    title: "시정지시",
-    desc: "체불 사실이 확인되면 사업주에게 지급 시정지시",
-    timing: "조사 후",
-  },
-  {
-    number: "5",
-    title: "해결",
-    desc: "사업주가 지급하면 사건 종결, 미이행 시 형사입건",
-    timing: "시정 후",
-  },
-];
-
+/**
+ * 진정서 제출 직후 노출되는 단순 확인 화면.
+ *
+ * 정책: 제출 후 5단계 timeline·멘토 결제 CTA 등 부가 정보 모두 제거.
+ * 사용자는 "사건 상세 보기" 하나만 누르면 되고, 그곳에서 임금 수령 여부만 확인.
+ */
 export function SubmissionResultView({
   caseId,
   onGoCaseDetail,
-  onConnectMentor,
+  onConnectMentor: _onConnectMentor,
 }: SubmissionResultViewProps): JSX.Element | null {
   const reportCase = useReportStore((s) =>
     s.cases.find((c) => c.id === caseId),
@@ -76,227 +43,127 @@ export function SubmissionResultView({
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        contentContainerStyle={{
+          padding: 16,
+          paddingBottom: 32,
+          flexGrow: 1,
+          justifyContent: "space-between",
+        }}
       >
-        {/* 제출 완료 헤더 */}
-        <View
-          style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: 14,
-            padding: 24,
-            alignItems: "center",
-            marginBottom: 16,
-          }}
-        >
+        <View>
+          {/* 제출 완료 헤더 */}
           <View
             style={{
-              width: 72,
-              height: 72,
-              borderRadius: 36,
-              backgroundColor: "#DCFCE7",
+              backgroundColor: "#FFFFFF",
+              borderRadius: 16,
+              padding: 28,
               alignItems: "center",
-              justifyContent: "center",
-              marginBottom: 14,
+              marginBottom: 16,
             }}
           >
-            <Ionicons name="checkmark" size={40} color="#16A34A" />
-          </View>
-          <Text
-            style={{
-              fontSize: 20,
-              fontWeight: "700",
-              color: "#0F172A",
-              marginBottom: 6,
-            }}
-          >
-            진정서 제출 완료!
-          </Text>
-          <Text
-            style={{
-              fontSize: 13,
-              color: "#475569",
-              textAlign: "center",
-              marginBottom: 8,
-            }}
-          >
-            {`${reportCase.workplaceName} 임금체불 진정이 접수되었습니다`}
-          </Text>
-          <Text style={{ fontSize: 11, color: "#94A3B8" }}>
-            {`제출일: ${submittedDate}`}
-          </Text>
-        </View>
-
-        {/* 앞으로의 진행 일정 */}
-        <View
-          style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: 14,
-            padding: 16,
-            marginBottom: 12,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "700",
-              color: "#0F172A",
-              marginBottom: 14,
-            }}
-          >
-            앞으로 무슨 일이 일어나나요?
-          </Text>
-          {TIMELINE.map((item, idx) => (
             <View
-              key={item.number}
               style={{
-                flexDirection: "row",
-                gap: 12,
-                marginBottom: idx === TIMELINE.length - 1 ? 0 : 14,
+                width: 84,
+                height: 84,
+                borderRadius: 42,
+                backgroundColor: "#DCFCE7",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 18,
               }}
             >
-              <View style={{ alignItems: "center" }}>
-                <View
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 12,
-                    backgroundColor: "#FFFFFF",
-                    borderWidth: 1.5,
-                    borderColor: "#CBD5E1",
-                    justifyContent: "center",
-                    alignItems: "center",
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      fontWeight: "700",
-                      color: "#94A3B8",
-                    }}
-                  >
-                    {item.number}
-                  </Text>
-                </View>
-                {idx < TIMELINE.length - 1 ? (
-                  <View
-                    style={{
-                      width: 2,
-                      flex: 1,
-                      backgroundColor: "#F1F5F9",
-                      marginTop: 4,
-                      minHeight: 14,
-                    }}
-                  />
-                ) : null}
-              </View>
-              <View style={{ flex: 1, paddingBottom: 4 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: "600",
-                      color: "#0F172A",
-                    }}
-                  >
-                    {item.title}
-                  </Text>
-                  <Text style={{ fontSize: 11, color: "#94A3B8" }}>
-                    {item.timing}
-                  </Text>
-                </View>
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: "#64748B",
-                    marginTop: 2,
-                    lineHeight: 17,
-                  }}
-                >
-                  {item.desc}
-                </Text>
-              </View>
+              <Ionicons name="checkmark" size={48} color="#16A34A" />
             </View>
-          ))}
-        </View>
-
-        {/* 출석조사 멘토 연결 CTA */}
-        <View
-          style={{
-            backgroundColor: "#FFFFFF",
-            borderRadius: 14,
-            padding: 16,
-            marginBottom: 16,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              marginBottom: 6,
-            }}
-          >
-            <Ionicons name="school" size={16} color="#3182F6" />
             <Text
-              style={{ fontSize: 14, fontWeight: "700", color: "#0F172A" }}
+              style={{
+                fontSize: 22,
+                fontWeight: "700",
+                color: "#0F172A",
+                marginBottom: 8,
+              }}
             >
-              출석조사가 처음이라 막막하신가요?
+              진정서 제출 완료!
+            </Text>
+            <Text
+              style={{
+                fontSize: 13,
+                color: "#475569",
+                textAlign: "center",
+                marginBottom: 10,
+                lineHeight: 20,
+              }}
+            >
+              {`${reportCase.workplaceName} 임금체불 진정이\n노동청에 정상 접수되었습니다.`}
+            </Text>
+            <Text style={{ fontSize: 12, color: "#94A3B8" }}>
+              {`제출일: ${submittedDate}`}
             </Text>
           </View>
-          <Text
+
+          {/* 다음 단계 안내 */}
+          <View
             style={{
-              fontSize: 12,
-              color: "#475569",
-              lineHeight: 18,
-              marginBottom: 12,
+              backgroundColor: "#EBF3FF",
+              borderRadius: 12,
+              padding: 16,
+              borderWidth: 1,
+              borderColor: "#B5D4F4",
+              flexDirection: "row",
+              gap: 10,
+              alignItems: "flex-start",
             }}
           >
-            같은 경험을 가진 멘토와 함께 준비하세요
-          </Text>
-          <Pressable
-            onPress={onConnectMentor}
-            style={{
-              backgroundColor: "#3182F6",
-              paddingVertical: 12,
-              borderRadius: 10,
-              alignItems: "center",
-            }}
-          >
-            <Text
-              style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}
-            >
-              출석조사 멘토 연결하기 · ₩10,000
-            </Text>
-          </Pressable>
+            <Ionicons
+              name="information-circle"
+              size={20}
+              color="#1B64DA"
+              style={{ marginTop: 1 }}
+            />
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: "700",
+                  color: "#185FA5",
+                  marginBottom: 6,
+                }}
+              >
+                사업주로부터 임금을 받으면 알려주세요
+              </Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: "#475569",
+                  lineHeight: 18,
+                }}
+              >
+                사건 상세 화면에서 임금 수령 여부만 알려주시면 됩니다.
+                노동청 절차 안내·진행 추적은 별도로 챙기지 않으셔도 돼요.
+              </Text>
+            </View>
+          </View>
         </View>
 
-        {/* 사건 상세 보기 */}
+        {/* 단일 메인 CTA */}
         <Pressable
           onPress={onGoCaseDetail}
           style={{
-            paddingVertical: 13,
-            borderRadius: 10,
-            backgroundColor: "#FFFFFF",
-            borderWidth: 1,
-            borderColor: "#E2E8F0",
+            backgroundColor: "#3182F6",
+            paddingVertical: 16,
+            borderRadius: 12,
+            alignItems: "center",
             flexDirection: "row",
             justifyContent: "center",
-            alignItems: "center",
-            gap: 4,
+            gap: 6,
+            marginTop: 20,
           }}
         >
           <Text
-            style={{ fontSize: 14, fontWeight: "600", color: "#475569" }}
+            style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "700" }}
           >
             사건 상세 보기
           </Text>
-          <Ionicons name="chevron-forward" size={14} color="#475569" />
+          <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
         </Pressable>
       </ScrollView>
     </SafeAreaView>

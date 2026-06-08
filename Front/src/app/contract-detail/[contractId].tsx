@@ -26,7 +26,7 @@ type LoadState =
 /**
  * 계약서 단건 상세 — /contract-detail/{contractId}
  * GET /api/contracts/{contractId} 응답을 받아 기존 ContractAnalysisView로 표시.
- * onRegister 미전달 → 하단 "사업장 등록하기" 버튼 숨김 (read-only).
+ * onRegister 미전달 → 하단 "내 일터로 등록하기" 버튼 숨김 (read-only).
  */
 export default function ContractDetailScreen(): JSX.Element {
   const { contractId } = useLocalSearchParams<{ contractId: string }>();

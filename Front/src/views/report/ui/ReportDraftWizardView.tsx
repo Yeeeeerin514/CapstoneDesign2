@@ -986,117 +986,242 @@ function StructuredPreview({
   const damages = reportCase.damageTypeEnums ?? [];
   const facts = reportCase.facts;
   const respondent = reportCase.respondent;
-  const total = facts?.totalUnpaidWage ?? 0;
-  const today = new Date().toLocaleDateString("ko-KR");
+  const laborOffice = reportCase.business?.laborOffice ?? "";
 
-  const applicantName = applicant?.fullName ?? "[성명]";
-  const applicantPhone = applicant?.phone ?? applicant?.mobile ?? "[연락처]";
-  const applicantAddress = applicant?.address ?? "[주소]";
+  const employeeCountText =
+    respondent?.employeeCount !== null && respondent?.employeeCount !== undefined
+      ? `${respondent.employeeCount}명`
+      : "";
 
   return (
     <>
       <Text
         style={{
-          fontSize: 18,
+          fontSize: 22,
           fontWeight: "700",
           color: "#0F172A",
           textAlign: "center",
+          letterSpacing: 10,
           marginBottom: 16,
         }}
       >
         진　정　서
       </Text>
 
+      {/* 1. 진정인 */}
       <Text style={previewSectionStyle}>1. 진정인</Text>
-      <Text style={previewLineStyle}>{`   성명: ${applicantName}`}</Text>
-      <Text style={previewLineStyle}>{`   연락처: ${applicantPhone}`}</Text>
-      <Text style={previewLineStyle}>{`   주소: ${applicantAddress}`}</Text>
+      <View style={tableStyle}>
+        <DoubleRow
+          labelA="성　　명"
+          valueA={applicant?.fullName ?? ""}
+          labelB="주민등록번호"
+          valueB={applicant?.rrn ?? ""}
+        />
+        <SingleRow label="주　　소" value={applicant?.address ?? ""} />
+        <DoubleRow
+          labelA="전 화 번 호"
+          valueA={applicant?.phone ?? ""}
+          labelB="휴대전화번호"
+          valueB={applicant?.mobile ?? ""}
+        />
+        <SingleRow label="전자우편주소" value={applicant?.email ?? ""} />
+        <DoubleRow
+          labelA="처리상황 수신여부"
+          valueA={renderYesNo(applicant?.wantsResultNotice)}
+          labelB="노동포털 통지여부"
+          valueB={renderYesNo(applicant?.wantsLaborOfficeNotice)}
+        />
+      </View>
 
+      {/* 2. 피진정인 */}
       <Text style={previewSectionStyle}>2. 피진정인</Text>
-      <Text style={previewLineStyle}>
-        {`   사업장명: ${reportCase.workplaceName}`}
-      </Text>
-      <Text style={previewLineStyle}>
-        {`   대표자: ${respondent?.representativeName ?? "[사업주명]"}`}
-      </Text>
-      <Text style={previewLineStyle}>
-        {`   연락처: ${respondent?.phone ?? "[사업주 연락처]"}`}
-      </Text>
-      <Text style={previewLineStyle}>
-        {`   주소: ${respondent?.address ?? "[사업장 주소]"}`}
-      </Text>
+      <View style={tableStyle}>
+        <DoubleRow
+          labelA="성　　명"
+          valueA={respondent?.representativeName ?? ""}
+          labelB="연 락 처"
+          valueB={respondent?.phone ?? ""}
+        />
+        <SingleRow label="주　　소" value={respondent?.address ?? ""} />
+        <SingleRow
+          label="사업체 구분"
+          value={`${cbox(respondent?.businessType === "WORKPLACE")} 사업장   ${cbox(
+            respondent?.businessType === "CONSTRUCTION_SITE",
+          )} 공사현장`}
+        />
+        <SingleRow
+          label="사 업 장 명"
+          value={respondent?.workplaceName ?? reportCase.workplaceName}
+        />
+        <SingleRow
+          label={"사업장 주소\n(실근무장소)"}
+          value={respondent?.address ?? ""}
+        />
+        <DoubleRow
+          labelA="사업장전화번호"
+          valueA={respondent?.workplacePhone ?? ""}
+          labelB="근 로 자 수"
+          valueB={employeeCountText}
+        />
+      </View>
 
+      {/* 3. 진정 내용 */}
       <Text style={previewSectionStyle}>3. 진정 내용</Text>
-      <Text style={previewLineStyle}>
-        {`   입사일: ${facts?.employmentStartDate ?? "-"}`}
-      </Text>
-      {facts?.employmentStatus === "FORMER" ? (
-        <Text style={previewLineStyle}>
-          {`   퇴사일: ${facts?.employmentEndDate ?? "-"}`}
-        </Text>
-      ) : (
-        <Text style={previewLineStyle}>{`   재직 상태: 재직 중`}</Text>
-      )}
-      <Text style={previewLineStyle}>
-        {`   체불임금 총액: ₩${total.toLocaleString()}`}
-      </Text>
+      <View style={tableStyle}>
+        <DoubleRow
+          labelA="입 사 일"
+          valueA={facts?.employmentStartDate ?? ""}
+          labelB="퇴 사 일"
+          valueB={facts?.employmentEndDate ?? ""}
+        />
+        <DoubleRow
+          labelA="체불임금총액"
+          valueA={formatMoneyOrEmpty(facts?.totalUnpaidWage ?? null)}
+          labelB="퇴직 여부"
+          valueB={`${cbox(facts?.employmentStatus === "FORMER")} 퇴직   ${cbox(facts?.employmentStatus === "CURRENT")} 재직`}
+        />
+        <DoubleRow
+          labelA="체불퇴직금액"
+          valueA={formatMoneyOrEmpty(facts?.unpaidSeverance ?? null)}
+          labelB="기타체불금액"
+          valueB={formatMoneyOrEmpty(facts?.otherUnpaid ?? null)}
+        />
+        <SingleRow label="업 무 내 용" value={facts?.jobDescription ?? ""} />
+        <DoubleRow
+          labelA="임금 지급일"
+          valueA={facts?.wagePaymentDate ?? ""}
+          labelB="근로계약방법"
+          valueB={`${cbox(facts?.contractMethod === "WRITTEN")} 서면   ${cbox(facts?.contractMethod === "ORAL")} 구두`}
+        />
 
-      <Text
-        style={{ ...previewLineStyle, marginTop: 8, fontWeight: "600" }}
-      >
-        {`   피해 유형`}
-      </Text>
-      {damages.map((d) => (
-        <Text key={d} style={previewLineStyle}>
-          {`     - ${DAMAGE_LABEL[d]}`}
-        </Text>
-      ))}
+        {/* 내용 — 큰 텍스트 칸 */}
+        <View style={contentRowStyle}>
+          <View style={contentLabelStyle}>
+            <Text style={labelTextStyle}>내　　용</Text>
+          </View>
+          <View style={contentValueStyle}>
+            <Text style={contentSubLabelStyle}>[피해 유형]</Text>
+            {damages.length > 0 ? (
+              damages.map((d) => (
+                <Text key={d} style={contentBodyStyle}>
+                  · {DAMAGE_LABEL[d]}
+                </Text>
+              ))
+            ) : (
+              <Text style={contentBodyStyle}>· 임금체불</Text>
+            )}
 
-      <Text style={{ ...previewLineStyle, marginTop: 8, fontWeight: "600" }}>
-        {`   상황 설명`}
-      </Text>
-      <Text style={previewLineStyle}>
-        {`   ${reportCase.freeFormDescription ?? "(상황 설명 미입력)"}`}
-      </Text>
+            <Text style={[contentSubLabelStyle, { marginTop: 8 }]}>
+              [상황 설명]
+            </Text>
+            <Text style={contentBodyStyle}>
+              {reportCase.freeFormDescription ?? ""}
+            </Text>
 
-      <Text style={{ ...previewLineStyle, marginTop: 8, fontWeight: "600" }}>
-        {`   협의 시도 여부`}
-      </Text>
-      <Text style={previewLineStyle}>{`   ${negotiationText}`}</Text>
+            <Text style={[contentSubLabelStyle, { marginTop: 8 }]}>
+              [협의 시도 여부]
+            </Text>
+            <Text style={contentBodyStyle}>{negotiationText}</Text>
+          </View>
+        </View>
 
-      <Text style={{ ...previewLineStyle, marginTop: 14 }}>
-        위와 같이 진정합니다.
-      </Text>
+        {/* 파일 첨부 */}
+        <View style={[contentRowStyle, { borderBottomWidth: 0 }]}>
+          <View style={contentLabelStyle}>
+            <Text style={labelTextStyle}>파 일 첨 부</Text>
+          </View>
+          <View style={contentValueStyle}>
+            {(reportCase.evidenceFiles ?? []).length === 0 ? (
+              <Text style={contentBodyStyle}> </Text>
+            ) : (
+              (reportCase.evidenceFiles ?? []).map((f, i) => (
+                <Text key={f.id} style={contentBodyStyle}>
+                  {i + 1}. {f.name}
+                </Text>
+              ))
+            )}
+          </View>
+        </View>
+      </View>
+
       <Text
         style={{
-          ...previewLineStyle,
-          textAlign: "right",
-          marginTop: 16,
-        }}
-      >
-        {today}
-      </Text>
-      <Text
-        style={{
-          ...previewLineStyle,
-          textAlign: "right",
-          marginBottom: 14,
-        }}
-      >
-        {`진정인: ${applicantName} (서명)`}
-      </Text>
-
-      <Text
-        style={{
-          ...previewLineStyle,
           textAlign: "center",
-          color: "#475569",
-          marginTop: 4,
+          marginTop: 24,
+          fontSize: 14,
+          fontWeight: "600",
+          color: "#0F172A",
+          letterSpacing: 1,
         }}
       >
-        [관할 고용노동청] 귀하
+        (　{laborOffice}　)고용노동(지)청장 귀하
       </Text>
     </>
+  );
+}
+
+// ──────────────────────────────────────────
+// Preview 폼 helper
+// ──────────────────────────────────────────
+
+function cbox(on: boolean): string {
+  return on ? "■" : "☐";
+}
+
+function renderYesNo(v: boolean | undefined): string {
+  return `${cbox(v === true)} 예   ${cbox(v === false)} 아니오`;
+}
+
+function formatMoneyOrEmpty(v: number | null): string {
+  if (v === null || v === 0) return "";
+  return `${v.toLocaleString()}원`;
+}
+
+function SingleRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}): JSX.Element {
+  return (
+    <View style={rowStyle}>
+      <View style={labelCellStyle}>
+        <Text style={labelTextStyle}>{label}</Text>
+      </View>
+      <View style={[valueCellStyle, { flex: 3 }]}>
+        <Text style={valueTextStyle}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+function DoubleRow({
+  labelA,
+  valueA,
+  labelB,
+  valueB,
+}: {
+  labelA: string;
+  valueA: string;
+  labelB: string;
+  valueB: string;
+}): JSX.Element {
+  return (
+    <View style={rowStyle}>
+      <View style={labelCellStyle}>
+        <Text style={labelTextStyle}>{labelA}</Text>
+      </View>
+      <View style={valueCellStyle}>
+        <Text style={valueTextStyle}>{valueA}</Text>
+      </View>
+      <View style={labelCellStyle}>
+        <Text style={labelTextStyle}>{labelB}</Text>
+      </View>
+      <View style={valueCellStyle}>
+        <Text style={valueTextStyle}>{valueB}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -1113,3 +1238,85 @@ const previewSectionStyle = {
   marginTop: 14,
   marginBottom: 6,
 };
+
+const tableStyle = {
+  borderWidth: 1,
+  borderColor: "#222",
+  borderRadius: 2,
+} as const;
+
+const rowStyle = {
+  flexDirection: "row",
+  borderBottomWidth: 1,
+  borderBottomColor: "#222",
+  minHeight: 32,
+} as const;
+
+const labelCellStyle = {
+  flex: 1.1,
+  backgroundColor: "#F4F5F7",
+  paddingHorizontal: 6,
+  paddingVertical: 6,
+  justifyContent: "center",
+  borderRightWidth: 1,
+  borderRightColor: "#222",
+} as const;
+
+const valueCellStyle = {
+  flex: 1.4,
+  backgroundColor: "#FFFFFF",
+  paddingHorizontal: 6,
+  paddingVertical: 6,
+  justifyContent: "center",
+  borderRightWidth: 1,
+  borderRightColor: "#222",
+} as const;
+
+const labelTextStyle = {
+  fontSize: 11,
+  color: "#222",
+  fontWeight: "500" as const,
+} as const;
+
+const valueTextStyle = {
+  fontSize: 11,
+  color: "#0F172A",
+} as const;
+
+const contentRowStyle = {
+  flexDirection: "row",
+  borderBottomWidth: 1,
+  borderBottomColor: "#222",
+  minHeight: 80,
+} as const;
+
+const contentLabelStyle = {
+  flex: 1.1,
+  backgroundColor: "#F4F5F7",
+  paddingHorizontal: 6,
+  paddingVertical: 8,
+  justifyContent: "flex-start",
+  borderRightWidth: 1,
+  borderRightColor: "#222",
+} as const;
+
+const contentValueStyle = {
+  flex: 3.9,
+  backgroundColor: "#FFFFFF",
+  paddingHorizontal: 8,
+  paddingVertical: 8,
+} as const;
+
+const contentSubLabelStyle = {
+  fontSize: 11,
+  fontWeight: "700" as const,
+  color: "#333",
+  marginBottom: 2,
+} as const;
+
+const contentBodyStyle = {
+  fontSize: 11,
+  color: "#0F172A",
+  lineHeight: 18,
+  marginLeft: 4,
+} as const;
