@@ -32,7 +32,9 @@ public class User {
     @Column(name = "fcm_token")
     private String fcmToken;
 
-    //@Column(name = "role", ) // 추후 멘토멘티 기능 코드 반영하여 user 테이블에 role 컬럼 추가 예정
+    @Builder.Default
+    @Column(name = "role", nullable = false)
+    private boolean isMentor = false;
 
     // business 테이블과 N:M 매핑
     // PartTimeJob 테이블 (다대다 관계 해소 테이블) 을 통해서만 어떤 사업장에서 일하는지 알 수 있습니다.
