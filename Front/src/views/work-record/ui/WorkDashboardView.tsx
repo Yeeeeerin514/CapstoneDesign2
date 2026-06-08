@@ -335,17 +335,19 @@ export function WorkDashboardView({
                 {`✓ 주 ${stats.weeklyTargetHours}시간까지 ${remainingHours}시간 남았습니다`}
               </Text>
             </View>
-            <View
-              style={{
-                backgroundColor: colors.surface,
-                borderRadius: radius.sm,
-                padding: 10,
-              }}
-            >
-              <Text style={typography.body2}>
-                ✓ 이번 주 주휴수당이 적용됩니다 (8시간 추가)
-              </Text>
-            </View>
+            {stats.weeklyWorkedHours >= 15 ? (
+              <View
+                style={{
+                  backgroundColor: colors.surface,
+                  borderRadius: radius.sm,
+                  padding: 10,
+                }}
+              >
+                <Text style={typography.body2}>
+                  ✓ 주 15시간 이상 근무 — 주휴수당 지급 대상이에요
+                </Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -446,7 +448,7 @@ export function WorkDashboardView({
                 marginTop: 8,
               }}
             >
-              {`시급 ₩10,000 × ${stats.weeklyWorkedHours}시간`}
+              {`시급 약 ₩${Math.round(stats.weeklyWage / Math.max(stats.weeklyWorkedHours, 1)).toLocaleString()} × ${stats.weeklyWorkedHours}시간`}
             </Text>
           </View>
 
@@ -485,7 +487,7 @@ export function WorkDashboardView({
                 marginTop: 8,
               }}
             >
-              월~금 중 4일 근무
+              이번 주 기준
             </Text>
           </View>
         </View>

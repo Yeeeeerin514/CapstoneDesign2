@@ -60,7 +60,7 @@ function toggleArray<T>(
 }
 
 export function MentorRegisterView({ onBack, onSaved, verification }: Props): JSX.Element {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // 필수 항목

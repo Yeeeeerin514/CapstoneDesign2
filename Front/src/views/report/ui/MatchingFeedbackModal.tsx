@@ -54,6 +54,7 @@ export function MatchingFeedbackModal({
       await submitMatchingFeedback(matchId, {
         rating,
         resolved,
+        chatDays: Number(chatDays) || 0,
         comment: comment.trim() || undefined,
       });
       notify(
