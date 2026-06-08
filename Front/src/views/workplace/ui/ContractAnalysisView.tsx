@@ -475,6 +475,57 @@ export function ContractAnalysisView({
             />
           </View>
         )}
+
+        {/* 법률 가이드 탭 */}
+        {activeTab === "guide" && (
+          <View style={{ gap: 8 }}>
+            <GuideCard
+              title="위반을 발견했다면 이렇게 하세요"
+              law="노동청 진정"
+              body="고용노동부 고객상담센터(☎1350) 또는 관할 지방고용노동청에 '진정'을 넣을 수 있어요. 온라인은 고용노동부 노동포털(민원마당)에서 신청합니다. 근로계약서·급여명세·근무기록을 함께 제출하면 처리가 빨라져요."
+            />
+            {result.issues.length > 0 ? (
+              result.issues.map((issue, idx) => {
+                const law =
+                  typeof issue.legalBasis === "string"
+                    ? issue.legalBasis
+                    : (issue.legalBasis?.law ?? "관련 법령");
+                const body =
+                  issue.legalBasisExcerpt !== null &&
+                  issue.legalBasisExcerpt !== undefined &&
+                  issue.legalBasisExcerpt !== ""
+                    ? issue.legalBasisExcerpt
+                    : issue.description;
+                return (
+                  <GuideCard
+                    key={idx}
+                    title={issue.title}
+                    law={law.length > 0 ? law : "관련 법령"}
+                    body={body}
+                  />
+                );
+              })
+            ) : (
+              <GuideCard
+                title="계약서상 뚜렷한 위반은 없었어요"
+                law="참고"
+                body="다만 실제 근무 중 임금체불·주휴수당 미지급이 생기면 근무기록(출퇴근·급여명세)을 모아 신고할 수 있어요."
+              />
+            )}
+            <Text
+              style={{
+                fontSize: 10,
+                color: "#94A3B8",
+                lineHeight: 15,
+                marginTop: 4,
+                paddingHorizontal: 2,
+              }}
+            >
+              ※ 본 가이드는 AI 분석 기반 일반 정보이며 법률 자문이 아닙니다. 구체적
+              사안은 공인노무사·변호사와 상담하세요.
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       {onRegister !== undefined ? (

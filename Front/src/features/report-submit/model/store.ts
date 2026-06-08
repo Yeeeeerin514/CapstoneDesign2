@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { persistStorage } from "@/shared/lib/zustand-storage";
 import {
   INITIAL_EVIDENCE,
   STEP_ORDER,
@@ -170,7 +172,9 @@ interface ReportStoreState {
   patchFacts: (caseId: string, patch: Partial<ComplaintFacts>) => void;
 }
 
-export const useReportStore = create<ReportStoreState>((set, get) => ({
+export const useReportStore = create<ReportStoreState>()(
+  persist(
+    (set, get) => ({
   cases: [],
   shouldSkipNextFocusReset: false,
   setShouldSkipNextFocusReset: (value) =>
@@ -584,4 +588,12 @@ export const useReportStore = create<ReportStoreState>((set, get) => ({
     set((s) => ({
       cases: s.cases.filter((c) => c.id !== caseId),
     })),
-}));
+    }),
+    {
+      name: "albasave-report",
+      storage: persistStorage,
+      // 사건 목록만 영속화 (UI 트랜지언트 플래그는 제외)
+      partialize: (state) => ({ cases: state.cases }),
+    },
+  ),
+);

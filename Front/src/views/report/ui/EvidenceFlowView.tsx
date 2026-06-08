@@ -266,29 +266,14 @@ export function EvidenceFlowView({
         facts,
       });
     } catch (err) {
+      // 서버 저장은 best-effort. 신규 신고 흐름은 클라이언트(로컬+영속) 기반이라
+      // 서버 영속이 아직 없어 실패할 수 있음 → 진행을 막지 않고 조용히 로컬로 계속.
+      // (진정인/진정 내용은 이미 store + AsyncStorage에 저장돼 있어 데이터 유실 없음)
       serverSaved = false;
-      const msg =
-        err instanceof Error ? err.message : "서버 저장에 실패했어요.";
-      const proceed = await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          "서버 저장 실패",
-          `${msg}\n\n로컬에는 저장되었어요. 다음 단계로 진행할까요?`,
-          [
-            {
-              text: "취소",
-              style: "cancel",
-              onPress: () => resolve(false),
-            },
-            { text: "진행", onPress: () => resolve(true) },
-          ],
-          // Android 백버튼 / iOS 외부 탭 등 dismiss 시 false로 resolve
-          { onDismiss: () => resolve(false), cancelable: true },
-        );
-      });
-      if (!proceed) {
-        setIsSubmitting(false);
-        return;
-      }
+      console.warn(
+        "[EvidenceFlowView] evidence 서버 저장 실패(로컬 보존, 계속 진행):",
+        err instanceof Error ? err.message : err,
+      );
     }
 
     setIsSubmitting(false);
