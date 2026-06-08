@@ -2,8 +2,6 @@ package com.albasave.albasave_server.report.service;
 
 import com.albasave.albasave_server.report.domain.BusinessSnapshot;
 import com.albasave.albasave_server.report.domain.ComplaintFacts;
-import com.albasave.albasave_server.report.domain.ContractMethod;
-import com.albasave.albasave_server.report.domain.EmploymentStatus;
 import com.albasave.albasave_server.report.domain.Report;
 import com.albasave.albasave_server.report.domain.RespondentInfo;
 import com.albasave.albasave_server.report.domain.damageTypeCode;
@@ -19,13 +17,11 @@ import com.albasave.albasave_server.report.exception.ReportAccessDeniedException
 import com.albasave.albasave_server.report.repository.ReportRepository;
 import com.albasave.albasave_server.userinfo.domain.User;
 import com.albasave.albasave_server.userinfo.repository.UserRepository;
-import com.albasave.albasave_server.workinglog.domain.PartTimeJob;
 import com.albasave.albasave_server.workinglog.repository.PartTimeJobRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -126,76 +122,25 @@ public class ReportService {
         return new AiDraftResponse(content);
     }
 
-    /** Report에 저장된 사실로 AI 프롬프트 컨텍스트를 구성. 없는 값은 null(→ 프롬프트에서 "(미입력)"). */
+    /**
+     * Report에 저장된 사실로 AI 프롬프트 컨텍스트를 구성.
+     * 진정 내용 작성에 필요한 5가지(피해유형·자연어서술·사업장명·입사일·체불총액)만 담는다.
+     * 없는 값은 null(→ 프롬프트에서 "(미입력)").
+     */
     private AiDraftContext buildAiDraftContext(Report report) {
         List<String> typeLabels = report.getDamageTypes().stream()
                 .map(damageTypeCode::getDescription)
                 .toList();
 
-        String freeForm = report.getFreeFormDescription();
-
         BusinessSnapshot biz = report.getBusiness();
         ComplaintFacts facts = report.getFacts();
-        PartTimeJob job = report.getPartTimeJob();
 
         return AiDraftContext.builder()
                 .damageTypeLabels(typeLabels)
-                .freeFormDescription(freeForm)
+                .freeFormDescription(report.getFreeFormDescription())
                 .businessName(biz != null ? biz.getName() : null)
-                .businessAddress(biz != null ? biz.getAddress() : null)
-                .employmentStartDate(firstNonBlank(
-                        facts != null ? facts.getEmploymentStartDate() : null,
-                        (job != null && job.getStartDay() != null) ? job.getStartDay().toString() : null))
-                .employmentEndDate(firstNonBlank(
-                        facts != null ? facts.getEmploymentEndDate() : null,
-                        (job != null && job.getEndDay() != null) ? job.getEndDay().toString() : null))
-                .employmentStatusLabel(facts != null ? statusLabel(facts.getEmploymentStatus()) : null)
-                .workSchedule(job != null ? formatSchedule(job) : null)
-                .jobDescription(facts != null ? facts.getJobDescription() : null)
-                .hourlyWage(job != null ? job.getHourlyWage() : null)
-                .contractMethodLabel(facts != null ? contractLabel(facts.getContractMethod()) : null)
+                .employmentStartDate(facts != null ? facts.getEmploymentStartDate() : null)
                 .totalUnpaidWage(facts != null ? facts.getTotalUnpaidWage() : null)
-                .unpaidSeverance(facts != null ? facts.getUnpaidSeverance() : null)
-                .otherUnpaid(facts != null ? facts.getOtherUnpaid() : null)
-                .wagePaymentDate(facts != null ? facts.getWagePaymentDate() : null)
                 .build();
-    }
-
-    private String firstNonBlank(String a, String b) {
-        if (a != null && !a.isBlank()) return a;
-        if (b != null && !b.isBlank()) return b;
-        return null;
-    }
-
-    private String statusLabel(EmploymentStatus status) {
-        if (status == null) return null;
-        return status == EmploymentStatus.FORMER ? "퇴직" : "재직 중";
-    }
-
-    private String contractLabel(ContractMethod method) {
-        if (method == null) return null;
-        return method == ContractMethod.WRITTEN ? "서면" : "구두";
-    }
-
-    /** PartTimeJob의 요일 비트마스크 + 근무 시각 → "월,수,금 09:00~18:00" 형태. */
-    private String formatSchedule(PartTimeJob job) {
-        String days = formatDays(job.getDays());
-        String time = (job.getStartTime() != null && job.getEndTime() != null)
-                ? job.getStartTime() + "~" + job.getEndTime()
-                : null;
-        if (days == null && time == null) return null;
-        if (days == null) return time;
-        if (time == null) return days;
-        return days + " " + time;
-    }
-
-    private String formatDays(Integer mask) {
-        if (mask == null || mask == 0) return null;
-        String[] names = {"월", "화", "수", "목", "금", "토", "일"};
-        List<String> out = new ArrayList<>();
-        for (int i = 0; i < 7; i++) {
-            if ((mask & (1 << i)) != 0) out.add(names[i]);
-        }
-        return out.isEmpty() ? null : String.join(",", out);
     }
 }
