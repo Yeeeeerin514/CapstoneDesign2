@@ -35,6 +35,7 @@ public class SecurityConfig {
                                 "/api/admin/**",
                                 "/api/job-postings/**",
                                 "/api/contracts/**",
+                                "/api/minimum-wage",
                                 "/api/dev/**"
                         ).permitAll()
                         // 그 외 API 는 JWT 필요

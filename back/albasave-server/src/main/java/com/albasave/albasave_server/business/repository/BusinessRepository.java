@@ -44,6 +44,24 @@ public interface BusinessRepository extends JpaRepository<Business, Long> {
         );
     }
 
+    /**
+     * 사용자 사업장 검색 — 이름 AND 지역(도로명/지번) 모두 만족하는 사업장.
+     * (searchCandidates는 매칭 후보용 OR 검색이라 검색 화면엔 부적합 → AND 전용 쿼리.)
+     * 빈 문자열 파라미터는 "조건 미적용"으로 해석(PostgreSQL 타입 추론 실패 회피).
+     */
+    @Query("""
+            select b
+            from Business b
+            where (:name = '' or b.name like concat('%', :name, '%'))
+              and (:region = '' or b.roadAddress like concat('%', :region, '%')
+                   or b.localAddress like concat('%', :region, '%'))
+            """)
+    List<Business> searchByNameAndRegion(
+            @Param("name") String name,
+            @Param("region") String region,
+            Pageable pageable
+    );
+
     long countBySourceFileIn(Collection<String> sourceFiles);
 
     /**
