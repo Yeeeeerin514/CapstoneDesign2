@@ -5,6 +5,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { ScreenHeader, colors, radius, spacing, typography } from "@/shared/ui";
 import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
+import {
+  fetchFavoriteWorkplaces,
+  fetchRegisteredWorkplaces,
+} from "@/entities/workplace";
 import { WorkDashboardView } from "./WorkDashboardView";
 
 type Screen = "list" | "dashboard";
@@ -15,11 +19,27 @@ export function WorkRecordView(): JSX.Element {
     null,
   );
 
+  const hydrateFromServer = useFavoriteWorkplaceStore(
+    (s) => s.hydrateFromServer,
+  );
+
   useFocusEffect(
     useCallback(() => {
       setCurrentScreen("list");
       setSelectedWorkplaceId(null);
-    }, []),
+      // 백엔드 PartTimeJob으로 store 재구축 (근무업장은 status=REGISTERED).
+      // 실패(비로그인/네트워크) 시 무시 → 로컬 store 유지.
+      void Promise.all([
+        fetchFavoriteWorkplaces(),
+        fetchRegisteredWorkplaces(),
+      ])
+        .then(([favorites, registered]) =>
+          hydrateFromServer([...favorites, ...registered]),
+        )
+        .catch(() => {
+          /* 로컬 store 유지 */
+        });
+    }, [hydrateFromServer]),
   );
 
   const workplaces = useFavoriteWorkplaceStore((s) =>

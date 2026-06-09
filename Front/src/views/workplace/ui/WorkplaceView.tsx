@@ -21,7 +21,12 @@ import {
   type FavoriteWorkplace,
 } from "@/features/favorite-workplace";
 import { ScreenHeader, colors } from "@/shared/ui";
-import { deletePartTimeJob, registerWorkplace } from "@/entities/workplace";
+import {
+  deletePartTimeJob,
+  registerWorkplace,
+  fetchFavoriteWorkplaces,
+  fetchRegisteredWorkplaces,
+} from "@/entities/workplace";
 import { useAuthStore } from "@/entities/user/model/auth-store";
 import { ContractUploadView } from "./ContractUploadView";
 import { ContractAnalysisView } from "./ContractAnalysisView";
@@ -195,6 +200,7 @@ export function WorkplaceView(): JSX.Element {
     setPartTimeJobId,
     markRegistered,
     setWorkInfo,
+    hydrateFromServer,
   } = useFavoriteWorkplaceStore();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const clearAuth = useAuthStore((s) => s.clearAuth);
@@ -202,13 +208,27 @@ export function WorkplaceView(): JSX.Element {
   /** AsyncStorage에 남아있는 분석 완료된 사업장명 셋 — 목록 뱃지 표시용. */
   const [pendingNames, setPendingNames] = useState<Set<string>>(new Set());
 
-  // 목록 진입/복귀 시 AsyncStorage pending 키 로드
+  // 목록 진입/복귀 시:
+  //  1) AsyncStorage pending 키 로드 (분석 완료 뱃지용)
+  //  2) 백엔드 PartTimeJob(관심업장 FAVORITE + 근무업장 REGISTERED)을 받아 store 재구축.
+  //     서버를 목록의 진실의 원천으로 삼고, 로컬 계약서 캐시는 hydrateFromServer가 보존한다.
+  //     실패(비로그인/네트워크) 시 무시 → 로컬 store 그대로 사용.
   useFocusEffect(
     useCallback(() => {
       void listPendingBusinessNames()
         .then((names) => setPendingNames(new Set(names)))
         .catch(() => setPendingNames(new Set()));
-    }, []),
+      void Promise.all([
+        fetchFavoriteWorkplaces(),
+        fetchRegisteredWorkplaces(),
+      ])
+        .then(([favorites, registered]) =>
+          hydrateFromServer([...favorites, ...registered]),
+        )
+        .catch(() => {
+          /* 비로그인/네트워크 오류 — 로컬 store 유지 */
+        });
+    }, [hydrateFromServer]),
   );
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string | null>(
     null,
