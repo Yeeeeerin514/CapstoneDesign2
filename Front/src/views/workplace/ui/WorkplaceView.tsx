@@ -13,7 +13,6 @@ import { isAxiosError } from "axios";
 import {
   saveContractPending,
   clearContractPending,
-  listPendingBusinessNames,
   type ContractAnalysisResult,
 } from "@/entities/job-post";
 import {
@@ -211,19 +210,15 @@ export function WorkplaceView(): JSX.Element {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const [currentScreen, setCurrentScreen] = useState<Screen>("list");
-  /** AsyncStorage에 남아있는 분석 완료된 사업장명 셋 — 목록 뱃지 표시용. */
-  const [pendingNames, setPendingNames] = useState<Set<string>>(new Set());
 
-  // 목록 진입/복귀 시:
-  //  1) AsyncStorage pending 키 로드 (분석 완료 뱃지용)
-  //  2) 백엔드 PartTimeJob(관심업장 FAVORITE + 근무업장 REGISTERED)을 받아 store 재구축.
-  //     서버를 목록의 진실의 원천으로 삼고, 로컬 계약서 캐시는 hydrateFromServer가 보존한다.
-  //     실패(비로그인/네트워크) 시 무시 → 로컬 store 그대로 사용.
+  // 목록 진입/복귀 시 백엔드 PartTimeJob(관심업장 FAVORITE + 근무업장 REGISTERED)을
+  // 받아 store 재구축. 서버를 목록의 진실의 원천으로 삼고, 로컬 계약서 상태
+  // (contractStatus/contractAnalysis)는 hydrateFromServer가 보존한다.
+  // 계약서 분석 완료 뱃지는 wp.contractStatus === "analyzed"로 판단하므로,
+  // 사용자 스코프 없는 AsyncStorage pending 캐시는 더 이상 뱃지에 쓰지 않는다.
+  // 실패(비로그인/네트워크) 시 무시 → 로컬 store 그대로 사용.
   useFocusEffect(
     useCallback(() => {
-      void listPendingBusinessNames()
-        .then((names) => setPendingNames(new Set(names)))
-        .catch(() => setPendingNames(new Set()));
       void Promise.all([
         fetchFavoriteWorkplaces(),
         fetchRegisteredWorkplaces(),
@@ -253,6 +248,15 @@ export function WorkplaceView(): JSX.Element {
     info: import("@/features/favorite-workplace").WorkInfoInput;
     isFromContract: boolean;
   } | null>(null);
+  /**
+   * register-step1(WorkInfoInputView) 진입 경로.
+   * - "gate-skip": 계약서 없이 직접 입력 (수동) → 확인 화면 뱃지 "직접 입력".
+   * - "analysis": 계약서 분석 직후 prefill 후 수정 → 뱃지 "AI 자동입력", 뒤로가면 분석 화면.
+   * - "card": 계약서만 업로드된 카드에서 BSSID 등록 진입 → prefill, 뒤로가면 목록.
+   */
+  const [step1Origin, setStep1Origin] = useState<
+    "gate-skip" | "analysis" | "card"
+  >("gate-skip");
 
   const selectedWorkplace = workplaces.find((w) => w.id === selectedWorkplaceId);
 
@@ -323,7 +327,10 @@ export function WorkplaceView(): JSX.Element {
           setCurrentScreen("list");
         }}
         onUploadContract={() => setCurrentScreen("upload")}
-        onSkip={() => setCurrentScreen("register-step1")}
+        onSkip={() => {
+          setStep1Origin("gate-skip");
+          setCurrentScreen("register-step1");
+        }}
       />
     );
   }
@@ -343,16 +350,13 @@ export function WorkplaceView(): JSX.Element {
           }
           // 분석 완료 status 갱신 (analyzed 단계)
           updateContractStatus(selectedWorkplace.id, "analyzed");
-          // 4-C: AsyncStorage 캐시 저장 (업장 등록 1단계 pre-fill용, fire-and-forget)
+          // 4-C: AsyncStorage 캐시 저장 (업장 등록 1단계 pre-fill용, fire-and-forget).
+          // 뱃지는 contractStatus로 판단하므로 여기서는 캐시만 갱신한다.
           void saveContractPending(
             selectedWorkplace.name,
             result.contractId,
             result.extracted,
-          )
-            .then(() => {
-              setPendingNames((prev) => new Set(prev).add(selectedWorkplace.name));
-            })
-            .catch(() => {});
+          ).catch(() => {});
           setCurrentScreen("analysis");
         }}
       />
@@ -398,32 +402,17 @@ export function WorkplaceView(): JSX.Element {
             return;
           }
 
-          // 신규 등록 path — 입력 단계 건너뛰고 바로 확인 화면으로.
-          // 분석 결과의 extracted 필드에서 WorkInfoInput을 derive.
+          // 신규 등록 path — 분석 결과를 입력 화면(register-step1)에 prefill.
+          // 위 markContractUploaded로 wp.contractAnalysis가 채워졌으므로
+          // WorkInfoInputView가 extracted 필드를 그대로 자동 입력한다.
+          // 추출 안 된/잘못된 값(요일·시작일 등)은 유저가 직접 수정 후 진행.
           setPendingRegistration({
             workplaceId: selectedWorkplace.id,
             workplaceName: selectedWorkplace.name,
             partTimeJobId: selectedWorkplace.partTimeJobId,
           });
-          const ex = result.extracted;
-          const todayIso = (): string => {
-            const d = new Date();
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-          };
-          setConfirmPayload({
-            info: {
-              workDays: ex.workDays ?? [],
-              workStartTime: ex.workStartTime ?? "09:00",
-              workEndTime: ex.workEndTime ?? "18:00",
-              startDay: ex.employmentStartDate ?? todayIso(),
-              hourlyWage:
-                ex.hourlyWage !== null && ex.hourlyWage !== undefined
-                  ? ex.hourlyWage
-                  : undefined,
-            },
-            isFromContract: true,
-          });
-          setCurrentScreen("register-step2-confirm");
+          setStep1Origin("analysis");
+          setCurrentScreen("register-step1");
         }}
       />
     );
@@ -450,13 +439,22 @@ export function WorkplaceView(): JSX.Element {
         workplaceName={registration.workplaceName}
         prefillFromContract={wp?.contractAnalysis}
         onBack={() => {
+          // 계약서 분석에서 넘어온 경우 분석 화면으로 복귀, 그 외엔 목록으로.
+          if (step1Origin === "analysis") {
+            setCurrentScreen("analysis");
+            return;
+          }
           setPendingRegistration(null);
           setCurrentScreen("list");
           router.push("/(tabs)/work-record");
         }}
         onNext={(info) => {
           setWorkInfo(registration.workplaceId, info);
-          setConfirmPayload({ info, isFromContract: false });
+          // 계약서 기반(analysis/card)이면 확인 화면에 "AI 자동입력" 뱃지.
+          setConfirmPayload({
+            info,
+            isFromContract: step1Origin !== "gate-skip",
+          });
           setCurrentScreen("register-step2-confirm");
         }}
         onGoToContractUpload={() => {
@@ -482,10 +480,8 @@ export function WorkplaceView(): JSX.Element {
         isFromContract={confirmPayload.isFromContract}
         contractAnalysis={wp?.contractAnalysis}
         onBack={() => {
-          // 계약서 path → analysis로 / 입력 path → register-step1로
-          setCurrentScreen(
-            confirmPayload.isFromContract ? "analysis" : "register-step1",
-          );
+          // 양쪽 path 모두 입력 화면(register-step1)을 거치므로 그쪽으로 복귀.
+          setCurrentScreen("register-step1");
         }}
         onConfirm={(updated) => {
           // 확인 완료 — 인라인 편집된 최종 값을 store에 저장 후 BSSID 단계로.
@@ -534,16 +530,10 @@ export function WorkplaceView(): JSX.Element {
               setPartTimeJobId(registration.workplaceId, res.partTimeJobId);
               setPendingRegistration({ ...registration, bssid, ssid });
               setCurrentScreen("register-complete");
-              // 4-C: 등록 성공 → AsyncStorage 캐시 삭제 (fire-and-forget)
-              void clearContractPending(registration.workplaceName)
-                .then(() => {
-                  setPendingNames((prev) => {
-                    const next = new Set(prev);
-                    next.delete(registration.workplaceName);
-                    return next;
-                  });
-                })
-                .catch(() => {});
+              // 4-C: 등록 성공 → 등록 1단계 pre-fill 캐시 삭제 (fire-and-forget)
+              void clearContractPending(registration.workplaceName).catch(
+                () => {},
+              );
             })
             .catch((err) => {
               if (isAxiosError(err)) {
@@ -665,7 +655,7 @@ export function WorkplaceView(): JSX.Element {
                 workplace={wp}
                 isLast={idx === workplaces.length - 1}
                 isDeleting={deletingId === wp.id}
-                hasContractPending={pendingNames.has(wp.name)}
+                hasContractAnalyzed={wp.contractStatus === "analyzed"}
                 onRemove={() => handleDelete(wp)}
                 onAction={(action) => {
                   setSelectedWorkplaceId(wp.id);
@@ -695,6 +685,7 @@ export function WorkplaceView(): JSX.Element {
                         workplaceName: wp.name,
                         partTimeJobId: wp.partTimeJobId,
                       });
+                      setStep1Origin("card");
                       setCurrentScreen("register-step1");
                       return;
                     case "open-dashboard":
@@ -716,8 +707,8 @@ interface RowProps {
   workplace: FavoriteWorkplace;
   isLast: boolean;
   isDeleting: boolean;
-  /** 분석 완료된 계약서가 AsyncStorage 캐시에 남아있는지 — 뱃지 표시용. */
-  hasContractPending: boolean;
+  /** 이 업장의 계약서 분석이 완료됐는지(contractStatus==="analyzed") — 뱃지 표시용. */
+  hasContractAnalyzed: boolean;
   onRemove: () => void;
   /** 카드 버튼이 요청하는 액션을 상위가 받아서 적절한 화면으로 라우팅. */
   onAction: (action: CardAction) => void;
@@ -727,7 +718,7 @@ function WorkplaceRow({
   workplace: wp,
   isLast,
   isDeleting,
-  hasContractPending,
+  hasContractAnalyzed,
   onRemove,
   onAction,
 }: RowProps): JSX.Element {
@@ -753,7 +744,7 @@ function WorkplaceRow({
           <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
             {wp.name}
           </Text>
-          {hasContractPending ? (
+          {hasContractAnalyzed ? (
             <View
               style={{
                 marginLeft: 6,
