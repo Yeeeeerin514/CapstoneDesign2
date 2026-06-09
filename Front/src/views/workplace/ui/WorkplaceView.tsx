@@ -186,6 +186,12 @@ type Screen =
 interface PendingRegistration {
   workplaceId: string;
   workplaceName: string;
+  /**
+   * 백엔드 PartTimeJob id (관심업장 FAVORITE 행). 등록 시 그대로 전달하면
+   * 백엔드가 이 행을 FAVORITE→REGISTERED로 전이(승격)한다.
+   * undefined면(미동기화 로컬 항목) 백엔드가 새 REGISTERED 행을 생성.
+   */
+  partTimeJobId?: number;
   bssid?: string;
   ssid?: string;
 }
@@ -397,6 +403,7 @@ export function WorkplaceView(): JSX.Element {
           setPendingRegistration({
             workplaceId: selectedWorkplace.id,
             workplaceName: selectedWorkplace.name,
+            partTimeJobId: selectedWorkplace.partTimeJobId,
           });
           const ex = result.extracted;
           const todayIso = (): string => {
@@ -510,6 +517,8 @@ export function WorkplaceView(): JSX.Element {
           // 근무 정보(요일/시간/시급)도 함께 전송 — 직전 확인 화면에서 확정된 값.
           const workInfo = confirmPayload?.info;
           registerWorkplace({
+            // 관심업장(FAVORITE) 행을 그대로 승격 — 새 행 생성/중복 방지.
+            partTimeJobId: registration.partTimeJobId,
             workplaceName: registration.workplaceName,
             bssid,
             ssid,
@@ -666,6 +675,7 @@ export function WorkplaceView(): JSX.Element {
                       setPendingRegistration({
                         workplaceId: wp.id,
                         workplaceName: wp.name,
+                        partTimeJobId: wp.partTimeJobId,
                       });
                       setCurrentScreen("contract-gate");
                       return;
@@ -683,6 +693,7 @@ export function WorkplaceView(): JSX.Element {
                       setPendingRegistration({
                         workplaceId: wp.id,
                         workplaceName: wp.name,
+                        partTimeJobId: wp.partTimeJobId,
                       });
                       setCurrentScreen("register-step1");
                       return;

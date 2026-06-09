@@ -174,8 +174,24 @@ export const useFavoriteWorkplaceStore = create<FavoriteWorkplaceState>()(
               : w,
           ),
         })),
-      hydrateFromServer: (items) =>
+      hydrateFromServer: (rawItems) =>
         set((state) => {
+          // 레거시 중복 정리: 같은 업장명에 REGISTERED 행이 있으면 FAVORITE 행은 숨긴다.
+          // (partTimeJobId 누락으로 승격 대신 새 행이 생성돼 FAVORITE가 남은 과거 데이터 대응)
+          const registeredNames = new Set(
+            rawItems
+              .filter((it) => it.status === "REGISTERED" && it.businessName)
+              .map((it) => it.businessName),
+          );
+          const items = rawItems.filter(
+            (it) =>
+              !(
+                it.status === "FAVORITE" &&
+                it.businessName !== null &&
+                registeredNames.has(it.businessName)
+              ),
+          );
+
           // 로컬 항목 인덱싱: partTimeJobId 우선, 없으면 업장명으로 매칭
           const byPtId = new Map<number, FavoriteWorkplace>();
           const byName = new Map<string, FavoriteWorkplace>();
