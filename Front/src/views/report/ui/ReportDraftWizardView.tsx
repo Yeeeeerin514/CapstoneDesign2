@@ -650,11 +650,22 @@ function ComplaintPreview({
           "AI 진정 내용을 받지 못했어요. 잠시 후 다시 시도해주세요.",
         );
       }
-    } catch {
-      Alert.alert(
-        "AI 생성 불가",
-        "서버에 저장된 신고에서만 AI 생성을 쓸 수 있어요. '사업장 찾기'로 시작한 신고에서 사용해보세요.",
-      );
+    } catch (err) {
+      // 에러 종류를 구분: 403/404(사건 미저장·권한)만 "서버 저장 신고" 안내,
+      // 그 외(500·503 등 Gemini 일시 장애)는 재시도 안내.
+      const status =
+        (err as { response?: { status?: number } })?.response?.status ?? null;
+      if (status === 403 || status === 404) {
+        Alert.alert(
+          "AI 생성 불가",
+          "서버에 저장된 신고에서만 AI 생성을 쓸 수 있어요. '사업장 찾기'로 시작한 신고에서 사용해보세요.",
+        );
+      } else {
+        Alert.alert(
+          "잠시 후 다시 시도해주세요",
+          "AI 생성 서버가 일시적으로 혼잡해요(잠깐 과부하). 잠시 후 다시 시도하면 정상 생성됩니다.",
+        );
+      }
     } finally {
       setAiGenerating(false);
     }
@@ -709,9 +720,8 @@ function ComplaintPreview({
   };
 
   const handleEnterEdit = (): void => {
-    // 항상 양식 구조(buildDefaultBodyText)로 시작 — AI 생성 텍스트가 있어도 무시.
-    // 사용자가 [성명], [연락처] 등 자리표시자를 직접 채울 수 있도록 명확하게 표시.
-    setDraftText(buildDefaultBodyText());
+    // AI 생성/이전 수정 본문이 있으면 그걸 이어서 편집, 없으면 기본 양식 구조로 시작.
+    setDraftText(customBodyText ?? buildDefaultBodyText());
     setIsEditing(true);
   };
 
@@ -903,9 +913,12 @@ function ComplaintPreview({
               </Pressable>
             </View>
           </>
+        ) : customBodyText !== null ? (
+          // AI 생성/직접 수정 본문이 있으면 화면에도 그대로 보여준다.
+          // (이전엔 항상 StructuredPreview만 렌더해 AI 결과가 화면에 안 보였음)
+          <Text style={previewLineStyle}>{customBodyText}</Text>
         ) : (
-          // 항상 공식 양식 테이블 렌더 — 수정 시 handleSaveEdits가 store/applicant를
-          // 업데이트하므로 StructuredPreview가 수정된 값을 그대로 반영함.
+          // 본문 미작성 시에만 공식 양식 테이블 렌더.
           <StructuredPreview
             reportCase={reportCase}
             negotiationText={negotiationText}

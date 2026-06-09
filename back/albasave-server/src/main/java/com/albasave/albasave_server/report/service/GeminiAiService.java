@@ -31,6 +31,11 @@ public class GeminiAiService {
     private static final String BASE_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/";
 
+    // 503(UNAVAILABLE)·429(RESOURCE_EXHAUSTED) 등 일시 장애 시 자동 재시도 설정.
+    // Gemini 무료 모델 풀은 외부 트래픽 급증으로 간헐적 5xx를 내며 보통 곧 회복된다.
+    private static final int MAX_ATTEMPTS = 3;          // 최초 1회 + 재시도 2회
+    private static final long INITIAL_BACKOFF_MS = 800; // 지수 백오프 시작 간격(0.8s → 1.6s)
+
     private static final String SYSTEM_PROMPT = """
             당신은 고용노동부 진정서 작성을 전문으로 하는 노무사입니다.
             근로자(피해자)가 제공한 제한된 정보만으로 고용노동부 진정서의 '진정 내용' 섹션을 작성합니다.
@@ -90,8 +95,11 @@ public class GeminiAiService {
                         )
                 ),
                 "generationConfig", Map.of(
-                        "maxOutputTokens", 1500,
-                        "temperature", 0.4   // 사실 기반 작성: 창의성 낮춤
+                        "maxOutputTokens", 2048,
+                        "temperature", 0.4,  // 사실 기반 작성: 창의성 낮춤
+                        // 2.5-flash는 thinking 모델 — thinking에 출력 토큰을 먼저 소비해 본문이 잘림.
+                        // 이 작업엔 추론이 불필요하므로 thinking 비활성화(budget 0).
+                        "thinkingConfig", Map.of("thinkingBudget", 0)
                 )
         );
 
@@ -99,21 +107,55 @@ public class GeminiAiService {
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-        log.info("Gemini 요청 시작 — model={}", model);
+        RuntimeException lastError = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            log.info("Gemini 요청 시작 — model={}, attempt={}/{}", model, attempt, MAX_ATTEMPTS);
+            try {
+                ResponseEntity<Map> response =
+                        restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
+                log.info("Gemini 응답 수신 — status={}", response.getStatusCode());
+                return extractText(response.getBody());
+            } catch (org.springframework.web.client.HttpServerErrorException e) {
+                // 5xx(503 UNAVAILABLE 등) — 일시 장애로 보고 재시도.
+                log.warn("Gemini API 서버 오류(재시도 대상) — status={}, attempt={}/{}, body={}",
+                        e.getStatusCode(), attempt, MAX_ATTEMPTS, e.getResponseBodyAsString());
+                lastError = e;
+            } catch (org.springframework.web.client.HttpClientErrorException.TooManyRequests e) {
+                // 429 RESOURCE_EXHAUSTED — 쿼터 일시 초과. 짧게 대기 후 재시도.
+                log.warn("Gemini API 요청 한도 초과(재시도 대상) — attempt={}/{}, body={}",
+                        attempt, MAX_ATTEMPTS, e.getResponseBodyAsString());
+                lastError = e;
+            } catch (org.springframework.web.client.HttpClientErrorException e) {
+                // 그 외 4xx(400 등) — 요청 자체 문제이므로 재시도 무의미. 즉시 실패.
+                log.error("Gemini API 클라이언트 오류(재시도 안 함) — status={}, body={}",
+                        e.getStatusCode(), e.getResponseBodyAsString());
+                throw new RuntimeException("AI 진정서 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", e);
+            } catch (org.springframework.web.client.ResourceAccessException e) {
+                // 연결 타임아웃·일시 네트워크 오류 — 재시도.
+                log.warn("Gemini API 연결 오류(재시도 대상) — attempt={}/{}, message={}",
+                        attempt, MAX_ATTEMPTS, e.getMessage());
+                lastError = e;
+            }
+
+            // 마지막 시도가 아니면 지수 백오프 후 재시도.
+            if (attempt < MAX_ATTEMPTS) {
+                sleepBeforeRetry(attempt);
+            }
+        }
+
+        log.error("Gemini API 호출이 {}회 모두 실패했습니다.", MAX_ATTEMPTS, lastError);
+        throw new RuntimeException(
+                "AI 진정서 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", lastError);
+    }
+
+    /** 지수 백오프 대기 (attempt=1 → INITIAL, 2 → 2×INITIAL …). 인터럽트 시 즉시 중단. */
+    private void sleepBeforeRetry(int attempt) {
+        long backoff = INITIAL_BACKOFF_MS * (1L << (attempt - 1));
         try {
-            ResponseEntity<Map> response =
-                    restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
-            log.info("Gemini 응답 수신 — status={}", response.getStatusCode());
-            return extractText(response.getBody());
-        } catch (org.springframework.web.client.HttpClientErrorException e) {
-            log.error("Gemini API 클라이언트 오류 — status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new RuntimeException("AI 진정서 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", e);
-        } catch (org.springframework.web.client.HttpServerErrorException e) {
-            log.error("Gemini API 서버 오류 — status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new RuntimeException("AI 진정서 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", e);
-        } catch (RuntimeException e) {
-            log.error("Gemini API 호출 실패: {}", e.getMessage(), e);
-            throw new RuntimeException("AI 진정서 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", e);
+            Thread.sleep(backoff);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("AI 진정서 생성이 중단되었습니다.", ie);
         }
     }
 
@@ -131,8 +173,14 @@ public class GeminiAiService {
         if (candidates == null || candidates.isEmpty()) {
             throw new IllegalStateException("Gemini 응답에 candidates가 없습니다: " + body);
         }
+        Map<String, Object> first = candidates.get(0);
+        Object finishReason = first.get("finishReason");
+        // MAX_TOKENS면 본문이 잘린 것 — 토큰 한도/ thinking 설정 점검 신호.
+        if (finishReason != null && !"STOP".equals(finishReason)) {
+            log.warn("Gemini 응답 finishReason={} (본문 잘림 가능)", finishReason);
+        }
         Map<String, Object> content =
-                (Map<String, Object>) candidates.get(0).get("content");
+                (Map<String, Object>) first.get("content");
         List<Map<String, Object>> parts =
                 (List<Map<String, Object>>) content.get("parts");
         if (parts == null || parts.isEmpty()) {
