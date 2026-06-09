@@ -53,5 +53,9 @@ export {
   type PutEvidenceRequest,
 } from "./api/put-evidence";
 export type { BackendReport } from "./api/create-report";
+export {
+  fetchMyReports,
+  fetchReportDetail,
+} from "./api/fetch-my-reports";
 export { fetchWageCalc } from "./api/wage-calc";
 export type { WageBreakdown } from "./api/wage-calc";

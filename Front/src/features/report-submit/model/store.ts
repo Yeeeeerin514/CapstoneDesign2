@@ -146,6 +146,23 @@ interface ReportStoreState {
   // ──────────────────────────────────────
 
   /**
+   * 서버(GET /api/reports) 목록으로 cases를 교체 — 서버 DB가 진실의 원천.
+   * 서버에 없는 로컬 전용 사건(report- 로컬 ID 등)은 제거된다.
+   * 단, 서버와 같은 id의 기존 케이스가 있으면 클라이언트 전용 진행 상태
+   * (highestStep/completedSteps/evidence 계산값 등)는 보존하고, 서버가 권위를 갖는
+   * 필드(status/currentStep/business/facts 등)만 덮어쓴다.
+   */
+  hydrateFromServer: (serverCases: ReportCase[]) => void;
+
+  /**
+   * 단건 상세(GET /api/reports/{caseId}) 응답을 store에 반영.
+   * 상세 화면 진입 시 호출 — 목록 요약에 없던 facts/respondent/freeFormDescription을 채운다.
+   * 서버 상세가 권위를 가지므로 해당 필드는 server 값으로 교체하되,
+   * 클라이언트 전용 진행 상태(completedSteps/evidence 계산값 등)는 보존한다.
+   */
+  upsertServerDetail: (serverCase: ReportCase) => void;
+
+  /**
    * POST /reports/draft 응답을 사건 store에 추가.
    * V1 startReport와 달리 백엔드 caseId/business를 그대로 보존.
    * source가 "registered"인 경우 partTimeJobId도 함께 전달.
@@ -468,6 +485,70 @@ export const useReportStore = create<ReportStoreState>()(
         c.id === caseId ? { ...c, status: "UNRESOLVED" } : c,
       ),
     })),
+
+  hydrateFromServer: (serverCases) =>
+    set((s) => {
+      const prevById = new Map(s.cases.map((c) => [c.id, c]));
+      const merged = serverCases.map((server) => {
+        const prev = prevById.get(server.id);
+        if (prev === undefined) return server;
+        // server는 목록 '요약'이라 facts(totalUnpaidWage 외)·respondent·freeFormDescription·
+        // damageTypeEnums 등 상세 입력이 비어 있다. 이미 메모리에 채워진 상세가 있으면 보존하고
+        // (상세 화면에서 fetchReportDetail로 최신화), 서버가 권위를 갖는 status/currentStep만 덮어쓴다.
+        return {
+          ...prev,
+          status: server.status,
+          currentStep: server.currentStep,
+          workplaceName: server.workplaceName,
+          createdAt: server.createdAt,
+          highestStep: STEP_ORDER.indexOf(prev.highestStep) >
+            STEP_ORDER.indexOf(server.currentStep)
+            ? prev.highestStep
+            : server.currentStep,
+          // facts는 메모리 우선, 단 서버 요약의 totalUnpaidWage는 항상 반영.
+          facts: {
+            ...prev.facts,
+            ...(server.facts?.totalUnpaidWage !== undefined &&
+            server.facts?.totalUnpaidWage !== null
+              ? { totalUnpaidWage: server.facts.totalUnpaidWage }
+              : {}),
+          } as ReportCase["facts"],
+        };
+      });
+      return { cases: merged };
+    }),
+
+  upsertServerDetail: (serverCase) =>
+    set((s) => {
+      const prev = s.cases.find((c) => c.id === serverCase.id);
+      if (prev === undefined) {
+        // 메모리에 없던 사건(새로고침 후 첫 상세 진입) → 그대로 추가.
+        return { cases: [serverCase, ...s.cases] };
+      }
+      const mergedCase: ReportCase = {
+        ...prev,
+        // 서버 상세가 권위를 갖는 필드.
+        status: serverCase.status,
+        currentStep: serverCase.currentStep,
+        workplaceName: serverCase.workplaceName,
+        businessRegistrationNumber: serverCase.businessRegistrationNumber,
+        industry: serverCase.industry,
+        business: serverCase.business,
+        draftSource: serverCase.draftSource,
+        damageTypeEnums: serverCase.damageTypeEnums,
+        freeFormDescription: serverCase.freeFormDescription,
+        respondent: serverCase.respondent,
+        facts: serverCase.facts,
+        highestStep:
+          STEP_ORDER.indexOf(prev.highestStep) >
+          STEP_ORDER.indexOf(serverCase.currentStep)
+            ? prev.highestStep
+            : serverCase.currentStep,
+      };
+      return {
+        cases: s.cases.map((c) => (c.id === serverCase.id ? mergedCase : c)),
+      };
+    }),
 
   createReportDraft: ({
     caseId,

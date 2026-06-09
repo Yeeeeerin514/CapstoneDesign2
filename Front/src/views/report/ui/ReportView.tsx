@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { useReportStore } from "@/features/report-submit";
+import { fetchMyReports } from "@/entities/report";
 import { useReviewStore } from "@/entities/review";
 import { usePaymentStore } from "@/features/payment";
 import type { BusinessSearchResult } from "@/entities/business";
@@ -39,7 +40,16 @@ export function ReportView(): JSX.Element {
 
   useFocusEffect(
     useCallback(() => {
-      // 후기 목록 + 내 결제 기록을 백엔드에서 로드 (report 탭 진입 시마다)
+      // 신고 목록 + 후기 + 내 결제 기록을 백엔드에서 로드 (report 탭 진입 시마다).
+      // 신고 목록은 서버 DB가 진실의 원천 — 메모리 cases를 서버 응답으로 교체.
+      void (async () => {
+        try {
+          const serverCases = await fetchMyReports();
+          useReportStore.getState().hydrateFromServer(serverCases);
+        } catch {
+          // 서버 조회 실패 시 기존 메모리 cases 유지(오프라인/일시 오류 대비).
+        }
+      })();
       void useReviewStore.getState().load();
       void usePaymentStore.getState().load();
       const { shouldSkipNextFocusReset, setShouldSkipNextFocusReset } =

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -11,6 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
 import { useReportStore } from "@/features/report-submit";
+import { fetchReportDetail } from "@/entities/report";
 import { usePaymentStore } from "@/features/payment";
 import { PAYMENT_DISTRIBUTION } from "@/shared/lib/payment";
 import { useAuthStore } from "@/entities/user/model/auth-store";
@@ -147,6 +148,7 @@ export function ReportDetailView({
     s.cases.find((c) => c.id === caseId),
   );
   const advanceStep = useReportStore((s) => s.advanceStep);
+  const upsertServerDetail = useReportStore((s) => s.upsertServerDetail);
   const closeCase = useReportStore((s) => s.closeCase);
   const updateCaseStatus = useReportStore((s) => s.updateCaseStatus);
   const navigateToStep = useReportStore((s) => s.navigateToStep);
@@ -173,6 +175,21 @@ export function ReportDetailView({
   const [showReviewWrite, setShowReviewWrite] = useState(false);
   /** V2 신고 정보 입력 흐름 (1-A 피해유형 / 1-B 자유서술 / 1-C 진정내용) */
   const [showEvidenceFlow, setShowEvidenceFlow] = useState(false);
+
+  // 상세 진입 시 서버에서 full 데이터(facts/respondent/freeFormDescription) 로드.
+  // 목록 요약에는 없던 상세 입력을 채워 AI 진정 내용 생성·진정서 작성에 사용한다.
+  // report- 로컬 ID(서버 미존재)는 정수 변환 실패하므로 호출하지 않는다.
+  useEffect(() => {
+    if (caseId.startsWith("report-")) return;
+    void (async () => {
+      try {
+        const detail = await fetchReportDetail(caseId);
+        upsertServerDetail(detail);
+      } catch {
+        // 서버 조회 실패 시 메모리 데이터 유지.
+      }
+    })();
+  }, [caseId, upsertServerDetail]);
 
   // 미해결 종결 — 멘티 환급 + UNRESOLVED 전환
   const handleSettleUnresolved = async (): Promise<void> => {
