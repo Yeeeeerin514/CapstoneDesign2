@@ -10,7 +10,7 @@ import { useAuthStore } from "@/entities/user/model/auth-store";
 import { MentorRegisterView } from "./MentorRegisterView";
 import { MentorInboxView } from "./MentorInboxView";
 import { EvidenceUploadView } from "./EvidenceUploadView";
-import { MyApplicantFormView } from "./MyApplicantFormView";
+
 import { ReviewWriteView } from "@/views/report/ui/ReviewWriteView";
 import { MatchingFeedbackModal } from "@/views/report/ui/MatchingFeedbackModal";
 import type { VerificationMethod } from "@/entities/mentor";
@@ -49,7 +49,7 @@ export function MyView(): JSX.Element {
   const [showMentorRegister, setShowMentorRegister] = useState(false);
   const [showMentorInbox, setShowMentorInbox] = useState(false);
   const [showEvidenceUpload, setShowEvidenceUpload] = useState(false);
-  const [showApplicantForm, setShowApplicantForm] = useState(false);
+
   const [showFreeReviewWrite, setShowFreeReviewWrite] = useState(false);
   const [mentorVerification, setMentorVerification] = useState<{
     method: VerificationMethod;
@@ -117,12 +117,6 @@ export function MyView(): JSX.Element {
 
   if (showEvidenceUpload) {
     return <EvidenceUploadView onBack={() => setShowEvidenceUpload(false)} />;
-  }
-
-  if (showApplicantForm) {
-    return (
-      <MyApplicantFormView onBack={() => setShowApplicantForm(false)} />
-    );
   }
 
   if (showFreeReviewWrite) {
@@ -222,44 +216,6 @@ export function MyView(): JSX.Element {
             </Text>
             <Text style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
               나를 멘토로 확정한 멘티와 1:1 채팅하기
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
-        </Pressable>
-
-        {/* 진정인 정보 카드 */}
-        <Pressable
-          onPress={() => setShowApplicantForm(true)}
-          style={{
-            marginTop: 10,
-            backgroundColor: "#FFFFFF",
-            borderRadius: 12,
-            padding: 14,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 12,
-            borderWidth: 0.5,
-            borderColor: "#E2E8F0",
-          }}
-        >
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              backgroundColor: "#EBF3FF",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Ionicons name="person-outline" size={18} color="#1A5FAF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: "#0F172A" }}>
-              진정인 정보 (본인)
-            </Text>
-            <Text style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
-              진정서 PDF에 자동 채워질 본인 정보 · 이 기기에만 저장
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />

@@ -5,7 +5,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
 import {
   STEP_ORDER,
-  STEP_META,
   type ReportCase,
   type ReportStatus,
 } from "@/entities/report";
@@ -452,12 +451,35 @@ function CaseCard({
   onWriteReview,
 }: CaseCardProps): JSX.Element {
   const badge = STATUS_BADGE[c.status];
+  const isTerminated = c.status === "RESOLVED" || c.status === "UNRESOLVED";
   const stepIdx = STEP_ORDER.indexOf(c.currentStep);
-  const progressPercent = Math.round(
-    ((stepIdx + 1) / STEP_ORDER.length) * 100,
-  );
+
+  /**
+   * 4단계 진행률 기준
+   *  evidence_collection : 25%
+   *  complaint_draft     : 50%
+   *  submission          : 75%
+   *  investigation(진행중): 80%  ← 아직 결과 대기 중
+   *  RESOLVED/UNRESOLVED : 100% ← 완전 종결
+   */
+  const progressPercent: number = isTerminated
+    ? 100
+    : stepIdx === STEP_ORDER.length - 1
+      ? 80
+      : Math.round(((stepIdx + 1) / STEP_ORDER.length) * 100);
+
   const progressWidth: `${number}%` = `${progressPercent}%`;
-  const currentStepLabel = STEP_META[c.currentStep].label;
+
+  // step별 진행 중 레이블
+  const STEP_ACTIVE_LABEL: Record<typeof STEP_ORDER[number], string> = {
+    evidence_collection: "신고 정보 입력 중",
+    complaint_draft:     "진정서 작성 중",
+    submission:          "노동청 제출 중",
+    investigation:       "조사 및 해결 중",
+  };
+  const currentStepLabel = isTerminated
+    ? (c.status === "RESOLVED" ? "해결 완료" : "미해결 종결")
+    : STEP_ACTIVE_LABEL[c.currentStep];
 
   return (
     <Pressable
@@ -578,9 +600,7 @@ function CaseCard({
                 marginBottom: 2,
               }}
             >
-              {c.calculatedUnpaid !== null
-                ? "미지급 임금"
-                : "미지급금 계산 대기"}
+              {c.calculatedUnpaid !== null ? "미지급 임금" : "미지급금 계산 대기"}
             </Text>
             <Text
               style={{
@@ -591,7 +611,7 @@ function CaseCard({
             >
               {c.calculatedUnpaid !== null
                 ? `₩${c.calculatedUnpaid.toLocaleString()}`
-                : "증거 수집 중"}
+                : currentStepLabel}
             </Text>
           </View>
 

@@ -27,7 +27,12 @@ import {
   buildComplaintHtml,
   type NegotiationStatus,
 } from "@/features/report-submit/lib/buildComplaintHtml";
-import { loadApplicantInfo } from "@/features/applicant-info";
+import {
+  loadApplicantInfo,
+  saveApplicantInfo,
+  emptyApplicantInfo,
+} from "@/features/applicant-info";
+import type { ComplaintRespondent } from "@/entities/report";
 
 interface ReportDraftWizardViewProps {
   reportCase: ReportCase;
@@ -153,9 +158,70 @@ export function ReportDraftWizardView({
   const setCurrentStepAction = useReportStore((s) => s.setCurrentStep);
   const updateCaseStatus = useReportStore((s) => s.updateCaseStatus);
   const setSubmittedAt = useReportStore((s) => s.setSubmittedAt);
+  const patchRespondent = useReportStore((s) => s.patchRespondent);
+
+  /**
+   * 수정 완료 핸들러 — 편집된 텍스트를 파싱해서
+   *  ① customBodyText(PDF용) 저장
+   *  ② applicant(진정인) 필드 → 로컬 AsyncStorage 갱신 → StructuredPreview에 반영
+   *  ③ respondent(피진정인) 필드 → reportCase store 갱신 → StructuredPreview에 반영
+   */
+  const handleSaveEdits = (text: string): void => {
+    setCustomBodyText(text);
+
+    const getField = (section: string, key: string): string | null => {
+      const m = section.match(new RegExp(`${key}:\\s*(.+)`));
+      const v = m?.[1]?.trim();
+      // 자리표시자 [...]는 미입력으로 간주
+      if (!v || (v.startsWith("[") && v.endsWith("]"))) return null;
+      return v;
+    };
+
+    const between = (full: string, from: string, to: string): string => {
+      const s = full.indexOf(from);
+      const e = full.indexOf(to, s + 1);
+      if (s === -1) return "";
+      return full.slice(s, e === -1 ? undefined : e);
+    };
+
+    // ② 진정인 파싱
+    const aSec = between(text, "1. 진정인", "2. 피진정인");
+    const aName    = getField(aSec, "성명");
+    const aPhone   = getField(aSec, "연락처");
+    const aMobile  = getField(aSec, "휴대전화번호");
+    const aAddress = getField(aSec, "주소");
+    const aEmail   = getField(aSec, "전자우편주소");
+    if (aName ?? aPhone ?? aMobile ?? aAddress ?? aEmail) {
+      const base = applicant ?? emptyApplicantInfo();
+      const updated: ApplicantInfo = {
+        ...base,
+        fullName: aName ?? base.fullName,
+        phone:    aPhone ?? base.phone,
+        mobile:   aMobile ?? base.mobile,
+        address:  aAddress ?? base.address,
+        email:    aEmail ?? base.email,
+      };
+      setApplicant(updated);
+      void saveApplicantInfo(updated);
+    }
+
+    // ③ 피진정인 파싱
+    const rSec = between(text, "2. 피진정인", "3. 진정 내용");
+    const rRep     = getField(rSec, "대표자");
+    const rPhone   = getField(rSec, "연락처");
+    const rAddress = getField(rSec, "주소");
+    if (rRep ?? rPhone ?? rAddress) {
+      const patch: Partial<ComplaintRespondent> = {};
+      if (rRep)     patch.representativeName = rRep;
+      if (rPhone)   patch.phone = rPhone;
+      if (rAddress) patch.address = rAddress;
+      patchRespondent(reportCase.id, patch);
+    }
+  };
 
   // 고용24 외부 브라우저 흐름 — 직접 URL 오픈 + AppState 복귀 감지로 확인 배너 노출.
-  const GOYO24_URL = "https://labor.moel.go.kr/minwon/minwonProcess.do";
+  const GOYO24_URL =
+    "https://labor.moel.go.kr/minwonApply/minwonFormat.do?searchVal=SN001";
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const [browserOpened, setBrowserOpened] = useState(false);
   const [returnedFromBrowser, setReturnedFromBrowser] = useState(false);
@@ -359,8 +425,7 @@ export function ReportDraftWizardView({
             onConfirmSubmitted={handleConfirmSubmitted}
             onNotYet={() => setReturnedFromBrowser(false)}
             customBodyText={customBodyText}
-            onSaveCustom={setCustomBodyText}
-            onResetCustom={() => setCustomBodyText(null)}
+            onSaveCustom={handleSaveEdits}
           />
         )}
       </ScrollView>
@@ -552,7 +617,6 @@ interface PreviewProps {
   onNotYet: () => void;
   customBodyText: string | null;
   onSaveCustom: (text: string) => void;
-  onResetCustom: () => void;
 }
 
 function ComplaintPreview({
@@ -567,7 +631,6 @@ function ComplaintPreview({
   onNotYet,
   customBodyText,
   onSaveCustom,
-  onResetCustom,
 }: PreviewProps): JSX.Element {
   const [isEditing, setIsEditing] = useState(false);
   const [draftText, setDraftText] = useState("");
@@ -646,8 +709,9 @@ function ComplaintPreview({
   };
 
   const handleEnterEdit = (): void => {
-    const initial = customBodyText ?? buildDefaultBodyText();
-    setDraftText(initial);
+    // 항상 양식 구조(buildDefaultBodyText)로 시작 — AI 생성 텍스트가 있어도 무시.
+    // 사용자가 [성명], [연락처] 등 자리표시자를 직접 채울 수 있도록 명확하게 표시.
+    setDraftText(buildDefaultBodyText());
     setIsEditing(true);
   };
 
@@ -686,7 +750,25 @@ function ComplaintPreview({
             style={{ marginTop: 1 }}
           />
           <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 18 }}>
-            진정인(본인) 정보가 없어 자리표시자로 채워집니다. 마이페이지에서 등록하면 PDF에 자동 반영돼요.
+            진정인(본인) 정보가 없어 자리표시자로 채워집니다. "직접 수정하기"로 성명·연락처·주소를 채워넣으세요.
+          </Text>
+        </View>
+      ) : null}
+      {customBodyText !== null ? (
+        <View
+          style={{
+            backgroundColor: "#EBF3FF",
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 8,
+            flexDirection: "row",
+            gap: 6,
+            alignItems: "center",
+          }}
+        >
+          <Ionicons name="checkmark-circle" size={14} color="#1A5FAF" />
+          <Text style={{ flex: 1, fontSize: 12, color: "#185FA5" }}>
+            수정된 내용이 PDF에 적용됩니다. 아래 양식은 원본 구조로 표시돼요.
           </Text>
         </View>
       ) : null}
@@ -723,23 +805,6 @@ function ComplaintPreview({
               {aiGenerating ? "생성 중…" : "AI로 생성"}
             </Text>
           </Pressable>
-          {customBodyText !== null ? (
-            <Pressable
-              onPress={onResetCustom}
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 7,
-                borderRadius: 8,
-                backgroundColor: "#F1F5F9",
-              }}
-            >
-              <Text
-                style={{ fontSize: 12, color: "#475569", fontWeight: "600" }}
-              >
-                자동 생성으로 되돌리기
-              </Text>
-            </Pressable>
-          ) : null}
           <Pressable
             onPress={handleEnterEdit}
             style={{
@@ -756,7 +821,7 @@ function ComplaintPreview({
             <Text
               style={{ fontSize: 12, color: "#FFFFFF", fontWeight: "600" }}
             >
-              {customBodyText !== null ? "다시 수정하기" : "직접 수정하기"}
+              직접 수정하기
             </Text>
           </Pressable>
         </View>
@@ -790,7 +855,6 @@ function ComplaintPreview({
             <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
               <Pressable
                 onPress={() => {
-                  onResetCustom();
                   setDraftText("");
                   setIsEditing(false);
                 }}
@@ -839,9 +903,9 @@ function ComplaintPreview({
               </Pressable>
             </View>
           </>
-        ) : customBodyText !== null ? (
-          <Text style={previewLineStyle}>{customBodyText}</Text>
         ) : (
+          // 항상 공식 양식 테이블 렌더 — 수정 시 handleSaveEdits가 store/applicant를
+          // 업데이트하므로 StructuredPreview가 수정된 값을 그대로 반영함.
           <StructuredPreview
             reportCase={reportCase}
             negotiationText={negotiationText}
@@ -1320,3 +1384,4 @@ const contentBodyStyle = {
   lineHeight: 18,
   marginLeft: 4,
 } as const;
+

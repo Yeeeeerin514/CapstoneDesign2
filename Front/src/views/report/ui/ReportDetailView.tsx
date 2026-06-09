@@ -36,6 +36,7 @@ import { MentorQuickMatchModal } from "./MentorQuickMatchModal";
 import type { DamageTypeEnum } from "@/entities/report";
 import {
   STEP_ORDER,
+  STEP_META,
   type CaseStep,
   type InvestigationSubStatus,
   type ReportStatus,
@@ -128,52 +129,13 @@ function getCurrentTaskByStep(
           onPress: handlers.onOpenWork24,
         },
       };
-    case "investigation": {
-      const sub = handlers.investigationStatus ?? "waiting_inspector";
-      switch (sub) {
-        case "waiting_inspector":
-          return {
-            title: "근로감독관 배정을 기다리는 중이에요",
-            description:
-              "보통 1~2주 안에 담당 감독관이 배정됩니다. 출석요구서를 받으면 알려주세요",
-            secondary: {
-              label: "출석조사 멘토 미리 연결 · ₩10,000",
-              onPress: handlers.onConnectMentor,
-            },
-            secondaryDisclaimer: "멘토는 동료 근로자입니다. 법률 자문 아님.",
-          };
-        case "awaiting_hearing":
-          return {
-            title: "출석조사를 준비하세요",
-            description:
-              "지정된 날짜에 노동청에 출석해 조사를 받습니다. 멘토와 함께 준비할 수 있어요",
-            primary: {
-              label: "출석조사 멘토 연결 · ₩10,000",
-              onPress: handlers.onConnectMentor,
-            },
-            secondaryDisclaimer: "멘토는 동료 근로자입니다. 법률 자문 아님.",
-          };
-        case "under_correction":
-          return {
-            title: "시정지시가 발부되었어요",
-            description:
-              "사업주가 지급할 때까지 기다리세요. 입금을 확인하면 해결로 처리해주세요",
-            primary: {
-              label: "돈을 받았어요 (해결 확인)",
-              onPress: handlers.onOpenResolveConfirm,
-            },
-          };
-        case "resolved_confirm":
-          return {
-            title: "해결 확인이 필요해요",
-            description: "최종 해결 처리를 완료하시면 후기를 남길 수 있어요",
-            primary: {
-              label: "해결 확인 완료하기",
-              onPress: handlers.onOpenResolveConfirm,
-            },
-          };
-      }
-    }
+    case "investigation":
+      // V2: investigation 단계 task 카드 제거 — 하단 "임금 받으셨어요?" 카드가 메인 액션.
+      // 빈 task로 두면 카드 자체가 렌더되지 않음 (title/desc empty + no buttons).
+      return {
+        title: "",
+        description: "",
+      };
   }
 }
 
@@ -557,8 +519,9 @@ export function ReportDetailView({
         </View>
 
 
-        {/* 지금 해야 할 일 — V2: evidence_collection 단계는 일반 currentTask 카드로 통일.
-            (수정 모드 배너는 진행 단계 카드 상단의 StepNavigator로 대체됨) */}
+        {/* 지금 해야 할 일 — V2: investigation 단계 진입(=진정서 제출 완료) 이후에는
+            아래의 "임금 받으셨어요?" 카드가 메인 액션이므로, 황색 task 카드는 RESOLVED 시
+            축하 카드로만 노출하고 그 외엔 숨김 (getCurrentTaskByStep이 empty 반환). */}
         {currentStep === "investigation" &&
           reportCase.status === "RESOLVED" ? (
           <View
@@ -691,7 +654,7 @@ export function ReportDetailView({
               </Text>
             </Pressable>
           </View>
-        ) : (
+        ) : currentTask.title === "" ? null : (
           <View
             style={{
               backgroundColor: "#FEF3C7",
@@ -819,8 +782,10 @@ export function ReportDetailView({
 
 
 
-        {/* 임금 수령 여부 메인 카드 — 종결된 사건이 아니면 항상 노출 */}
-        {reportCase.status !== "RESOLVED" &&
+        {/* 임금 수령 여부 메인 카드 — 진정서 노동청 제출 완료 이후에만 노출.
+            (=investigation 단계 또는 INSPECTING/CORRECTION_ORDERED status) */}
+        {currentStep === "investigation" &&
+        reportCase.status !== "RESOLVED" &&
         reportCase.status !== "UNRESOLVED" ? (
           <View
             style={{
@@ -1293,6 +1258,138 @@ export function ReportDetailView({
               법적 판단은 공인노무사·변호사에게 받으세요.
             </Text>
           </View>
+        </View>
+
+        {/* 진행 단계 체크리스트 — 4단계 진행 상황 한눈에 표시 */}
+        <View
+          style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: 14,
+            padding: 16,
+            marginBottom: 12,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 14,
+              fontWeight: "700",
+              color: "#0F172A",
+              marginBottom: 12,
+            }}
+          >
+            진행 단계
+          </Text>
+
+          {STEP_ORDER.map((stepId, idx) => {
+            const meta = STEP_META[stepId];
+            const currentIdx = STEP_ORDER.indexOf(reportCase.currentStep);
+            const highestIdx = STEP_ORDER.indexOf(reportCase.highestStep);
+            const isCompleted = idx < currentIdx;
+            const isActive = idx === currentIdx;
+            const isEditable = idx < highestIdx;
+            const circleBg = isCompleted || isActive ? "#3182F6" : "#E2E8F0";
+            const circleColor = isCompleted || isActive ? "#FFFFFF" : "#94A3B8";
+            const titleColor = isCompleted || isActive ? "#0F172A" : "#94A3B8";
+            const descColor = isCompleted || isActive ? "#64748B" : "#CBD5E1";
+
+            return (
+              <View
+                key={stepId}
+                style={{
+                  flexDirection: "row",
+                  gap: 12,
+                  marginBottom: idx === STEP_ORDER.length - 1 ? 0 : 14,
+                }}
+              >
+                <View style={{ alignItems: "center" }}>
+                  <View
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 12,
+                      backgroundColor: circleBg,
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    {isCompleted ? (
+                      <Ionicons name="checkmark" size={14} color={circleColor} />
+                    ) : (
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: "700",
+                          color: circleColor,
+                        }}
+                      >
+                        {idx + 1}
+                      </Text>
+                    )}
+                  </View>
+                  {idx < STEP_ORDER.length - 1 ? (
+                    <View
+                      style={{
+                        width: 2,
+                        flex: 1,
+                        backgroundColor: isCompleted ? "#3182F6" : "#E2E8F0",
+                        marginTop: 4,
+                        minHeight: 18,
+                      }}
+                    />
+                  ) : null}
+                </View>
+                <View style={{ flex: 1, paddingBottom: 4 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      marginBottom: 2,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 14,
+                        fontWeight: isActive ? "700" : "600",
+                        color: titleColor,
+                      }}
+                    >
+                      {meta.label}
+                    </Text>
+                    {isEditable ? (
+                      <View
+                        style={{
+                          backgroundColor: "#EBF3FF",
+                          borderRadius: 4,
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            color: "#1B64DA",
+                            fontWeight: "600",
+                          }}
+                        >
+                          수정 가능
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: descColor,
+                      lineHeight: 17,
+                    }}
+                  >
+                    {meta.description}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
         </View>
 
         {/* 신고 취하 */}
