@@ -11,4 +11,11 @@ export {
   type RegisterWorkplaceRequest,
   type RegisterWorkplaceResponse,
 } from "./api/register-workplace";
+export {
+  fetchFavoriteWorkplaces,
+  fetchRegisteredWorkplaces,
+  deleteWorkplace,
+  type PartTimeJobStatus,
+  type PartTimeJobSummaryResponse,
+} from "./api/fetch-part-time-jobs";
 export { WorkplaceCard } from "./ui/WorkplaceCard";

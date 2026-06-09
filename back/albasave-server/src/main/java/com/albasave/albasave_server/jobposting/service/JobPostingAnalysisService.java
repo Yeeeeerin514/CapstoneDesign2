@@ -8,6 +8,7 @@ import com.albasave.albasave_server.jobposting.dto.ExternalRiskCheck;
 import com.albasave.albasave_server.jobposting.dto.ExtractedJobPosting;
 import com.albasave.albasave_server.jobposting.dto.JobPostingAnalysisResponse;
 import com.albasave.albasave_server.jobposting.repository.JobPostingAnalysisRepository;
+import com.albasave.albasave_server.workinglog.service.FavoriteWorkplaceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,6 +31,7 @@ public class JobPostingAnalysisService {
     private final JobPostingImageStorageService imageStorageService;
     private final JobPostingRiskAnalyzer riskAnalyzer;
     private final JobPostingAnalysisRepository analysisRepository;
+    private final FavoriteWorkplaceService favoriteWorkplaceService;
     private final ObjectMapper objectMapper;
 
     public JobPostingAnalysisService(
@@ -40,6 +42,7 @@ public class JobPostingAnalysisService {
             JobPostingImageStorageService imageStorageService,
             JobPostingRiskAnalyzer riskAnalyzer,
             JobPostingAnalysisRepository analysisRepository,
+            FavoriteWorkplaceService favoriteWorkplaceService,
             ObjectMapper objectMapper
     ) {
         this.extractor = extractor;
@@ -49,10 +52,11 @@ public class JobPostingAnalysisService {
         this.imageStorageService = imageStorageService;
         this.riskAnalyzer = riskAnalyzer;
         this.analysisRepository = analysisRepository;
+        this.favoriteWorkplaceService = favoriteWorkplaceService;
         this.objectMapper = objectMapper;
     }
 
-    public JobPostingAnalysisResponse analyze(MultipartFile image) throws IOException {
+    public JobPostingAnalysisResponse analyze(Long userId, MultipartFile image) throws IOException {
         Optional<String> imageUrl = imageStorageService.upload(image);
         Optional<ExtractedJobPosting> extractedResult = Optional.empty();
         ConcernItem aiFailureConcern = null;
@@ -107,6 +111,11 @@ public class JobPostingAnalysisService {
                 imageUrl.orElse(null)
         );
 
+        // 공고 분석 결과를 유저의 관심업장(PartTimeJob status=FAVORITE)으로 자동 저장.
+        Long favoritePartTimeJobId = favoriteWorkplaceService
+                .saveFromAnalysis(userId, analysis.getId(), extracted)
+                .orElse(null);
+
         JobPostingAnalysisResponse response = new JobPostingAnalysisResponse(
                 analysis.getId(),
                 extracted,
@@ -118,7 +127,8 @@ public class JobPostingAnalysisService {
                 concerns,
                 finalSummary,
                 report,
-                extractedResult.isPresent()
+                extractedResult.isPresent(),
+                favoritePartTimeJobId
         );
         analysis.setResponseJson(toJson(response));
         analysisRepository.save(analysis);
@@ -153,7 +163,8 @@ public class JobPostingAnalysisService {
                 concerns,
                 buildFinalSummary(businessDataAnalysis, postingTextAnalysis),
                 analysis.getReport(),
-                analysis.isOpenAiUsed()
+                analysis.isOpenAiUsed(),
+                null // 과거 분석 재조회 — 관심업장 자동 생성은 최초 분석 시점에만 수행
         );
     }
 

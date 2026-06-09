@@ -13,6 +13,8 @@ public record JobPostingAnalysisResponse(
         List<ConcernItem> concerns,
         String finalSummary,
         String userReport,
-        boolean openAiUsed
+        boolean openAiUsed,
+        /** 이 분석으로 자동 생성/갱신된 관심업장(PartTimeJob status=FAVORITE) id. 저장 안 됐으면 null. */
+        Long favoritePartTimeJobId
 ) {
 }

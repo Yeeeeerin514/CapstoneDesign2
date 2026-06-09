@@ -4,6 +4,7 @@ import com.albasave.albasave_server.jobposting.dto.JobPostingAnalysisResponse;
 import com.albasave.albasave_server.jobposting.service.JobPostingAnalysisService;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,8 +25,10 @@ public class JobPostingAnalysisController {
     }
 
     @PostMapping(value = "/analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public JobPostingAnalysisResponse analyze(@RequestPart("image") @NotNull MultipartFile image) throws IOException {
-        return analysisService.analyze(image);
+    public JobPostingAnalysisResponse analyze(
+            @AuthenticationPrincipal Long userId,
+            @RequestPart("image") @NotNull MultipartFile image) throws IOException {
+        return analysisService.analyze(userId, image);
     }
 
     @GetMapping("/analyses/{analysisId}")

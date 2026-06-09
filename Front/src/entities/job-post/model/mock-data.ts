@@ -16,6 +16,7 @@ export const MOCK_JOB_ANALYSIS: JobPostAnalysisResult = {
   wageDelinquencyCount: 2,
   minimumWage2026: getMinimumWage().wage,
   summary: "임금체불 이력 2건, 최저임금 미달, 주휴수당 미언급",
+  favoritePartTimeJobId: null,
   overallAssessment: null,
   userReport: "",
   imageUrl: null,

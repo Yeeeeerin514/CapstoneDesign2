@@ -18,6 +18,13 @@ import java.util.List;
 @Setter
 public class RegisterWorkplaceRequest {
 
+    /**
+     * 승격할 관심업장(PartTimeJob status=FAVORITE) id.
+     * 있으면 해당 행을 FAVORITE → REGISTERED 로 전이(새 행 생성 X).
+     * 없으면(레거시/직접 등록) 새 REGISTERED 행을 생성한다.
+     */
+    private Long partTimeJobId;
+
     /** PartTimeJob.businessName 으로 저장. */
     private String workplaceName;
 

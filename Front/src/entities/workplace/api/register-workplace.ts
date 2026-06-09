@@ -10,6 +10,12 @@ import { apiClient } from "@/shared/api/axios-instance";
  * 반드시 apiClient를 사용한다.
  */
 export interface RegisterWorkplaceRequest {
+  /**
+   * 승격할 관심업장(PartTimeJob status=FAVORITE) id.
+   * 있으면 백엔드가 해당 행을 FAVORITE→REGISTERED로 전이(새 행 생성 X).
+   * 공고 분석으로 자동 저장된 관심업장을 알바로 등록할 때 전달한다.
+   */
+  partTimeJobId?: number;
   /** PartTimeJob.businessName 으로 저장됨. */
   workplaceName: string;
   /** 필수 — 없으면 백엔드 400. */

@@ -48,6 +48,11 @@ export interface JobPostAnalysisResult {
   minimumWage2026: number;
   issues: JobPostIssue[];
   summary: string;
+  /**
+   * 이 분석으로 서버에 자동 저장된 관심업장(PartTimeJob status=FAVORITE) id.
+   * 이후 알바 등록 시 registerWorkplace 의 partTimeJobId 로 전달해 FAVORITE→REGISTERED 승격에 사용.
+   */
+  favoritePartTimeJobId: number | null;
   /** OpenAI가 직접 내린 한 줄 평가 (지원해도 무방 / 조건 확인 후 / 비권장). */
   overallAssessment: string | null;
   userReport: string;
@@ -235,6 +240,8 @@ export interface ApiJobPostingAnalysisResponse {
   finalSummary: string;
   userReport: string;
   openAiUsed: boolean;
+  /** 이 분석으로 자동 생성/갱신된 관심업장(PartTimeJob status=FAVORITE) id. */
+  favoritePartTimeJobId: number | null;
 }
 
 function severityToLevel(
@@ -324,6 +331,7 @@ export function mapJobPostingApiResponse(
     minimumWage2026: getMinimumWage().wage,
     issues,
     summary: api.finalSummary ?? "",
+    favoritePartTimeJobId: api.favoritePartTimeJobId ?? null,
     overallAssessment: ex.overallAssessment ?? null,
     userReport: api.userReport ?? "",
     imageUrl: api.imageUrl ?? null,
