@@ -99,12 +99,20 @@ public class GeminiAiService {
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
+        log.info("Gemini 요청 시작 — model={}", model);
         try {
             ResponseEntity<Map> response =
                     restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
+            log.info("Gemini 응답 수신 — status={}", response.getStatusCode());
             return extractText(response.getBody());
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            log.error("Gemini API 클라이언트 오류 — status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("AI 진정서 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", e);
+        } catch (org.springframework.web.client.HttpServerErrorException e) {
+            log.error("Gemini API 서버 오류 — status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("AI 진정서 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", e);
         } catch (RuntimeException e) {
-            log.error("Gemini API 호출 실패: {}", e.getMessage());
+            log.error("Gemini API 호출 실패: {}", e.getMessage(), e);
             throw new RuntimeException("AI 진정서 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", e);
         }
     }
