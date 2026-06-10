@@ -171,34 +171,35 @@ export function buildComplaintDoc(form: ComplaintFormData): string {
 <meta charset="UTF-8">
 <title>진정서</title>
 <style>
+    @page { margin: 12mm 14mm; }
     body {
         font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
-        line-height: 1.6;
-        margin: 40px auto;
+        line-height: 1.25;
+        margin: 0 auto;
         max-width: 800px;
         color: #333;
+        font-size: 9pt;
     }
     h1 {
         text-align: center;
-        font-size: 2.2em;
-        margin-bottom: 40px;
-        letter-spacing: 5px;
+        font-size: 16pt;
+        margin: 0 0 10px 0;
+        letter-spacing: 4px;
     }
     h2 {
-        font-size: 1.2em;
-        margin-top: 30px;
-        margin-bottom: 10px;
+        font-size: 10pt;
+        margin: 10px 0 4px 0;
     }
     table {
         width: 100%;
         border-collapse: collapse;
-        margin-bottom: 25px;
+        margin-bottom: 8px;
         table-layout: fixed;
     }
     th, td {
         border: 1px solid #000;
-        padding: 12px;
-        font-size: 14px;
+        padding: 3px 5px;
+        font-size: 9pt;
         vertical-align: middle;
     }
     th {
@@ -213,12 +214,12 @@ export function buildComplaintDoc(form: ComplaintFormData): string {
     }
     .footer {
         text-align: right;
-        margin-top: 60px;
-        font-size: 1.3em;
+        margin-top: 16px;
+        font-size: 11pt;
         font-weight: bold;
     }
     .content-row {
-        height: 200px;
+        height: 90px;
         vertical-align: top;
     }
 </style>
