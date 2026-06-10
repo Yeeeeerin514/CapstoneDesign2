@@ -5,6 +5,7 @@ import {
   AppState,
   type AppStateStatus,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -60,6 +61,19 @@ const DAMAGE_LABEL: Record<DamageTypeEnum, string> = {
   NIGHT: "야간근로수당 미지급",
   SEVERANCE: "퇴직금 미지급",
 };
+
+/** 웹에서 .doc 파일을 Blob으로 만들어 브라우저 다운로드를 트리거한다. */
+function downloadDocOnWeb(html: string, fileName: string): void {
+  const blob = new Blob([html], { type: "application/msword" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 function moneyDisplay(v: number | null | undefined): string {
   if (v === null || v === undefined || v === 0) return "";
@@ -601,12 +615,20 @@ function ComplaintPreview({
       onPersistApplicant(form);
       const html = buildComplaintDoc(form);
       // 파일 경로에 한글/공백이 들어가면 일부 기기에서 쓰기·공유가 실패하므로 ASCII 파일명 사용.
+      const idPart = reportCase.id.replace(/[^A-Za-z0-9]+/g, "");
+      const fileName = `complaint_${idPart.length > 0 ? idPart : "report"}.doc`;
+
+      // 웹(Expo Web/브라우저)에서는 expo-file-system이 동작하지 않으므로 Blob 다운로드 사용.
+      if (Platform.OS === "web") {
+        downloadDocOnWeb(html, fileName);
+        return;
+      }
+
       const dir = FileSystem.cacheDirectory;
       if (dir === null) {
         throw new Error("저장 공간(cacheDirectory)을 사용할 수 없습니다.");
       }
-      const idPart = reportCase.id.replace(/[^A-Za-z0-9]+/g, "");
-      const fileUri = `${dir}complaint_${idPart.length > 0 ? idPart : "report"}.doc`;
+      const fileUri = `${dir}${fileName}`;
       await FileSystem.writeAsStringAsync(fileUri, html, {
         encoding: FileSystem.EncodingType.UTF8,
       });
