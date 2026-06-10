@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -21,7 +22,7 @@ import {
 } from "@/features/favorite-workplace";
 import { ScreenHeader, colors } from "@/shared/ui";
 import {
-  deletePartTimeJob,
+  deleteWorkplace,
   registerWorkplace,
   fetchFavoriteWorkplaces,
   fetchRegisteredWorkplaces,
@@ -263,8 +264,12 @@ export function WorkplaceView(): JSX.Element {
   /**
    * 관심업장 삭제 — 백엔드 part_time_job 동시 정리.
    * - partTimeJobId가 없으면 (BSSID 미등록 단계) 로컬만 제거
-   * - 있으면 DELETE /api/part-time-jobs/{id} 호출 후 로컬 제거
+   * - 있으면 DELETE /api/working/part-time-jobs/{id} (행 실제 삭제) 호출 후 로컬 제거
    * - 404는 이미 삭제된 것으로 간주하고 로컬도 정리, 그 외 status는 로컬 보존
+   *
+   * 주의: 구버전 /api/part-time-jobs/{id}(deactivate)는 isActive=false 로만 바꾸는
+   * soft delete 라 favorites 재조회 시 행이 그대로 돌아온다(별표 삭제 안 됨 버그).
+   * 반드시 행을 실제로 지우는 deleteWorkplace 를 사용한다.
    */
   const performDelete = async (wp: FavoriteWorkplace): Promise<void> => {
     if (wp.partTimeJobId === undefined) {
@@ -273,7 +278,7 @@ export function WorkplaceView(): JSX.Element {
     }
     setDeletingId(wp.id);
     try {
-      await deletePartTimeJob(wp.partTimeJobId);
+      await deleteWorkplace(wp.partTimeJobId);
       removeWorkplace(wp.id);
       Alert.alert("삭제됨", "삭제되었습니다");
       // TODO: 서버 기준 동기화 — 추후 fetchWorkplaces() 결과로 store 재구축 함수 도입 시 여기서 호출.
@@ -301,6 +306,19 @@ export function WorkplaceView(): JSX.Element {
   };
 
   const handleDelete = (wp: FavoriteWorkplace): void => {
+    // RN Web 은 Alert.alert 의 다중 버튼 콜백(onPress)을 실행하지 않는다.
+    // 따라서 웹에서는 별 아이콘을 눌러도 performDelete 가 호출되지 않아
+    // 삭제가 전혀 동작하지 않았다 → 웹에서는 window.confirm 으로 분기.
+    if (Platform.OS === "web") {
+      const ok =
+        typeof window !== "undefined" && typeof window.confirm === "function"
+          ? window.confirm(
+              "관심업장에서 삭제하시겠어요?\n삭제 후에는 복구할 수 없습니다.",
+            )
+          : true;
+      if (ok) void performDelete(wp);
+      return;
+    }
     Alert.alert(
       "알바를 삭제하시겠어요?",
       "삭제 후에는 복구할 수 없습니다.",

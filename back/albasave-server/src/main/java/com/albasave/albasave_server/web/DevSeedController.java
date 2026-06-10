@@ -4,6 +4,8 @@ import com.albasave.albasave_server.mentoring.domain.*;
 import com.albasave.albasave_server.mentoring.repository.MentorProfileRepository;
 import com.albasave.albasave_server.review.domain.Review;
 import com.albasave.albasave_server.review.repository.ReviewRepository;
+import com.albasave.albasave_server.wagearrears.domain.WageArrearsEmployer;
+import com.albasave.albasave_server.wagearrears.repository.WageArrearsEmployerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -29,17 +32,35 @@ public class DevSeedController {
 
     private final ReviewRepository reviewRepository;
     private final MentorProfileRepository mentorProfileRepository;
+    private final WageArrearsEmployerRepository wageArrearsRepository;
 
     @PostMapping("/seed-demo")
     @Transactional
     public ResponseEntity<Map<String, Object>> seedDemo() {
         int reviews = seedReviews();
         int mentorsAdded = seedMentors();
+        int wageArrears = seedWageArrears();
         return ResponseEntity.ok(Map.of(
                 "reviews", reviews,
                 "mentorsAdded", mentorsAdded,
+                "wageArrears", wageArrears,
                 "message", "데모 데이터 시드 완료"
         ));
+    }
+
+    // ── 체불사업주 명단: 데모용 가상 사업장 1건(실존 업체 아님) ──
+    // 데모 공고(데일리브루 명륜점)를 분석하면 "체불사업주 명단 후보"로 뜨도록.
+    // 매칭은 normalizedName 부분 일치라 추출명이 "데일리브루"든 "데일리브루 명륜점"이든 잡힌다.
+    private int seedWageArrears() {
+        String businessName = "데일리브루 명륜점";
+        String representative = "홍길동"; // 명백한 가명
+        String norm = WageArrearsEmployer.normalize(businessName);
+        if (wageArrearsRepository.existsByNormalizedNameAndRepresentativeName(norm, representative)) {
+            return 0;
+        }
+        wageArrearsRepository.save(
+                new WageArrearsEmployer(representative, businessName, LocalDate.of(2026, 3, 2)));
+        return 1;
     }
 
     // ── 후기: 정크 포함 전부 비우고 다양한 한글 후기로 재구성 ──
