@@ -413,6 +413,7 @@ export function ReportDraftWizardView({
         ) : (
           <ComplaintPreview
             reportCase={reportCase}
+            negotiation={negotiation}
             negotiationText={
               NEGOTIATION_OPTIONS.find((o) => o.id === negotiation)
                 ?.draftText ?? ""
@@ -607,6 +608,7 @@ function SummaryRow({
 
 interface PreviewProps {
   reportCase: ReportCase;
+  negotiation: NegotiationStatus;
   negotiationText: string;
   applicant: ApplicantInfo | null;
   onSavePdf: () => void;
@@ -621,6 +623,7 @@ interface PreviewProps {
 
 function ComplaintPreview({
   reportCase,
+  negotiation,
   negotiationText,
   applicant,
   onSavePdf,
@@ -641,7 +644,7 @@ function ComplaintPreview({
   const handleGenerateAi = async (): Promise<void> => {
     setAiGenerating(true);
     try {
-      const text = await generateReportDraft(reportCase.id);
+      const text = await generateReportDraft(reportCase.id, negotiation);
       if (text.trim().length > 0) {
         onSaveCustom(text);
       } else {

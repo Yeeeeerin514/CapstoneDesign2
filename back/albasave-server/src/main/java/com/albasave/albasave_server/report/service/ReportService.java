@@ -9,6 +9,7 @@ import com.albasave.albasave_server.report.dto.AiDraftContext;
 import com.albasave.albasave_server.report.dto.AiDraftResponse;
 import com.albasave.albasave_server.report.dto.CreateReportDraftRequest;
 import com.albasave.albasave_server.report.dto.CreateReportDraftResponse;
+import com.albasave.albasave_server.report.dto.GenerateComplaintDraftRequest;
 import com.albasave.albasave_server.report.dto.PutEvidenceRequest;
 import com.albasave.albasave_server.report.dto.ReportDetailResponse;
 import com.albasave.albasave_server.report.dto.ReportDraftSpec;
@@ -109,7 +110,8 @@ public class ReportService {
      * evidence 단계에서 저장된 사건 정보에서 읽어 Gemini에 전달한다.
      */
     @Transactional(readOnly = true)
-    public AiDraftResponse generateComplaintDraft(Long userId, Long caseId) {
+    public AiDraftResponse generateComplaintDraft(Long userId, Long caseId,
+                                                  GenerateComplaintDraftRequest req) {
         Report report = reportRepository.findById(caseId)
                 .orElseThrow(() -> new IllegalArgumentException("신고 사건을 찾을 수 없습니다: " + caseId));
 
@@ -117,9 +119,28 @@ public class ReportService {
             throw new ReportAccessDeniedException("본인 소유의 신고만 사용할 수 있습니다.");
         }
 
-        AiDraftContext ctx = buildAiDraftContext(report);
+        String negotiationFact = resolveNegotiationFact(req == null ? null : req.negotiationStatus());
+        AiDraftContext ctx = buildAiDraftContext(report, negotiationFact);
         String content = geminiAiService.generatePetitionContent(ctx);
         return new AiDraftResponse(content);
+    }
+
+    /**
+     * 프론트의 협의 시도 선택 키를 '사실 서술'로 변환한다.
+     * 프론트의 안내/초안 문구와 다른 표현을 의도적으로 쓴다 — 이 값은 AI가 격식체로 다시 풀어 쓸
+     * '재료'일 뿐, 그대로 진정서에 박히지 않도록 GeminiAiService 프롬프트가 재서술을 지시한다.
+     * 알 수 없는 값/누락이면 null(→ 협의 정황 미반영).
+     */
+    private String resolveNegotiationFact(String status) {
+        if (status == null) {
+            return null;
+        }
+        return switch (status) {
+            case "refused" -> "진정인이 사업주에게 임금 지급을 요청하였으나 사업주가 지급을 거부함";
+            case "not-tried" -> "진정인이 아직 사업주에게 임금 지급을 직접 요청하지는 않음";
+            case "no-response" -> "진정인이 사업주에게 연락을 시도하였으나 사업주로부터 응답을 받지 못함";
+            default -> null;
+        };
     }
 
     /**
@@ -127,7 +148,7 @@ public class ReportService {
      * 진정 내용 작성에 필요한 5가지(피해유형·자연어서술·사업장명·입사일·체불총액)만 담는다.
      * 없는 값은 null(→ 프롬프트에서 "(미입력)").
      */
-    private AiDraftContext buildAiDraftContext(Report report) {
+    private AiDraftContext buildAiDraftContext(Report report, String negotiationFact) {
         List<String> typeLabels = report.getDamageTypes().stream()
                 .map(damageTypeCode::getDescription)
                 .toList();
@@ -141,6 +162,7 @@ public class ReportService {
                 .businessName(biz != null ? biz.getName() : null)
                 .employmentStartDate(facts != null ? facts.getEmploymentStartDate() : null)
                 .totalUnpaidWage(facts != null ? facts.getTotalUnpaidWage() : null)
+                .negotiationFact(negotiationFact)
                 .build();
     }
 }

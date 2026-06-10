@@ -89,10 +89,17 @@ export async function createReport(input: CreateReportInput): Promise<BackendRep
 /**
  * POST /api/reports/{caseId}/complaint-draft — Gemini가 생성한 진정 내용 본문(줄글) 반환.
  * caseId는 백엔드 사건 id여야 함(사업장 검색으로 시작한 신고). 클라이언트 id면 서버가 거부.
+ *
+ * negotiationStatus(선택): "사업주와 협의 시도하셨나요?" 선택 키("refused"|"not-tried"|"no-response").
+ * 서버가 이를 사실 서술로 바꿔 AI가 격식체로 다시 풀어 쓴다(프론트 안내 문구 그대로 들어가지 않음).
  */
-export async function generateReportDraft(reportId: string): Promise<string> {
+export async function generateReportDraft(
+  reportId: string,
+  negotiationStatus?: string,
+): Promise<string> {
   const { data } = await apiClient.post<{ complaintDraft: string }>(
     `/reports/${reportId}/complaint-draft`,
+    negotiationStatus !== undefined ? { negotiationStatus } : undefined,
   );
   return data.complaintDraft ?? "";
 }

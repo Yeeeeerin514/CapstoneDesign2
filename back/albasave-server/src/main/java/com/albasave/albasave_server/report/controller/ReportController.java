@@ -3,6 +3,7 @@ package com.albasave.albasave_server.report.controller;
 import com.albasave.albasave_server.report.dto.AiDraftResponse;
 import com.albasave.albasave_server.report.dto.CreateReportDraftRequest;
 import com.albasave.albasave_server.report.dto.CreateReportDraftResponse;
+import com.albasave.albasave_server.report.dto.GenerateComplaintDraftRequest;
 import com.albasave.albasave_server.report.dto.PutEvidenceRequest;
 import com.albasave.albasave_server.report.dto.ReportDetailResponse;
 import com.albasave.albasave_server.report.dto.ReportSummaryResponse;
@@ -62,12 +63,14 @@ public class ReportController {
 
     /**
      * AI 진정 내용 초안 생성 — 본인 소유 사건만. (프론트 generateReportDraft 계약)
-     * 요청 본문 없이 caseId만 받아, 저장된 사건 정보(피해유형·자연어 서술·근무·체불)로 Gemini가 진정 내용을 생성한다.
+     * 저장된 사건 정보(피해유형·자연어 서술·근무·체불)에 더해, 요청 본문의 협의 시도 선택값(선택)을
+     * 함께 넘겨 Gemini가 진정 내용을 생성한다. 본문은 없을 수도 있다(협의 정황 미반영).
      */
     @PostMapping("/{caseId}/complaint-draft")
     public ResponseEntity<AiDraftResponse> generateComplaintDraft(
             @AuthenticationPrincipal Long userId,
-            @PathVariable Long caseId) {
-        return ResponseEntity.ok(reportService.generateComplaintDraft(userId, caseId));
+            @PathVariable Long caseId,
+            @RequestBody(required = false) GenerateComplaintDraftRequest req) {
+        return ResponseEntity.ok(reportService.generateComplaintDraft(userId, caseId, req));
     }
 }
