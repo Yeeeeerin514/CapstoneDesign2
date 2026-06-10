@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import * as Print from "expo-print";
+import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { ScreenHeader } from "@/shared/ui";
 import { useReportStore } from "@/features/report-submit";
@@ -23,16 +23,16 @@ import type {
   ReportCase,
 } from "@/entities/report";
 import { generateReportDraft } from "@/entities/report";
+import type { NegotiationStatus } from "@/features/report-submit/lib/buildComplaintHtml";
 import {
-  buildComplaintHtml,
-  type NegotiationStatus,
-} from "@/features/report-submit/lib/buildComplaintHtml";
+  buildComplaintDoc,
+  type ComplaintFormData,
+} from "@/features/report-submit/lib/buildComplaintDoc";
 import {
   loadApplicantInfo,
   saveApplicantInfo,
   emptyApplicantInfo,
 } from "@/features/applicant-info";
-import type { ComplaintRespondent } from "@/entities/report";
 
 interface ReportDraftWizardViewProps {
   reportCase: ReportCase;
@@ -47,26 +47,10 @@ const STEPS: StepKey[] = ["negotiation", "preview"];
 const NEGOTIATION_OPTIONS: Array<{
   id: NegotiationStatus;
   label: string;
-  draftText: string;
 }> = [
-  {
-    id: "refused",
-    label: "협의 요청했지만 거부당했어요",
-    draftText:
-      "진정인은 사업주에게 임금 지급을 요청하였으나 사업주가 이를 거부하였습니다.",
-  },
-  {
-    id: "not-tried",
-    label: "아직 협의 시도를 안 했어요",
-    draftText:
-      "진정인은 사업주에게 아직 임금 지급 요청을 하지 않았습니다.",
-  },
-  {
-    id: "no-response",
-    label: "연락이 안 돼요",
-    draftText:
-      "진정인은 사업주에게 연락을 시도하였으나 응답이 없었습니다.",
-  },
+  { id: "refused", label: "협의 요청했지만 거부당했어요" },
+  { id: "not-tried", label: "아직 협의 시도를 안 했어요" },
+  { id: "no-response", label: "연락이 안 돼요" },
 ];
 
 const DAMAGE_LABEL: Record<DamageTypeEnum, string> = {
@@ -77,6 +61,71 @@ const DAMAGE_LABEL: Record<DamageTypeEnum, string> = {
   SEVERANCE: "퇴직금 미지급",
 };
 
+function moneyDisplay(v: number | null | undefined): string {
+  if (v === null || v === undefined || v === 0) return "";
+  return `${v.toLocaleString()}원`;
+}
+
+/** reportCase + 진정인 + AI 본문을 합쳐 편집 폼 초기값을 만든다. */
+function buildInitialForm(
+  reportCase: ReportCase,
+  applicant: ApplicantInfo | null,
+  aiContent: string,
+): ComplaintFormData {
+  const facts = reportCase.facts;
+  const respondent = reportCase.respondent;
+  const damages = reportCase.damageTypeEnums ?? [];
+  const damageLines =
+    damages.length > 0
+      ? damages.map((d) => `· ${DAMAGE_LABEL[d]}`).join("\n")
+      : "· 임금체불";
+  const attachments = (reportCase.evidenceFiles ?? [])
+    .map((f, i) => `${i + 1}. ${f.name}`)
+    .join("\n");
+
+  // AI 본문이 있으면 그대로, 없으면 피해 유형/상황 설명으로 기본 골격을 채운다.
+  const content =
+    aiContent.trim().length > 0
+      ? aiContent
+      : `[피해 유형]\n${damageLines}\n\n[상황 설명]\n${reportCase.freeFormDescription ?? ""}`;
+
+  return {
+    applicantName: applicant?.fullName ?? "",
+    applicantRrn: applicant?.rrn ?? "",
+    applicantAddress: applicant?.address ?? "",
+    applicantPhone: applicant?.phone ?? "",
+    applicantMobile: applicant?.mobile ?? "",
+    applicantEmail: applicant?.email ?? "",
+    wantsResultNotice: applicant?.wantsResultNotice ?? null,
+    wantsLaborOfficeNotice: applicant?.wantsLaborOfficeNotice ?? null,
+
+    respondentName: respondent?.representativeName ?? "",
+    respondentPhone: respondent?.phone ?? "",
+    respondentAddress: respondent?.address ?? "",
+    businessType: respondent?.businessType ?? null,
+    workplaceName: respondent?.workplaceName ?? reportCase.workplaceName,
+    workplaceAddress: respondent?.address ?? "",
+    workplacePhone: respondent?.workplacePhone ?? "",
+    employeeCount:
+      respondent?.employeeCount !== null && respondent?.employeeCount !== undefined
+        ? `${respondent.employeeCount}명`
+        : "",
+
+    employmentStartDate: facts?.employmentStartDate ?? "",
+    employmentEndDate: facts?.employmentEndDate ?? "",
+    totalUnpaidWage: moneyDisplay(facts?.totalUnpaidWage),
+    employmentStatus: facts?.employmentStatus ?? null,
+    unpaidSeverance: moneyDisplay(facts?.unpaidSeverance),
+    otherUnpaid: moneyDisplay(facts?.otherUnpaid),
+    jobDescription: facts?.jobDescription ?? "",
+    wagePaymentDate: facts?.wagePaymentDate ?? "",
+    contractMethod: facts?.contractMethod ?? null,
+    content,
+    attachments,
+    laborOffice: reportCase.business?.laborOffice ?? "",
+  };
+}
+
 export function ReportDraftWizardView({
   reportCase,
   onBack,
@@ -84,7 +133,10 @@ export function ReportDraftWizardView({
 }: ReportDraftWizardViewProps): JSX.Element {
   const [stepIdx, setStepIdx] = useState(0);
   const [negotiation, setNegotiation] = useState<NegotiationStatus>("refused");
+  /** "진정 내용 생성하기" 진행 중 표시. */
   const [isGenerating, setIsGenerating] = useState(false);
+  /** AI(Gemini)가 생성한 진정 내용 — 미리보기에서 편집 가능. */
+  const [aiContent, setAiContent] = useState("");
   /** 진정인 정보 — AsyncStorage에서 로드 (로컬 전용, 백엔드 미전송). */
   const [applicant, setApplicant] = useState<ApplicantInfo | null>(null);
 
@@ -94,130 +146,9 @@ export function ReportDraftWizardView({
       setApplicant(loaded);
     })();
   }, []);
-  /** 사용자가 직접 편집한 본문. null이면 구조화 미리보기 사용. */
-  const [customBodyText, setCustomBodyText] = useState<string | null>(null);
 
   const currentStep = STEPS[stepIdx];
   const isLast = stepIdx === STEPS.length - 1;
-
-  const generatePdfUri = async (): Promise<string> => {
-    const html = buildComplaintHtml({
-      reportCase,
-      negotiation,
-      applicant,
-      customBody: customBodyText ?? undefined,
-    });
-    const { uri } = await Print.printToFileAsync({ html, base64: false });
-    return uri;
-  };
-
-  const handleSavePdf = async (): Promise<void> => {
-    setIsGenerating(true);
-    try {
-      const uri = await generatePdfUri();
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        Alert.alert("저장됨", `PDF가 생성되었습니다.\n${uri}`);
-        return;
-      }
-      await Sharing.shareAsync(uri, {
-        mimeType: "application/pdf",
-        dialogTitle: "진정서 저장",
-        UTI: "com.adobe.pdf",
-      });
-    } catch (error) {
-      console.error("PDF 생성 실패:", error);
-      Alert.alert("오류", "PDF 저장에 실패했습니다.");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleShare = async (): Promise<void> => {
-    setIsGenerating(true);
-    try {
-      const uri = await generatePdfUri();
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        Alert.alert("안내", "이 기기에서 공유 기능을 사용할 수 없습니다.");
-        return;
-      }
-      await Sharing.shareAsync(uri, {
-        mimeType: "application/pdf",
-        dialogTitle: "진정서 공유",
-      });
-    } catch (error) {
-      console.error("PDF 공유 실패:", error);
-      Alert.alert("오류", "공유에 실패했습니다.");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const completeStepAction = useReportStore((s) => s.completeStep);
-  const setCurrentStepAction = useReportStore((s) => s.setCurrentStep);
-  const updateCaseStatus = useReportStore((s) => s.updateCaseStatus);
-  const setSubmittedAt = useReportStore((s) => s.setSubmittedAt);
-  const patchRespondent = useReportStore((s) => s.patchRespondent);
-
-  /**
-   * 수정 완료 핸들러 — 편집된 텍스트를 파싱해서
-   *  ① customBodyText(PDF용) 저장
-   *  ② applicant(진정인) 필드 → 로컬 AsyncStorage 갱신 → StructuredPreview에 반영
-   *  ③ respondent(피진정인) 필드 → reportCase store 갱신 → StructuredPreview에 반영
-   */
-  const handleSaveEdits = (text: string): void => {
-    setCustomBodyText(text);
-
-    const getField = (section: string, key: string): string | null => {
-      const m = section.match(new RegExp(`${key}:\\s*(.+)`));
-      const v = m?.[1]?.trim();
-      // 자리표시자 [...]는 미입력으로 간주
-      if (!v || (v.startsWith("[") && v.endsWith("]"))) return null;
-      return v;
-    };
-
-    const between = (full: string, from: string, to: string): string => {
-      const s = full.indexOf(from);
-      const e = full.indexOf(to, s + 1);
-      if (s === -1) return "";
-      return full.slice(s, e === -1 ? undefined : e);
-    };
-
-    // ② 진정인 파싱
-    const aSec = between(text, "1. 진정인", "2. 피진정인");
-    const aName    = getField(aSec, "성명");
-    const aPhone   = getField(aSec, "연락처");
-    const aMobile  = getField(aSec, "휴대전화번호");
-    const aAddress = getField(aSec, "주소");
-    const aEmail   = getField(aSec, "전자우편주소");
-    if (aName ?? aPhone ?? aMobile ?? aAddress ?? aEmail) {
-      const base = applicant ?? emptyApplicantInfo();
-      const updated: ApplicantInfo = {
-        ...base,
-        fullName: aName ?? base.fullName,
-        phone:    aPhone ?? base.phone,
-        mobile:   aMobile ?? base.mobile,
-        address:  aAddress ?? base.address,
-        email:    aEmail ?? base.email,
-      };
-      setApplicant(updated);
-      void saveApplicantInfo(updated);
-    }
-
-    // ③ 피진정인 파싱
-    const rSec = between(text, "2. 피진정인", "3. 진정 내용");
-    const rRep     = getField(rSec, "대표자");
-    const rPhone   = getField(rSec, "연락처");
-    const rAddress = getField(rSec, "주소");
-    if (rRep ?? rPhone ?? rAddress) {
-      const patch: Partial<ComplaintRespondent> = {};
-      if (rRep)     patch.representativeName = rRep;
-      if (rPhone)   patch.phone = rPhone;
-      if (rAddress) patch.address = rAddress;
-      patchRespondent(reportCase.id, patch);
-    }
-  };
 
   // 고용24 외부 브라우저 흐름 — 직접 URL 오픈 + AppState 복귀 감지로 확인 배너 노출.
   const GOYO24_URL =
@@ -225,6 +156,11 @@ export function ReportDraftWizardView({
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const [browserOpened, setBrowserOpened] = useState(false);
   const [returnedFromBrowser, setReturnedFromBrowser] = useState(false);
+
+  const completeStepAction = useReportStore((s) => s.completeStep);
+  const setCurrentStepAction = useReportStore((s) => s.setCurrentStep);
+  const updateCaseStatus = useReportStore((s) => s.updateCaseStatus);
+  const setSubmittedAt = useReportStore((s) => s.setSubmittedAt);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
@@ -272,8 +208,59 @@ export function ReportDraftWizardView({
     setStepIdx(stepIdx - 1);
   };
 
-  const handleNext = (): void => {
-    if (!isLast) setStepIdx(stepIdx + 1);
+  /**
+   * "진정 내용 생성하기" — 백엔드에 AI 진정 내용을 요청한 뒤 미리보기로 이동.
+   * 생성에 실패해도 빈 본문으로 미리보기에 진입해 사용자가 직접 작성할 수 있게 한다.
+   */
+  const handleGenerateNext = async (): Promise<void> => {
+    setIsGenerating(true);
+    try {
+      const text = await generateReportDraft(reportCase.id, negotiation);
+      setAiContent(text);
+      if (text.trim().length === 0) {
+        Alert.alert(
+          "안내",
+          "AI 진정 내용을 받지 못했어요. 미리보기에서 직접 작성하거나 다시 시도해주세요.",
+        );
+      }
+    } catch (err) {
+      const status =
+        (err as { response?: { status?: number } })?.response?.status ?? null;
+      if (status === 403 || status === 404) {
+        Alert.alert(
+          "AI 생성 불가",
+          "서버에 저장된 신고에서만 AI 생성을 쓸 수 있어요. 미리보기에서 진정 내용을 직접 작성해주세요.",
+        );
+      } else {
+        Alert.alert(
+          "잠시 후 다시 시도해주세요",
+          "AI 생성 서버가 일시적으로 혼잡해요. 미리보기에서 직접 작성하거나 잠시 후 다시 시도해주세요.",
+        );
+      }
+      setAiContent("");
+    } finally {
+      setIsGenerating(false);
+      setStepIdx(STEPS.indexOf("preview"));
+    }
+  };
+
+  /** 편집된 진정인 항목을 로컬(AsyncStorage)에 반영. */
+  const persistApplicant = (form: ComplaintFormData): void => {
+    const base = applicant ?? emptyApplicantInfo();
+    const updated: ApplicantInfo = {
+      ...base,
+      fullName: form.applicantName,
+      rrn: form.applicantRrn,
+      address: form.applicantAddress,
+      phone: form.applicantPhone,
+      mobile: form.applicantMobile,
+      email: form.applicantEmail,
+      wantsResultNotice: form.wantsResultNotice ?? base.wantsResultNotice,
+      wantsLaborOfficeNotice:
+        form.wantsLaborOfficeNotice ?? base.wantsLaborOfficeNotice,
+    };
+    setApplicant(updated);
+    void saveApplicantInfo(updated);
   };
 
   return (
@@ -355,7 +342,7 @@ export function ReportDraftWizardView({
               사업주와 협의 시도하셨나요?
             </Text>
             <Text style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>
-              선택에 따라 진정서 문구가 달라집니다
+              선택에 따라 AI가 생성하는 진정 내용 문구가 달라집니다
             </Text>
             {NEGOTIATION_OPTIONS.map((opt) => {
               const checked = negotiation === opt.id;
@@ -413,20 +400,13 @@ export function ReportDraftWizardView({
         ) : (
           <ComplaintPreview
             reportCase={reportCase}
-            negotiation={negotiation}
-            negotiationText={
-              NEGOTIATION_OPTIONS.find((o) => o.id === negotiation)
-                ?.draftText ?? ""
-            }
             applicant={applicant}
-            onSavePdf={() => void handleSavePdf()}
-            onShare={() => void handleShare()}
+            aiContent={aiContent}
             onSubmit={() => void handleSubmitToMinistry()}
             returnedFromBrowser={returnedFromBrowser}
             onConfirmSubmitted={handleConfirmSubmitted}
             onNotYet={() => setReturnedFromBrowser(false)}
-            customBodyText={customBodyText}
-            onSaveCustom={handleSaveEdits}
+            onPersistApplicant={persistApplicant}
           />
         )}
       </ScrollView>
@@ -449,6 +429,7 @@ export function ReportDraftWizardView({
         >
           <Pressable
             onPress={handlePrev}
+            disabled={isGenerating}
             style={{
               flex: 1,
               paddingVertical: 14,
@@ -459,61 +440,33 @@ export function ReportDraftWizardView({
               borderColor: "#E2E8F0",
             }}
           >
-            <Text
-              style={{ color: "#475569", fontSize: 14, fontWeight: "500" }}
-            >
-              {stepIdx === 0 ? "취소" : "이전"}
+            <Text style={{ color: "#475569", fontSize: 14, fontWeight: "500" }}>
+              취소
             </Text>
           </Pressable>
           <Pressable
-            onPress={handleNext}
+            onPress={() => void handleGenerateNext()}
+            disabled={isGenerating}
             style={{
               flex: 2,
               paddingVertical: 14,
-              backgroundColor: "#3182F6",
+              backgroundColor: isGenerating ? "#A8C7F8" : "#3182F6",
               borderRadius: 10,
               alignItems: "center",
+              flexDirection: "row",
+              justifyContent: "center",
+              gap: 6,
             }}
           >
-            <Text
-              style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}
-            >
-              다음 (미리보기)
+            {isGenerating ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="sparkles-outline" size={14} color="#FFFFFF" />
+            )}
+            <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}>
+              {isGenerating ? "AI가 진정 내용 생성 중…" : "진정 내용 생성하기"}
             </Text>
           </Pressable>
-        </View>
-      ) : null}
-
-      {/* PDF 생성/공유 중 오버레이 */}
-      {isGenerating ? (
-        <View
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(15, 23, 42, 0.5)",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: 14,
-              padding: 24,
-              alignItems: "center",
-              minWidth: 180,
-            }}
-          >
-            <ActivityIndicator size="large" color="#3182F6" />
-            <Text
-              style={{ fontSize: 13, color: "#475569", marginTop: 12 }}
-            >
-              PDF 생성 중...
-            </Text>
-          </View>
         </View>
       ) : null}
     </SafeAreaView>
@@ -583,20 +536,10 @@ function SummaryRow({
   value: string;
 }): JSX.Element {
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        paddingVertical: 4,
-      }}
-    >
+    <View style={{ flexDirection: "row", paddingVertical: 4 }}>
       <Text style={{ fontSize: 12, color: "#185FA5", width: 80 }}>{label}</Text>
       <Text
-        style={{
-          flex: 1,
-          fontSize: 12,
-          color: "#0F172A",
-          fontWeight: "600",
-        }}
+        style={{ flex: 1, fontSize: 12, color: "#0F172A", fontWeight: "600" }}
       >
         {value}
       </Text>
@@ -605,127 +548,81 @@ function SummaryRow({
 }
 
 // ──────────────────────────────────────────
+// 진정서 미리보기 — 모든 항목 편집 가능 + .doc 다운로드
+// ──────────────────────────────────────────
 
 interface PreviewProps {
   reportCase: ReportCase;
-  negotiation: NegotiationStatus;
-  negotiationText: string;
   applicant: ApplicantInfo | null;
-  onSavePdf: () => void;
-  onShare: () => void;
+  aiContent: string;
   onSubmit: () => void;
   returnedFromBrowser: boolean;
   onConfirmSubmitted: () => void;
   onNotYet: () => void;
-  customBodyText: string | null;
-  onSaveCustom: (text: string) => void;
+  onPersistApplicant: (form: ComplaintFormData) => void;
 }
 
 function ComplaintPreview({
   reportCase,
-  negotiation,
-  negotiationText,
   applicant,
-  onSavePdf,
-  onShare,
+  aiContent,
   onSubmit,
   returnedFromBrowser,
   onConfirmSubmitted,
   onNotYet,
-  customBodyText,
-  onSaveCustom,
+  onPersistApplicant,
 }: PreviewProps): JSX.Element {
-  const [isEditing, setIsEditing] = useState(false);
-  const [draftText, setDraftText] = useState("");
-  const [aiGenerating, setAiGenerating] = useState(false);
+  const [form, setForm] = useState<ComplaintFormData>(() =>
+    buildInitialForm(reportCase, applicant, aiContent),
+  );
+  const [isDownloading, setIsDownloading] = useState(false);
+  /** applicant/aiContent가 비동기로 늦게 도착하면 폼을 한 번 다시 채운다(사용자 미편집 시에만). */
+  const hydratedRef = useRef(false);
 
-  // AI(Gemini) 진정 내용 생성 — 서버에 저장된 사건(사업장 검색으로 시작)에서 동작.
-  // 성공 시 본문을 AI 줄글로 채움. 클라이언트 전용 사건이면 서버가 거부 → 안내.
-  const handleGenerateAi = async (): Promise<void> => {
-    setAiGenerating(true);
-    try {
-      const text = await generateReportDraft(reportCase.id, negotiation);
-      if (text.trim().length > 0) {
-        onSaveCustom(text);
-      } else {
-        Alert.alert(
-          "생성 실패",
-          "AI 진정 내용을 받지 못했어요. 잠시 후 다시 시도해주세요.",
-        );
-      }
-    } catch (err) {
-      // 에러 종류를 구분: 403/404(사건 미저장·권한)만 "서버 저장 신고" 안내,
-      // 그 외(500·503 등 Gemini 일시 장애)는 재시도 안내.
-      const status =
-        (err as { response?: { status?: number } })?.response?.status ?? null;
-      if (status === 403 || status === 404) {
-        Alert.alert(
-          "AI 생성 불가",
-          "서버에 저장된 신고에서만 AI 생성을 쓸 수 있어요. '사업장 찾기'로 시작한 신고에서 사용해보세요.",
-        );
-      } else {
-        Alert.alert(
-          "잠시 후 다시 시도해주세요",
-          "AI 생성 서버가 일시적으로 혼잡해요(잠깐 과부하). 잠시 후 다시 시도하면 정상 생성됩니다.",
-        );
-      }
-    } finally {
-      setAiGenerating(false);
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    if (applicant !== null || aiContent.trim().length > 0) {
+      setForm(buildInitialForm(reportCase, applicant, aiContent));
+      hydratedRef.current = true;
     }
+  }, [applicant, aiContent, reportCase]);
+
+  const setField = <K extends keyof ComplaintFormData>(
+    key: K,
+    value: ComplaintFormData[K],
+  ): void => {
+    hydratedRef.current = true; // 사용자가 손대면 자동 재채움 중단
+    setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const damages = reportCase.damageTypeEnums ?? [];
-  const facts = reportCase.facts;
-  const respondent = reportCase.respondent;
-  const total = facts?.totalUnpaidWage ?? 0;
-  const today = new Date().toLocaleDateString("ko-KR");
-
-  const applicantName = applicant?.fullName ?? "[성명]";
-  const applicantPhone = applicant?.phone ?? applicant?.mobile ?? "[연락처]";
-
-  const buildDefaultBodyText = (): string => {
-    const lines: string[] = [
-      `진　정　서`,
-      ``,
-      `1. 진정인`,
-      `   성명: ${applicantName}`,
-      `   연락처: ${applicantPhone}`,
-      `   주소: ${applicant?.address ?? "[주소]"}`,
-      ``,
-      `2. 피진정인`,
-      `   사업장명: ${reportCase.workplaceName}`,
-      `   대표자: ${respondent?.representativeName ?? "[사업주명]"}`,
-      `   연락처: ${respondent?.phone ?? "[사업주 연락처]"}`,
-      `   주소: ${respondent?.address ?? "[사업장 주소]"}`,
-      ``,
-      `3. 진정 내용`,
-      `   입사일: ${facts?.employmentStartDate ?? "-"}`,
-      facts?.employmentStatus === "FORMER"
-        ? `   퇴사일: ${facts?.employmentEndDate ?? "-"}`
-        : `   재직 상태: 재직 중`,
-      `   체불임금 총액: ₩${total.toLocaleString()}`,
-      ``,
-      `   피해 유형:`,
-      ...damages.map((d: DamageTypeEnum) => `     - ${DAMAGE_LABEL[d]}`),
-      ``,
-      `   상황 설명:`,
-      `   ${reportCase.freeFormDescription ?? "(상황 설명 미입력)"}`,
-      ``,
-      `   협의 시도 여부: ${negotiationText}`,
-      ``,
-      `위와 같이 진정합니다.`,
-      `${today}`,
-      `진정인: ${applicantName} (서명)`,
-      ``,
-      `[관할 고용노동청] 귀하`,
-    ];
-    return lines.join("\n");
-  };
-
-  const handleEnterEdit = (): void => {
-    // AI 생성/이전 수정 본문이 있으면 그걸 이어서 편집, 없으면 기본 양식 구조로 시작.
-    setDraftText(customBodyText ?? buildDefaultBodyText());
-    setIsEditing(true);
+  const handleDownload = async (): Promise<void> => {
+    setIsDownloading(true);
+    try {
+      onPersistApplicant(form);
+      const html = buildComplaintDoc(form);
+      const safeName =
+        reportCase.workplaceName.replace(/[^\p{L}\p{N}]+/gu, "_").slice(0, 30) ||
+        "report";
+      const fileUri = `${FileSystem.cacheDirectory}진정서_${safeName}.doc`;
+      await FileSystem.writeAsStringAsync(fileUri, html, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert("저장됨", `진정서가 생성되었습니다.\n${fileUri}`);
+        return;
+      }
+      await Sharing.shareAsync(fileUri, {
+        mimeType: "application/msword",
+        dialogTitle: "진정서 다운로드",
+        UTI: "com.microsoft.word.doc",
+      });
+    } catch (error) {
+      console.error("DOC 생성 실패:", error);
+      Alert.alert("오류", "진정서 다운로드에 실패했습니다.");
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
@@ -741,237 +638,143 @@ function ComplaintPreview({
         진정서 미리보기
       </Text>
       <Text style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>
-        아래 내용을 확인하고 저장하거나 제출하세요
+        내용을 확인하고 필요한 부분을 직접 수정한 뒤 다운로드하세요
       </Text>
 
-      {applicant === null ? (
-        <View
-          style={{
-            backgroundColor: "#FEF3C7",
-            borderRadius: 10,
-            padding: 12,
-            marginBottom: 12,
-            flexDirection: "row",
-            gap: 6,
-            alignItems: "flex-start",
-          }}
-        >
-          <Ionicons
-            name="warning"
-            size={14}
-            color="#92400E"
-            style={{ marginTop: 1 }}
-          />
-          <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 18 }}>
-            진정인(본인) 정보가 없어 자리표시자로 채워집니다. "직접 수정하기"로 성명·연락처·주소를 채워넣으세요.
-          </Text>
-        </View>
-      ) : null}
-      {customBodyText !== null ? (
-        <View
-          style={{
-            backgroundColor: "#EBF3FF",
-            borderRadius: 10,
-            padding: 10,
-            marginBottom: 8,
-            flexDirection: "row",
-            gap: 6,
-            alignItems: "center",
-          }}
-        >
-          <Ionicons name="checkmark-circle" size={14} color="#1A5FAF" />
-          <Text style={{ flex: 1, fontSize: 12, color: "#185FA5" }}>
-            수정된 내용이 PDF에 적용됩니다. 아래 양식은 원본 구조로 표시돼요.
-          </Text>
-        </View>
-      ) : null}
+      {/* 1. 진정인 */}
+      <SectionCard title="1. 진정인">
+        <EditRow label="성명" value={form.applicantName} onChangeText={(v) => setField("applicantName", v)} />
+        <EditRow label="주민등록번호" value={form.applicantRrn} onChangeText={(v) => setField("applicantRrn", v)} />
+        <EditRow label="주소" value={form.applicantAddress} onChangeText={(v) => setField("applicantAddress", v)} />
+        <EditRow label="전화번호" value={form.applicantPhone} onChangeText={(v) => setField("applicantPhone", v)} keyboardType="phone-pad" />
+        <EditRow label="휴대전화번호" value={form.applicantMobile} onChangeText={(v) => setField("applicantMobile", v)} keyboardType="phone-pad" />
+        <EditRow label="전자우편주소" value={form.applicantEmail} onChangeText={(v) => setField("applicantEmail", v)} keyboardType="email-address" />
+        <ToggleRow
+          label="처리상황 수신여부"
+          options={[
+            { key: "yes", label: "예" },
+            { key: "no", label: "아니오" },
+          ]}
+          selected={
+            form.wantsResultNotice === true
+              ? "yes"
+              : form.wantsResultNotice === false
+                ? "no"
+                : null
+          }
+          onSelect={(k) => setField("wantsResultNotice", k === "yes")}
+        />
+        <ToggleRow
+          label="노동포털 통지여부"
+          options={[
+            { key: "yes", label: "예" },
+            { key: "no", label: "아니오" },
+          ]}
+          selected={
+            form.wantsLaborOfficeNotice === true
+              ? "yes"
+              : form.wantsLaborOfficeNotice === false
+                ? "no"
+                : null
+          }
+          onSelect={(k) => setField("wantsLaborOfficeNotice", k === "yes")}
+        />
+      </SectionCard>
 
-      {/* 미리보기 위 액션 줄 */}
-      {!isEditing ? (
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "flex-end",
-            gap: 8,
-            marginBottom: 8,
-          }}
-        >
-          <Pressable
-            onPress={() => void handleGenerateAi()}
-            disabled={aiGenerating}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 7,
-              borderRadius: 8,
-              backgroundColor: aiGenerating ? "#A5B4FC" : "#6366F1",
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            {aiGenerating ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Ionicons name="sparkles-outline" size={12} color="#FFFFFF" />
-            )}
-            <Text style={{ fontSize: 12, color: "#FFFFFF", fontWeight: "600" }}>
-              {aiGenerating ? "생성 중…" : "AI로 생성"}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={handleEnterEdit}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 7,
-              borderRadius: 8,
-              backgroundColor: "#3182F6",
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <Ionicons name="create-outline" size={12} color="#FFFFFF" />
-            <Text
-              style={{ fontSize: 12, color: "#FFFFFF", fontWeight: "600" }}
-            >
-              직접 수정하기
-            </Text>
-          </Pressable>
-        </View>
-      ) : null}
+      {/* 2. 피진정인 */}
+      <SectionCard title="2. 피진정인">
+        <EditRow label="성명(대표자)" value={form.respondentName} onChangeText={(v) => setField("respondentName", v)} />
+        <EditRow label="연락처" value={form.respondentPhone} onChangeText={(v) => setField("respondentPhone", v)} keyboardType="phone-pad" />
+        <EditRow label="주소" value={form.respondentAddress} onChangeText={(v) => setField("respondentAddress", v)} />
+        <ToggleRow
+          label="사업체 구분"
+          options={[
+            { key: "WORKPLACE", label: "사업장" },
+            { key: "CONSTRUCTION_SITE", label: "공사현장" },
+          ]}
+          selected={form.businessType}
+          onSelect={(k) =>
+            setField("businessType", k as ComplaintFormData["businessType"])
+          }
+        />
+        <EditRow label="사업장명" value={form.workplaceName} onChangeText={(v) => setField("workplaceName", v)} />
+        <EditRow label="사업장 주소" value={form.workplaceAddress} onChangeText={(v) => setField("workplaceAddress", v)} />
+        <EditRow label="사업장전화번호" value={form.workplacePhone} onChangeText={(v) => setField("workplacePhone", v)} keyboardType="phone-pad" />
+        <EditRow label="근로자 수" value={form.employeeCount} onChangeText={(v) => setField("employeeCount", v)} />
+      </SectionCard>
 
-      <View
+      {/* 3. 진정 내용 */}
+      <SectionCard title="3. 진정 내용">
+        <EditRow label="입사일" value={form.employmentStartDate} onChangeText={(v) => setField("employmentStartDate", v)} />
+        <EditRow label="퇴사일" value={form.employmentEndDate} onChangeText={(v) => setField("employmentEndDate", v)} />
+        <EditRow label="체불임금총액" value={form.totalUnpaidWage} onChangeText={(v) => setField("totalUnpaidWage", v)} />
+        <ToggleRow
+          label="퇴직 여부"
+          options={[
+            { key: "FORMER", label: "퇴직" },
+            { key: "CURRENT", label: "재직" },
+          ]}
+          selected={form.employmentStatus}
+          onSelect={(k) =>
+            setField(
+              "employmentStatus",
+              k as ComplaintFormData["employmentStatus"],
+            )
+          }
+        />
+        <EditRow label="체불퇴직금액" value={form.unpaidSeverance} onChangeText={(v) => setField("unpaidSeverance", v)} />
+        <EditRow label="기타체불금액" value={form.otherUnpaid} onChangeText={(v) => setField("otherUnpaid", v)} />
+        <EditRow label="업무내용" value={form.jobDescription} onChangeText={(v) => setField("jobDescription", v)} />
+        <EditRow label="임금 지급일" value={form.wagePaymentDate} onChangeText={(v) => setField("wagePaymentDate", v)} />
+        <ToggleRow
+          label="근로계약방법"
+          options={[
+            { key: "WRITTEN", label: "서면" },
+            { key: "ORAL", label: "구두" },
+          ]}
+          selected={form.contractMethod}
+          onSelect={(k) =>
+            setField("contractMethod", k as ComplaintFormData["contractMethod"])
+          }
+        />
+        <EditRow
+          label="내용 (AI 생성 진정 내용 · 직접 수정 가능)"
+          value={form.content}
+          onChangeText={(v) => setField("content", v)}
+          multiline
+        />
+        <EditRow
+          label="파일첨부"
+          value={form.attachments}
+          onChangeText={(v) => setField("attachments", v)}
+          multiline
+        />
+      </SectionCard>
+
+      {/* .doc 다운로드 */}
+      <Pressable
+        onPress={() => void handleDownload()}
+        disabled={isDownloading}
         style={{
-          backgroundColor: "#FFFFFF",
-          borderRadius: 12,
-          padding: 20,
-          marginBottom: 16,
+          paddingVertical: 14,
+          borderRadius: 10,
+          alignItems: "center",
+          backgroundColor: isDownloading ? "#A8C7F8" : "#3182F6",
+          flexDirection: "row",
+          justifyContent: "center",
+          gap: 6,
+          marginBottom: 10,
         }}
       >
-        {isEditing ? (
-          <>
-            <TextInput
-              value={draftText}
-              onChangeText={setDraftText}
-              multiline
-              textAlignVertical="top"
-              style={{
-                ...previewLineStyle,
-                minHeight: 320,
-                borderWidth: 1,
-                borderColor: "#3182F6",
-                borderRadius: 8,
-                padding: 12,
-                backgroundColor: "#F8FAFC",
-              }}
-            />
-            <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-              <Pressable
-                onPress={() => {
-                  setDraftText("");
-                  setIsEditing(false);
-                }}
-                style={{
-                  flex: 1,
-                  paddingVertical: 11,
-                  borderRadius: 10,
-                  alignItems: "center",
-                  backgroundColor: "#FFFFFF",
-                  borderWidth: 1,
-                  borderColor: "#E2E8F0",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: "#475569",
-                    fontWeight: "600",
-                  }}
-                >
-                  취소
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  onSaveCustom(draftText);
-                  setIsEditing(false);
-                }}
-                style={{
-                  flex: 2,
-                  paddingVertical: 11,
-                  borderRadius: 10,
-                  alignItems: "center",
-                  backgroundColor: "#3182F6",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: "#FFFFFF",
-                    fontWeight: "600",
-                  }}
-                >
-                  수정 완료
-                </Text>
-              </Pressable>
-            </View>
-          </>
-        ) : customBodyText !== null ? (
-          // AI 생성/직접 수정 본문이 있으면 화면에도 그대로 보여준다.
-          // (이전엔 항상 StructuredPreview만 렌더해 AI 결과가 화면에 안 보였음)
-          <Text style={previewLineStyle}>{customBodyText}</Text>
+        {isDownloading ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
         ) : (
-          // 본문 미작성 시에만 공식 양식 테이블 렌더.
-          <StructuredPreview
-            reportCase={reportCase}
-            negotiationText={negotiationText}
-            applicant={applicant}
-          />
+          <Ionicons name="download-outline" size={16} color="#FFFFFF" />
         )}
-      </View>
-
-      <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
-        <Pressable
-          onPress={onSavePdf}
-          style={{
-            flex: 1,
-            paddingVertical: 12,
-            borderRadius: 10,
-            alignItems: "center",
-            backgroundColor: "#FFFFFF",
-            borderWidth: 1,
-            borderColor: "#E2E8F0",
-            flexDirection: "row",
-            justifyContent: "center",
-            gap: 4,
-          }}
-        >
-          <Ionicons name="download-outline" size={14} color="#475569" />
-          <Text style={{ fontSize: 13, color: "#475569", fontWeight: "600" }}>
-            PDF로 저장
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={onShare}
-          style={{
-            flex: 1,
-            paddingVertical: 12,
-            borderRadius: 10,
-            alignItems: "center",
-            backgroundColor: "#FFFFFF",
-            borderWidth: 1,
-            borderColor: "#E2E8F0",
-            flexDirection: "row",
-            justifyContent: "center",
-            gap: 4,
-          }}
-        >
-          <Ionicons name="share-outline" size={14} color="#475569" />
-          <Text style={{ fontSize: 13, color: "#475569", fontWeight: "600" }}>
-            공유하기
-          </Text>
-        </Pressable>
-      </View>
+        <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}>
+          {isDownloading ? "진정서 생성 중…" : "진정서 다운로드 (.doc)"}
+        </Text>
+      </Pressable>
 
       <Pressable
         onPress={onSubmit}
@@ -979,14 +782,16 @@ function ComplaintPreview({
           paddingVertical: 14,
           borderRadius: 10,
           alignItems: "center",
-          backgroundColor: "#3182F6",
+          backgroundColor: "#FFFFFF",
+          borderWidth: 1,
+          borderColor: "#3182F6",
           flexDirection: "row",
           justifyContent: "center",
           gap: 6,
         }}
       >
-        <Ionicons name="open-outline" size={14} color="#FFFFFF" />
-        <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600" }}>
+        <Ionicons name="open-outline" size={14} color="#3182F6" />
+        <Text style={{ color: "#3182F6", fontSize: 14, fontWeight: "600" }}>
           노동청에 제출하기 (고용24)
         </Text>
       </Pressable>
@@ -1040,9 +845,7 @@ function ComplaintPreview({
             onPress={onNotYet}
             style={{ paddingVertical: 10, alignItems: "center" }}
           >
-            <Text style={{ color: "#888888", fontSize: 13 }}>
-              아직 안 했어요
-            </Text>
+            <Text style={{ color: "#888888", fontSize: 13 }}>아직 안 했어요</Text>
           </Pressable>
         </View>
       ) : null}
@@ -1051,353 +854,127 @@ function ComplaintPreview({
 }
 
 // ──────────────────────────────────────────
-// 구조화 미리보기 (수정 모드 아닐 때 자동 렌더)
+// 편집 폼 helper 컴포넌트
 // ──────────────────────────────────────────
 
-function StructuredPreview({
-  reportCase,
-  negotiationText,
-  applicant,
+function SectionCard({
+  title,
+  children,
 }: {
-  reportCase: ReportCase;
-  negotiationText: string;
-  applicant: ApplicantInfo | null;
+  title: string;
+  children: ReactNode;
 }): JSX.Element {
-  const damages = reportCase.damageTypeEnums ?? [];
-  const facts = reportCase.facts;
-  const respondent = reportCase.respondent;
-  const laborOffice = reportCase.business?.laborOffice ?? "";
-
-  const employeeCountText =
-    respondent?.employeeCount !== null && respondent?.employeeCount !== undefined
-      ? `${respondent.employeeCount}명`
-      : "";
-
   return (
-    <>
+    <View
+      style={{
+        backgroundColor: "#FFFFFF",
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+      }}
+    >
       <Text
         style={{
-          fontSize: 22,
+          fontSize: 15,
           fontWeight: "700",
           color: "#0F172A",
-          textAlign: "center",
-          letterSpacing: 10,
-          marginBottom: 16,
+          marginBottom: 12,
         }}
       >
-        진　정　서
+        {title}
       </Text>
-
-      {/* 1. 진정인 */}
-      <Text style={previewSectionStyle}>1. 진정인</Text>
-      <View style={tableStyle}>
-        <DoubleRow
-          labelA="성　　명"
-          valueA={applicant?.fullName ?? ""}
-          labelB="주민등록번호"
-          valueB={applicant?.rrn ?? ""}
-        />
-        <SingleRow label="주　　소" value={applicant?.address ?? ""} />
-        <DoubleRow
-          labelA="전 화 번 호"
-          valueA={applicant?.phone ?? ""}
-          labelB="휴대전화번호"
-          valueB={applicant?.mobile ?? ""}
-        />
-        <SingleRow label="전자우편주소" value={applicant?.email ?? ""} />
-        <DoubleRow
-          labelA="처리상황 수신여부"
-          valueA={renderYesNo(applicant?.wantsResultNotice)}
-          labelB="노동포털 통지여부"
-          valueB={renderYesNo(applicant?.wantsLaborOfficeNotice)}
-        />
-      </View>
-
-      {/* 2. 피진정인 */}
-      <Text style={previewSectionStyle}>2. 피진정인</Text>
-      <View style={tableStyle}>
-        <DoubleRow
-          labelA="성　　명"
-          valueA={respondent?.representativeName ?? ""}
-          labelB="연 락 처"
-          valueB={respondent?.phone ?? ""}
-        />
-        <SingleRow label="주　　소" value={respondent?.address ?? ""} />
-        <SingleRow
-          label="사업체 구분"
-          value={`${cbox(respondent?.businessType === "WORKPLACE")} 사업장   ${cbox(
-            respondent?.businessType === "CONSTRUCTION_SITE",
-          )} 공사현장`}
-        />
-        <SingleRow
-          label="사 업 장 명"
-          value={respondent?.workplaceName ?? reportCase.workplaceName}
-        />
-        <SingleRow
-          label={"사업장 주소\n(실근무장소)"}
-          value={respondent?.address ?? ""}
-        />
-        <DoubleRow
-          labelA="사업장전화번호"
-          valueA={respondent?.workplacePhone ?? ""}
-          labelB="근 로 자 수"
-          valueB={employeeCountText}
-        />
-      </View>
-
-      {/* 3. 진정 내용 */}
-      <Text style={previewSectionStyle}>3. 진정 내용</Text>
-      <View style={tableStyle}>
-        <DoubleRow
-          labelA="입 사 일"
-          valueA={facts?.employmentStartDate ?? ""}
-          labelB="퇴 사 일"
-          valueB={facts?.employmentEndDate ?? ""}
-        />
-        <DoubleRow
-          labelA="체불임금총액"
-          valueA={formatMoneyOrEmpty(facts?.totalUnpaidWage ?? null)}
-          labelB="퇴직 여부"
-          valueB={`${cbox(facts?.employmentStatus === "FORMER")} 퇴직   ${cbox(facts?.employmentStatus === "CURRENT")} 재직`}
-        />
-        <DoubleRow
-          labelA="체불퇴직금액"
-          valueA={formatMoneyOrEmpty(facts?.unpaidSeverance ?? null)}
-          labelB="기타체불금액"
-          valueB={formatMoneyOrEmpty(facts?.otherUnpaid ?? null)}
-        />
-        <SingleRow label="업 무 내 용" value={facts?.jobDescription ?? ""} />
-        <DoubleRow
-          labelA="임금 지급일"
-          valueA={facts?.wagePaymentDate ?? ""}
-          labelB="근로계약방법"
-          valueB={`${cbox(facts?.contractMethod === "WRITTEN")} 서면   ${cbox(facts?.contractMethod === "ORAL")} 구두`}
-        />
-
-        {/* 내용 — 큰 텍스트 칸 */}
-        <View style={contentRowStyle}>
-          <View style={contentLabelStyle}>
-            <Text style={labelTextStyle}>내　　용</Text>
-          </View>
-          <View style={contentValueStyle}>
-            <Text style={contentSubLabelStyle}>[피해 유형]</Text>
-            {damages.length > 0 ? (
-              damages.map((d) => (
-                <Text key={d} style={contentBodyStyle}>
-                  · {DAMAGE_LABEL[d]}
-                </Text>
-              ))
-            ) : (
-              <Text style={contentBodyStyle}>· 임금체불</Text>
-            )}
-
-            <Text style={[contentSubLabelStyle, { marginTop: 8 }]}>
-              [상황 설명]
-            </Text>
-            <Text style={contentBodyStyle}>
-              {reportCase.freeFormDescription ?? ""}
-            </Text>
-
-            <Text style={[contentSubLabelStyle, { marginTop: 8 }]}>
-              [협의 시도 여부]
-            </Text>
-            <Text style={contentBodyStyle}>{negotiationText}</Text>
-          </View>
-        </View>
-
-        {/* 파일 첨부 */}
-        <View style={[contentRowStyle, { borderBottomWidth: 0 }]}>
-          <View style={contentLabelStyle}>
-            <Text style={labelTextStyle}>파 일 첨 부</Text>
-          </View>
-          <View style={contentValueStyle}>
-            {(reportCase.evidenceFiles ?? []).length === 0 ? (
-              <Text style={contentBodyStyle}> </Text>
-            ) : (
-              (reportCase.evidenceFiles ?? []).map((f, i) => (
-                <Text key={f.id} style={contentBodyStyle}>
-                  {i + 1}. {f.name}
-                </Text>
-              ))
-            )}
-          </View>
-        </View>
-      </View>
-
-      <Text
-        style={{
-          textAlign: "center",
-          marginTop: 24,
-          fontSize: 14,
-          fontWeight: "600",
-          color: "#0F172A",
-          letterSpacing: 1,
-        }}
-      >
-        (　{laborOffice}　)고용노동(지)청장 귀하
-      </Text>
-    </>
+      {children}
+    </View>
   );
 }
 
-// ──────────────────────────────────────────
-// Preview 폼 helper
-// ──────────────────────────────────────────
-
-function cbox(on: boolean): string {
-  return on ? "■" : "☐";
-}
-
-function renderYesNo(v: boolean | undefined): string {
-  return `${cbox(v === true)} 예   ${cbox(v === false)} 아니오`;
-}
-
-function formatMoneyOrEmpty(v: number | null): string {
-  if (v === null || v === 0) return "";
-  return `${v.toLocaleString()}원`;
-}
-
-function SingleRow({
+function EditRow({
   label,
   value,
+  onChangeText,
+  multiline,
+  keyboardType,
 }: {
   label: string;
   value: string;
+  onChangeText: (v: string) => void;
+  multiline?: boolean;
+  keyboardType?: "default" | "phone-pad" | "email-address";
 }): JSX.Element {
   return (
-    <View style={rowStyle}>
-      <View style={labelCellStyle}>
-        <Text style={labelTextStyle}>{label}</Text>
-      </View>
-      <View style={[valueCellStyle, { flex: 3 }]}>
-        <Text style={valueTextStyle}>{value}</Text>
-      </View>
+    <View style={{ marginBottom: 12 }}>
+      <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4, fontWeight: "600" }}>
+        {label}
+      </Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        multiline={multiline === true}
+        keyboardType={keyboardType ?? "default"}
+        textAlignVertical={multiline === true ? "top" : "center"}
+        style={{
+          borderWidth: 1,
+          borderColor: "#CBD5E1",
+          borderRadius: 8,
+          paddingHorizontal: 10,
+          paddingVertical: 8,
+          fontSize: 13,
+          color: "#0F172A",
+          backgroundColor: "#F8FAFC",
+          minHeight: multiline === true ? 120 : 40,
+        }}
+      />
     </View>
   );
 }
 
-function DoubleRow({
-  labelA,
-  valueA,
-  labelB,
-  valueB,
+function ToggleRow({
+  label,
+  options,
+  selected,
+  onSelect,
 }: {
-  labelA: string;
-  valueA: string;
-  labelB: string;
-  valueB: string;
+  label: string;
+  options: Array<{ key: string; label: string }>;
+  selected: string | null;
+  onSelect: (key: string) => void;
 }): JSX.Element {
   return (
-    <View style={rowStyle}>
-      <View style={labelCellStyle}>
-        <Text style={labelTextStyle}>{labelA}</Text>
-      </View>
-      <View style={valueCellStyle}>
-        <Text style={valueTextStyle}>{valueA}</Text>
-      </View>
-      <View style={labelCellStyle}>
-        <Text style={labelTextStyle}>{labelB}</Text>
-      </View>
-      <View style={valueCellStyle}>
-        <Text style={valueTextStyle}>{valueB}</Text>
+    <View style={{ marginBottom: 12 }}>
+      <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4, fontWeight: "600" }}>
+        {label}
+      </Text>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        {options.map((opt) => {
+          const on = selected === opt.key;
+          return (
+            <Pressable
+              key={opt.key}
+              onPress={() => onSelect(opt.key)}
+              style={{
+                paddingVertical: 8,
+                paddingHorizontal: 16,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: on ? "#3182F6" : "#CBD5E1",
+                backgroundColor: on ? "#EBF3FF" : "#FFFFFF",
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: on ? "#1A5FAF" : "#64748B",
+                  fontWeight: on ? "700" : "500",
+                }}
+              >
+                {opt.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
 }
-
-const previewLineStyle = {
-  fontSize: 13,
-  color: "#0F172A",
-  lineHeight: 22,
-} as const;
-
-const previewSectionStyle = {
-  fontSize: 14,
-  fontWeight: "700" as const,
-  color: "#0F172A",
-  marginTop: 14,
-  marginBottom: 6,
-};
-
-const tableStyle = {
-  borderWidth: 1,
-  borderColor: "#222",
-  borderRadius: 2,
-} as const;
-
-const rowStyle = {
-  flexDirection: "row",
-  borderBottomWidth: 1,
-  borderBottomColor: "#222",
-  minHeight: 32,
-} as const;
-
-const labelCellStyle = {
-  flex: 1.1,
-  backgroundColor: "#F4F5F7",
-  paddingHorizontal: 6,
-  paddingVertical: 6,
-  justifyContent: "center",
-  borderRightWidth: 1,
-  borderRightColor: "#222",
-} as const;
-
-const valueCellStyle = {
-  flex: 1.4,
-  backgroundColor: "#FFFFFF",
-  paddingHorizontal: 6,
-  paddingVertical: 6,
-  justifyContent: "center",
-  borderRightWidth: 1,
-  borderRightColor: "#222",
-} as const;
-
-const labelTextStyle = {
-  fontSize: 11,
-  color: "#222",
-  fontWeight: "500" as const,
-} as const;
-
-const valueTextStyle = {
-  fontSize: 11,
-  color: "#0F172A",
-} as const;
-
-const contentRowStyle = {
-  flexDirection: "row",
-  borderBottomWidth: 1,
-  borderBottomColor: "#222",
-  minHeight: 80,
-} as const;
-
-const contentLabelStyle = {
-  flex: 1.1,
-  backgroundColor: "#F4F5F7",
-  paddingHorizontal: 6,
-  paddingVertical: 8,
-  justifyContent: "flex-start",
-  borderRightWidth: 1,
-  borderRightColor: "#222",
-} as const;
-
-const contentValueStyle = {
-  flex: 3.9,
-  backgroundColor: "#FFFFFF",
-  paddingHorizontal: 8,
-  paddingVertical: 8,
-} as const;
-
-const contentSubLabelStyle = {
-  fontSize: 11,
-  fontWeight: "700" as const,
-  color: "#333",
-  marginBottom: 2,
-} as const;
-
-const contentBodyStyle = {
-  fontSize: 11,
-  color: "#0F172A",
-  lineHeight: 18,
-  marginLeft: 4,
-} as const;
-
