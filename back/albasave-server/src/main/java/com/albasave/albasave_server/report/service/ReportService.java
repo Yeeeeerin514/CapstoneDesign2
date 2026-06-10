@@ -105,6 +105,19 @@ public class ReportService {
     }
 
     /**
+     * 신고 취하 — 본인 소유 사건만 DB에서 삭제한다.
+     */
+    public void withdrawReport(Long userId, Long caseId) {
+        Report report = reportRepository.findById(caseId)
+                .orElseThrow(() -> new IllegalArgumentException("신고 사건을 찾을 수 없습니다: " + caseId));
+
+        if (!report.isOwnedBy(userId)) {
+            throw new ReportAccessDeniedException("본인 소유의 신고만 취하할 수 있습니다.");
+        }
+        reportRepository.delete(report);
+    }
+
+    /**
      * AI 진정 내용 생성 — 본인 소유 사건만.
      * 요청 본문 없이 caseId만 받는다(프론트 계약). 피해 유형·자연어 서술을 포함한 모든 입력은
      * evidence 단계에서 저장된 사건 정보에서 읽어 Gemini에 전달한다.

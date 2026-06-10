@@ -128,3 +128,8 @@ export async function fetchReportDetail(caseId: string): Promise<ReportCase> {
   );
   return detailToCase(data);
 }
+
+/** 신고 취하 — 서버 DB 레코드를 완전히 삭제한다. 본인 소유 사건만. */
+export async function withdrawReport(caseId: string): Promise<void> {
+  await apiClient.delete(`/reports/${caseId}`);
+}

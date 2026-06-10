@@ -11,7 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
 import { useReportStore } from "@/features/report-submit";
-import { fetchReportDetail } from "@/entities/report";
+import { fetchReportDetail, withdrawReport } from "@/entities/report";
 import { usePaymentStore } from "@/features/payment";
 import { PAYMENT_DISTRIBUTION } from "@/shared/lib/payment";
 import { useAuthStore } from "@/entities/user/model/auth-store";
@@ -149,7 +149,7 @@ export function ReportDetailView({
   );
   const advanceStep = useReportStore((s) => s.advanceStep);
   const upsertServerDetail = useReportStore((s) => s.upsertServerDetail);
-  const closeCase = useReportStore((s) => s.closeCase);
+  const deleteCase = useReportStore((s) => s.deleteCase);
   const updateCaseStatus = useReportStore((s) => s.updateCaseStatus);
   const navigateToStep = useReportStore((s) => s.navigateToStep);
   const userId = useAuthStore((s) => s.userIdString);
@@ -439,8 +439,15 @@ export function ReportDetailView({
           text: "신고 취하",
           style: "destructive",
           onPress: () => {
-            closeCase(reportCase.id);
-            onBack();
+            void (async () => {
+              try {
+                await withdrawReport(reportCase.id);
+              } catch {
+                // 서버 삭제 실패해도 로컬에서 제거 — 다음 동기화에서 정합성 회복.
+              }
+              deleteCase(reportCase.id);
+              onBack();
+            })();
           },
         },
       ],

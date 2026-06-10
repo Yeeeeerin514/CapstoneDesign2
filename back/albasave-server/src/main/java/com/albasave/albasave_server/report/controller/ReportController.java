@@ -73,4 +73,16 @@ public class ReportController {
             @RequestBody(required = false) GenerateComplaintDraftRequest req) {
         return ResponseEntity.ok(reportService.generateComplaintDraft(userId, caseId, req));
     }
+
+    /**
+     * 신고 취하 — 본인 소유 사건의 DB 레코드를 완전히 삭제한다.
+     * 삭제 후에는 목록·상세 조회에서 모두 사라진다.
+     */
+    @DeleteMapping("/{caseId}")
+    public ResponseEntity<Void> withdrawReport(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long caseId) {
+        reportService.withdrawReport(userId, caseId);
+        return ResponseEntity.noContent().build();
+    }
 }

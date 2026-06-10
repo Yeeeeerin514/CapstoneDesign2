@@ -56,6 +56,7 @@ export type { BackendReport } from "./api/create-report";
 export {
   fetchMyReports,
   fetchReportDetail,
+  withdrawReport,
 } from "./api/fetch-my-reports";
 export { fetchWageCalc } from "./api/wage-calc";
 export type { WageBreakdown } from "./api/wage-calc";
