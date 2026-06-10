@@ -600,10 +600,13 @@ function ComplaintPreview({
     try {
       onPersistApplicant(form);
       const html = buildComplaintDoc(form);
-      const safeName =
-        reportCase.workplaceName.replace(/[^\p{L}\p{N}]+/gu, "_").slice(0, 30) ||
-        "report";
-      const fileUri = `${FileSystem.cacheDirectory}진정서_${safeName}.doc`;
+      // 파일 경로에 한글/공백이 들어가면 일부 기기에서 쓰기·공유가 실패하므로 ASCII 파일명 사용.
+      const dir = FileSystem.cacheDirectory;
+      if (dir === null) {
+        throw new Error("저장 공간(cacheDirectory)을 사용할 수 없습니다.");
+      }
+      const idPart = reportCase.id.replace(/[^A-Za-z0-9]+/g, "");
+      const fileUri = `${dir}complaint_${idPart.length > 0 ? idPart : "report"}.doc`;
       await FileSystem.writeAsStringAsync(fileUri, html, {
         encoding: FileSystem.EncodingType.UTF8,
       });
@@ -619,7 +622,9 @@ function ComplaintPreview({
       });
     } catch (error) {
       console.error("DOC 생성 실패:", error);
-      Alert.alert("오류", "진정서 다운로드에 실패했습니다.");
+      const detail =
+        error instanceof Error ? error.message : "알 수 없는 오류";
+      Alert.alert("오류", `진정서 다운로드에 실패했습니다.\n(${detail})`);
     } finally {
       setIsDownloading(false);
     }
