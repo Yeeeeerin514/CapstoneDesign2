@@ -132,4 +132,19 @@ public class Report {
     public boolean isOwnedBy(Long userId) {
         return owner != null && owner.getId().equals(userId);
     }
+
+    /**
+     * 신고 정보(피해 유형 + 상황 서술)가 채워졌으면 진행 단계를 '진정서 작성'으로 올린다.
+     * 프론트는 입력 완료 시 로컬 단계만 올렸는데 서버 currentStep이 그대로라
+     * 화면 재진입 시 1/4 단계로 회귀하던 문제의 서버측 수정.
+     * 이미 더 뒤 단계면 아무것도 하지 않는다(역행 금지·멱등).
+     */
+    public void advanceToComplaintDraftIfEvidenceComplete() {
+        boolean evidenceComplete = !damageTypes.isEmpty()
+                && freeFormDescription != null
+                && !freeFormDescription.isBlank();
+        if (currentStep == CaseStep.EVIDENCE_COLLECTION && evidenceComplete) {
+            this.currentStep = CaseStep.COMPLAINT_DRAFT;
+        }
+    }
 }

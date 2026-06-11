@@ -81,6 +81,8 @@ public class ReportService {
         ComplaintFacts facts = (req.facts() == null) ? null : req.facts().toEntity();
 
         report.applyEvidence(codes, req.freeFormDescription(), respondent, facts);
+        // 신고 정보가 채워졌으면 단계도 '진정서 작성'으로 전진 — 재진입 시 1/4 회귀 방지.
+        report.advanceToComplaintDraftIfEvidenceComplete();
         // @Transactional 영속성 컨텍스트 dirty checking으로 저장됨.
     }
 
