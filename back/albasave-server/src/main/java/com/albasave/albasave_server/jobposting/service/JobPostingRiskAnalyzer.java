@@ -14,7 +14,9 @@ import java.util.Locale;
 
 @Component
 public class JobPostingRiskAnalyzer {
-    private static final int MINIMUM_WAGE_2026 = 10_030;
+    // 단일 출처: WageCalculationService 상수 — 연도 갱신 시 한 곳만 수정.
+    private static final int MINIMUM_WAGE_2026 =
+            com.albasave.albasave_server.report.service.WageCalculationService.MINIMUM_WAGE_2026;
 
     public List<ConcernItem> analyze(
             ExtractedJobPosting posting,
@@ -26,6 +28,9 @@ public class JobPostingRiskAnalyzer {
         addPostingConcerns(posting, concerns);
         addBusinessConcerns(candidates, concerns);
         addExternalConcerns(externalChecks, concerns);
+
+        // 소스(LLM·룰베이스)가 달라도 제목이 같으면 1장으로 병합 — 화면 중복 카드 제거.
+        concerns = mergeDuplicates(concerns);
 
         if (concerns.isEmpty()) {
             concerns.add(new ConcernItem(
@@ -123,57 +128,127 @@ public class JobPostingRiskAnalyzer {
                     "WAGE",
                     "HIGH",
                     "최저임금 미달 가능성",
-                    "추출된 시급이 2026년 적용 최저임금 10,030원보다 낮습니다. 수습기간, 포괄임금, 주휴수당 포함 여부와 무관하게 실제 지급 조건을 반드시 확인해야 합니다.",
+                    String.format(
+                            "추출된 시급이 2026년 적용 최저임금 %,d원보다 낮습니다. 수습기간, 포괄임금, 주휴수당 포함 여부와 무관하게 실제 지급 조건을 반드시 확인해야 합니다.",
+                            MINIMUM_WAGE_2026),
                     posting.hourlyWageText()
             ));
         }
 
+        // 같은 유형의 의심 문구는 모아서 카드 1장으로 — 문구마다 1장씩 만들면
+        // "근로조건 불명확"이 근거만 다른 채 반복 표시된다.
+        List<String> allowancePhrases = new ArrayList<>();
+        List<String> conditionPhrases = new ArrayList<>();
+        List<String> penaltyPhrases = new ArrayList<>();
+        List<String> urgencyPhrases = new ArrayList<>();
         for (String phrase : safeList(posting.suspiciousPhrases())) {
             String normalized = phrase.toLowerCase(Locale.ROOT);
             if (containsAny(normalized, "주휴수당 포함", "주휴 포함")) {
-                concerns.add(new ConcernItem(
-                        "ALLOWANCE",
-                        "MEDIUM",
-                        "주휴수당 포함 표기 확인 필요",
-                        "공고에 주휴수당 포함 취지의 표현이 보입니다. 실제 기본시급과 주휴수당이 구분되어 지급되는지 확인해야 합니다.",
-                        phrase
-                ));
+                allowancePhrases.add(phrase);
             } else if (containsAny(normalized, "협의", "추후협의", "면접")) {
-                concerns.add(new ConcernItem(
-                        "CONDITION",
-                        "MEDIUM",
-                        "근로조건 불명확",
-                        "급여나 근무조건이 협의로만 제시되면 지원자가 실제 조건을 사전에 파악하기 어렵습니다. 계약서 작성 전 구체적인 시급, 시간, 휴게시간을 확인해야 합니다.",
-                        phrase
-                ));
+                conditionPhrases.add(phrase);
             } else if (containsAny(normalized, "벌금", "손해배상", "위약금")) {
-                concerns.add(new ConcernItem(
-                        "PENALTY",
-                        "HIGH",
-                        "위약금 또는 벌금 약정 가능성",
-                        "근로자에게 벌금, 위약금, 손해배상을 예정하는 표현은 근로기준법상 문제가 될 수 있습니다. 계약서에 같은 조항이 있으면 특히 주의해야 합니다.",
-                        phrase
-                ));
+                penaltyPhrases.add(phrase);
             } else if (containsAny(normalized, "당일지급", "급구", "바로근무")) {
-                concerns.add(new ConcernItem(
-                        "POSTING_PATTERN",
-                        "LOW",
-                        "급구/즉시근무 문구",
-                        "급구 표현 자체가 위법은 아니지만, 근로계약서 작성 없이 바로 근무를 요구하는지 확인할 필요가 있습니다.",
-                        phrase
-                ));
+                urgencyPhrases.add(phrase);
             }
         }
+        if (!allowancePhrases.isEmpty()) {
+            concerns.add(new ConcernItem(
+                    "ALLOWANCE",
+                    "MEDIUM",
+                    "주휴수당 포함 표기 확인 필요",
+                    "공고에 주휴수당 포함 취지의 표현이 보입니다. 실제 기본시급과 주휴수당이 구분되어 지급되는지 확인해야 합니다.",
+                    String.join(" · ", allowancePhrases)
+            ));
+        }
+        if (!conditionPhrases.isEmpty()) {
+            concerns.add(new ConcernItem(
+                    "CONDITION",
+                    "MEDIUM",
+                    "근로조건 불명확",
+                    "급여나 근무조건이 협의로만 제시되면 지원자가 실제 조건을 사전에 파악하기 어렵습니다. 계약서 작성 전 구체적인 시급, 시간, 휴게시간을 확인해야 합니다.",
+                    String.join(" · ", conditionPhrases)
+            ));
+        }
+        if (!penaltyPhrases.isEmpty()) {
+            concerns.add(new ConcernItem(
+                    "PENALTY",
+                    "HIGH",
+                    "위약금 또는 벌금 약정 가능성",
+                    "근로자에게 벌금, 위약금, 손해배상을 예정하는 표현은 근로기준법상 문제가 될 수 있습니다. 계약서에 같은 조항이 있으면 특히 주의해야 합니다.",
+                    String.join(" · ", penaltyPhrases)
+            ));
+        }
+        if (!urgencyPhrases.isEmpty()) {
+            concerns.add(new ConcernItem(
+                    "POSTING_PATTERN",
+                    "LOW",
+                    "급구/즉시근무 문구",
+                    "급구 표현 자체가 위법은 아니지만, 근로계약서 작성 없이 바로 근무를 요구하는지 확인할 필요가 있습니다.",
+                    String.join(" · ", urgencyPhrases)
+            ));
+        }
 
+        // 누락 정보는 1장으로 합산. 이미 같은 주제의 우려가 있으면(예: judge의 "휴게시간 미언급"
+        // 제목에 항목명이 포함) 중복이므로 그 항목은 제외한다.
+        List<String> missingItems = new ArrayList<>();
         for (String missing : safeList(posting.missingInformation())) {
+            if (missing == null || missing.isBlank()) continue;
+            String item = missing.trim();
+            boolean coveredElsewhere = concerns.stream()
+                    .anyMatch(c -> c.title() != null && c.title().contains(item));
+            if (!coveredElsewhere && !missingItems.contains(item)) {
+                missingItems.add(item);
+            }
+        }
+        if (!missingItems.isEmpty()) {
+            String joined = String.join(", ", missingItems);
             concerns.add(new ConcernItem(
                     "MISSING_INFO",
                     "LOW",
                     "공고 내 중요 정보 미확인",
-                    missing + " 항목이 이미지에서 명확히 확인되지 않았습니다.",
-                    missing
+                    joined + " 항목이 이미지에서 명확히 확인되지 않았습니다.",
+                    joined
             ));
         }
+    }
+
+    /** 제목이 같은 우려를 1장으로 병합 — 근거는 ' · '로 잇고, 심각도는 더 높은 쪽을 유지. */
+    private List<ConcernItem> mergeDuplicates(List<ConcernItem> concerns) {
+        java.util.LinkedHashMap<String, ConcernItem> byTitle = new java.util.LinkedHashMap<>();
+        for (ConcernItem c : concerns) {
+            String key = c.title() == null
+                    ? "_anon_" + System.identityHashCode(c)
+                    : c.title().trim();
+            ConcernItem prev = byTitle.get(key);
+            if (prev == null) {
+                byTitle.put(key, c);
+                continue;
+            }
+            ConcernItem keep = severityRank(c.severity()) > severityRank(prev.severity()) ? c : prev;
+            byTitle.put(key, new ConcernItem(
+                    keep.type(),
+                    keep.severity(),
+                    keep.title(),
+                    keep.description(),
+                    joinEvidence(prev.evidence(), c.evidence())
+            ));
+        }
+        return new ArrayList<>(byTitle.values());
+    }
+
+    private String joinEvidence(String a, String b) {
+        if (a == null || a.isBlank()) return b;
+        if (b == null || b.isBlank()) return a;
+        if (a.contains(b)) return a;
+        return a + " · " + b;
+    }
+
+    private int severityRank(String severity) {
+        if ("HIGH".equalsIgnoreCase(severity)) return 3;
+        if ("MEDIUM".equalsIgnoreCase(severity)) return 2;
+        return 1;
     }
 
     private void addBusinessConcerns(List<BusinessCandidate> candidates, List<ConcernItem> concerns) {

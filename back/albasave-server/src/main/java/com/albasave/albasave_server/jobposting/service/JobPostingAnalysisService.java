@@ -7,6 +7,7 @@ import com.albasave.albasave_server.jobposting.dto.ConcernItem;
 import com.albasave.albasave_server.jobposting.dto.ExternalRiskCheck;
 import com.albasave.albasave_server.jobposting.dto.ExtractedJobPosting;
 import com.albasave.albasave_server.jobposting.dto.JobPostingAnalysisResponse;
+import com.albasave.albasave_server.jobposting.dto.LlmConcern;
 import com.albasave.albasave_server.jobposting.repository.JobPostingAnalysisRepository;
 import com.albasave.albasave_server.workinglog.service.FavoriteWorkplaceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -30,6 +31,7 @@ public class JobPostingAnalysisService {
     private final ExternalBusinessRiskService externalBusinessRiskService;
     private final JobPostingImageStorageService imageStorageService;
     private final JobPostingRiskAnalyzer riskAnalyzer;
+    private final JobPostingLegalJudge legalJudge;
     private final JobPostingAnalysisRepository analysisRepository;
     private final FavoriteWorkplaceService favoriteWorkplaceService;
     private final ObjectMapper objectMapper;
@@ -41,6 +43,7 @@ public class JobPostingAnalysisService {
             ExternalBusinessRiskService externalBusinessRiskService,
             JobPostingImageStorageService imageStorageService,
             JobPostingRiskAnalyzer riskAnalyzer,
+            JobPostingLegalJudge legalJudge,
             JobPostingAnalysisRepository analysisRepository,
             FavoriteWorkplaceService favoriteWorkplaceService,
             ObjectMapper objectMapper
@@ -51,6 +54,7 @@ public class JobPostingAnalysisService {
         this.externalBusinessRiskService = externalBusinessRiskService;
         this.imageStorageService = imageStorageService;
         this.riskAnalyzer = riskAnalyzer;
+        this.legalJudge = legalJudge;
         this.analysisRepository = analysisRepository;
         this.favoriteWorkplaceService = favoriteWorkplaceService;
         this.objectMapper = objectMapper;
@@ -87,6 +91,14 @@ public class JobPostingAnalysisService {
         extracted = sanitizeMissingInformation(extracted);
         // dummy 패턴(가짜 전화/주소) 감지 후 null 처리
         extracted = stripDummyValues(extracted);
+        // [RAG 2차 판단] 법령·판례 근거로 우려사항 재생성 — 일반 조항 과적용·룰베이스 중복 차단.
+        // 실패 시 1차 추출 llmConcerns 그대로 사용(기존 동작 보존).
+        if (extractedResult.isPresent()) {
+            Optional<List<LlmConcern>> judged = legalJudge.judge(extracted);
+            if (judged.isPresent()) {
+                extracted = withLlmConcerns(extracted, judged.get());
+            }
+        }
         List<BusinessCandidate> candidates = databaseBusinessMatcher.findCandidates(extracted);
         if (candidates.isEmpty()) {
             candidates = businessMatcher.findCandidates(extracted);
@@ -399,6 +411,19 @@ public class JobPostingAnalysisService {
             if (source.contains(n)) return true;
         }
         return false;
+    }
+
+    /** RAG judge 결과로 llmConcerns만 교체한 사본 생성 (record라 불변). */
+    private ExtractedJobPosting withLlmConcerns(ExtractedJobPosting e, List<LlmConcern> concerns) {
+        return new ExtractedJobPosting(
+                e.businessName(), e.brandName(), e.businessRegistrationNumber(),
+                e.phone(), e.address(), e.jobTitle(), e.industryHint(),
+                e.hourlyWageText(), e.hourlyWage(),
+                e.workScheduleText(), e.workDays(), e.workTimeText(),
+                e.contractPeriod(), e.employmentType(),
+                e.benefits(), e.suspiciousPhrases(), e.missingInformation(),
+                concerns, e.overallAssessment(), e.rawSummary()
+        );
     }
 
     /**

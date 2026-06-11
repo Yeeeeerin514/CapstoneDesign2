@@ -304,22 +304,25 @@ public class OpenAiJobPostingExtractor {
                 [llmConcerns — 위법 가능성 직접 판단]
                 추출 결과로 한국 근로기준법 위반 가능성을 판단해 배열에 넣어라.
                 각 항목은 evidence에 이미지 원문 인용 짧은 문구(20자 이내) 필수. 인용 불가능하면 제외.
-                  · 최저시급 2026년 10,030원 미달 → WAGE/HIGH
+                  · 최저시급 2026년 %,d원 미달 → WAGE/HIGH
                   · 주휴수당 포함 표기 + 시급이 최저임금 수준 → WAGE/MEDIUM
                   · 위약금/손해배상/벌금 약정 (근로기준법 제20조) → PENALTY/HIGH
-                  · 무단결근 시 임금 미지급 위협, 교육기간 무급 → CONDITION/MEDIUM
+                  · 무단결근·지각 시 임금 공제/미지급·손해배상을 예고 → CONDITION/MEDIUM
+                    (단순 "무단결근 시 불이익" 고지처럼 위법 소지가 없는 일반 안내는 우려 아님 — 제외)
                   · 휴게시간 미언급 + 1일 4시간 이상 근무 → ALLOWANCE/LOW
                   · 1일 8시간 / 주 40시간 초과인데 가산수당 미언급 → ALLOWANCE/MEDIUM
                   · 계약서 미작성/당일채용 → CONTRACT/MEDIUM
-                  · '급구'/'면접시 협의' 등 조건 불명확 → POSTING_PATTERN/LOW
-                위반 없으면 빈 배열.
+                  · 협의/급구 등 조건 불명확은 suspiciousPhrases로만 수집하고 llmConcerns에 넣지 마라
+                    (별도 룰베이스가 같은 취지의 우려를 생성한다 — 중복 금지).
+                같은 사안은 1건만(비슷한 제목 반복 금지). 위반 없으면 빈 배열.
 
                 [overallAssessment]
                 "지원해도 무방" / "조건 확인 후 지원 권장" / "지원 비권장 — 명백한 위법 신호" 중 하나.
 
                 [rawSummary]
                 전체 공고 2~3문장 한국어 요약. 못 읽었으면 짧게.
-                """;
+                """.formatted(
+                com.albasave.albasave_server.report.service.WageCalculationService.MINIMUM_WAGE_2026);
     }
 
     private JsonNode extractionSchema() {
