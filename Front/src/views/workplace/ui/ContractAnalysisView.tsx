@@ -192,9 +192,13 @@ export function ContractAnalysisView({
               <Text style={{ fontSize: 18, fontWeight: "700", color: banner.text }}>
                 {result.hourlyWage > 0
                   ? `${result.hourlyWage.toLocaleString()}원`
-                  : result.extracted.monthlyWage !== null
-                    ? "역산 중"
-                    : "확인불가"}
+                  : "확인불가"}
+                {result.hourlyWage > 0 && result.isDerivedHourlyWage === true && (
+                  <Text style={{ fontSize: 11, color: banner.text }}>
+                    {" "}
+                    (월급 역산)
+                  </Text>
+                )}
                 {isBelowMinWage && (
                   <Text style={{ fontSize: 11, color: "#DC2626" }}> (미달)</Text>
                 )}
@@ -421,7 +425,9 @@ export function ContractAnalysisView({
               value={
                 result.extracted.hourlyWage !== null
                   ? `${result.extracted.hourlyWage.toLocaleString()}원`
-                  : "미확인 (월급제)"
+                  : result.isDerivedHourlyWage === true && result.hourlyWage > 0
+                    ? `${result.hourlyWage.toLocaleString()}원 (월급 역산)`
+                    : "미확인"
               }
             />
             {result.extracted.monthlyWage !== null && (

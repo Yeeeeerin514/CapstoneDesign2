@@ -165,6 +165,8 @@ export interface ContractAnalysisResult {
   workplaceName: string;
   contractPeriod: string;
   hourlyWage: number;
+  /** hourlyWage가 계약서 명시 시급이 아니라 월급/일급에서 역산된 값이면 true */
+  isDerivedHourlyWage?: boolean;
   minimumWage: number;
   estimatedMonthlyPay: number;
   issues: ContractIssue[];
@@ -405,6 +407,17 @@ export interface ApiContractViolation {
 /**
  * 계약서 백엔드 응답 — POST /api/contracts/analyze (실제 백엔드 ContractAnalysisResponse 형태).
  */
+/**
+ * 백엔드 factSheet 중 프론트가 사용하는 최소 필드.
+ * hourlyWage는 「명시 시급 → 월급/일급 역산」 순의 유효 시급 —
+ * extractedInfo.calculatedHourlyWage가 @JsonIgnore라 역산값은 이 경로로만 내려온다.
+ */
+export interface ApiContractFactSheet {
+  hourlyWage: number | null;
+  monthlyWage: number | null;
+  minimumWage: number;
+}
+
 export interface ApiContractAnalysisResponse {
   contractId: number | null;
   hasViolation: boolean;
@@ -413,8 +426,8 @@ export interface ApiContractAnalysisResponse {
   summary: string;
   minimumWage: number;
   imageUrl: string | null;
-  /** 진정서용 정형 데이터 — 프론트 현재 미사용 (팀원 진정서 파트 담당). */
-  factSheet?: unknown;
+  /** 진정서용 정형 데이터 — 프론트는 유효 시급(역산 포함) 폴백으로만 사용. */
+  factSheet?: ApiContractFactSheet | null;
   createdAt?: string;
 }
 
@@ -465,13 +478,34 @@ export function mapContractApiResponse(
       ? `${ex.employmentStartDate} ~ ${ex.contractEndDate ?? "기간없음"}`
       : "";
 
+  // 시급: 명시 시급 → 백엔드 역산 시급(factSheet.hourlyWage) 순.
+  const derivedWage = api.factSheet?.hourlyWage ?? null;
+  const hourlyWage = ex.hourlyWage ?? derivedWage ?? 0;
+
+  // 월 환산액: 월급제는 계약 월급 그대로. 시급제는 주휴 포함 월 소정유급시간으로
+  // 추정 — 백엔드 역산 공식(주 15h 이상 시 주휴 1일분 가산, ×52/12)의 역방향.
+  let estimatedMonthlyPay = ex.monthlyWage ?? 0;
+  if (
+    ex.monthlyWage == null &&
+    hourlyWage > 0 &&
+    ex.workingHoursPerDay != null &&
+    ex.workingDaysPerWeek != null &&
+    ex.workingDaysPerWeek > 0
+  ) {
+    const weeklyHours = ex.workingHoursPerDay * ex.workingDaysPerWeek;
+    const weeklyPaidHours =
+      weeklyHours >= 15 ? weeklyHours + ex.workingHoursPerDay : weeklyHours;
+    estimatedMonthlyPay = Math.round((hourlyWage * weeklyPaidHours * 52) / 12);
+  }
+
   return {
     contractId: api.contractId ?? null,
     workplaceName: ex.employerName ?? "",
     contractPeriod,
-    hourlyWage: ex.hourlyWage ?? 0,
+    hourlyWage,
+    isDerivedHourlyWage: ex.hourlyWage == null && derivedWage != null,
     minimumWage: api.minimumWage ?? getMinimumWage().wage,
-    estimatedMonthlyPay: ex.monthlyWage ?? 0,
+    estimatedMonthlyPay,
     issues,
     overallRisk,
     summary: api.summary ?? "",
