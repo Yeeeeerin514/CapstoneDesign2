@@ -1,4 +1,4 @@
-# 📘 알바지킴이 백엔드 API 명세서
+﻿# 📘 알바지킴이 백엔드 API 명세서
 
 > 추가 개발자를 위한 전체 백엔드 API 레퍼런스.
 > 실제 컨트롤러 코드 기반으로 작성됨.
@@ -126,7 +126,7 @@
     }
   ],
   "summary": "본 계약서는 ... 양호한 편이나 ...",
-  "minimumWage": 10030,
+  "minimumWage": 10320,
   "imageUrl": "https://albasave-storage-new.s3...",
   "factSheet": { /* ContractFactSheet 구조 — 아래 별도 명세 */ },
   "createdAt": "2026-05-29T01:43:55"
@@ -153,7 +153,7 @@
     "workStartTime": "09:00",                    // LocalTime
     "workEndTime": "16:00",
     "employmentStartDate": "2020-03-05",          // LocalDate
-    "hourlyWage": 12000, "minimumWage": 10030,
+    "hourlyWage": 12000, "minimumWage": 10320,
     "monthlyWage": 2000000,
     "employmentEndDate": "2021-03-04",
     "wagePaymentDate": "매월 5일", "wagePaymentMethod": "계좌이체",
@@ -254,7 +254,7 @@
     "businessName": "OO카페",
     "violationType": "WEEKLY_HOLIDAY",
     "description": "주휴수당을 한 번도 받지 못함",
-    "hourlyWage": 10030,
+    "hourlyWage": 10320,
     "actualReceivedAmount": 500000,
     "manualUnpaidAmount": null,
     "evidenceImageUrl": null
@@ -270,11 +270,11 @@
     "complaintDraft": null, "complaintPdfUrl": null,
     "status": "PENDING", "createdAt": "...",
     "wageBreakdown": {
-      "hourlyWage": 10030, "totalWorkMinutes": 2400,
-      "totalWorkHours": 40.0, "basePay": 401200,
-      "weeklyHolidayPay": 80240, "overtimePay": 0,
-      "nightPay": 0, "totalShouldReceive": 481440,
-      "minimumWage": 10030
+      "hourlyWage": 10320, "totalWorkMinutes": 2400,
+      "totalWorkHours": 40.0, "basePay": 412800,
+      "weeklyHolidayPay": 82560, "overtimePay": 0,
+      "nightPay": 0, "totalShouldReceive": 495360,
+      "minimumWage": 10320
     },
     "collectiveActionCandidates": [],
     "hasCollectiveActionPartners": false

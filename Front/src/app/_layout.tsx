@@ -23,7 +23,8 @@ import {
 // 웹에서 Alert.alert 다중버튼(삭제/확인 등)이 동작하도록 전역 폴리필 설치 (네이티브 무영향)
 installWebAlertPolyfill();
 
-const MIN_WAGE_CACHE_KEY = "minimumWage_cache";
+// v2: 2026 최저시급 10,320원 반영 — 구버전 키의 24h 캐시(10,030)를 즉시 무효화하기 위해 키 변경.
+const MIN_WAGE_CACHE_KEY = "minimumWage_cache_v2";
 const MIN_WAGE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export default function RootLayout(): JSX.Element {

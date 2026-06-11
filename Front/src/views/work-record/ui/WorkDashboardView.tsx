@@ -11,6 +11,7 @@ import {
   typography,
 } from "@/shared/ui";
 import { formatMinutes } from "@/shared/lib/utils";
+import { getMinimumWage } from "@/shared/lib/minimum-wage-store";
 import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
 import {
   fetchAttendances,
@@ -98,7 +99,7 @@ export function WorkDashboardView({
       // 백엔드에서 현재 출근 상태 + 최근 이력 + 주간 통계 로드 (실제 데이터)
       void useAttendanceStore
         .getState()
-        .load(partTimeJobId, workplace?.workHourlyWage ?? 10030);
+        .load(partTimeJobId, workplace?.workHourlyWage ?? getMinimumWage().wage);
       fetchTotalMinutes(partTimeJobId)
         .then(setTotalMinutes)
         .catch(() => {
@@ -749,7 +750,7 @@ export function WorkDashboardView({
                     .clockIn(
                       partTimeJobId,
                       workplace?.bssid ?? "",
-                      workplace?.workHourlyWage ?? 10030,
+                      workplace?.workHourlyWage ?? getMinimumWage().wage,
                     )
                     .catch(() => undefined);
                 }}
@@ -773,7 +774,7 @@ export function WorkDashboardView({
                     .getState()
                     .clockOut(
                       workplace?.bssid ?? "",
-                      workplace?.workHourlyWage ?? 10030,
+                      workplace?.workHourlyWage ?? getMinimumWage().wage,
                     )
                     .catch(() => undefined)
                 }

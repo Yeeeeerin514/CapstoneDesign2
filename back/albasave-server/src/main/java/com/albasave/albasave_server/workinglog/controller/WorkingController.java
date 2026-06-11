@@ -47,7 +47,7 @@ public class WorkingController {
      * Request body: {
      *   "workplaceName": "OO카페", "bssid": "aa:bb:cc:dd:ee:ff", "ssid": "OOcafe_wifi",
      *   "workDays": ["MONDAY","WEDNESDAY"], "workStartTime": "09:00",
-     *   "workEndTime": "18:00", "startDay": "2026-06-08", "hourlyWage": 10030
+     *   "workEndTime": "18:00", "startDay": "2026-06-08", "hourlyWage": 10320
      * }
      * 근무 정보 필드는 모두 선택 — 미전송 시 null/0 로 저장(기존 동작 호환).
      */

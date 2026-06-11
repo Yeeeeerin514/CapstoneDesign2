@@ -364,7 +364,7 @@ EXPO_PUBLIC_ANTHROPIC_KEY=sk-ant-...
 | 아키텍처 | **Feature-Sliced Design (FSD)** — `app → views → widgets → features → entities → shared` |
 | 백엔드 베이스 URL | `EXPO_PUBLIC_API_URL` (기본 `http://localhost:8080`) |
 | AI 베이스 URL | Anthropic `/v1/messages` (`EXPO_PUBLIC_ANTHROPIC_KEY` 필요) |
-| 최저시급 상수 | 2026년 = **10,030원** (`shared/lib/wage-calculator.ts`, `entities/job-post/model/types.ts`) |
+| 최저시급 | 2026년 = **10,320원** — 백엔드 `GET /api/minimum-wage`를 부팅 시 받아 `shared/lib/minimum-wage-store.ts`에 캐싱 (프론트 하드코딩 아님, 폴백만 10,320) |
 
 ## A.1 핵심 도메인 흐름 (현재 활성)
 
@@ -461,7 +461,7 @@ src/
 |---|---|
 | `utils.ts` | `cn`, `formatCurrency`, `clamp`, `uid` |
 | `format-date.ts` | `formatDate`/`formatTime`/`formatDateTime`/`formatKoreanDate`/`diffMinutes`/`formatDuration`/`parseIso` |
-| `wage-calculator.ts` | `MINIMUM_WAGE_2026=10030`, `calcDailyWage`, `calcWeeklyHolidayAllowance`, `DailyShift`/`WageBreakdown` 타입. 8시간 초과 1.5배, 야간(22~6시) 0.5배 가산, 주 15h 이상 주휴수당. |
+| `wage-calculator.ts` | 최저시급은 `minimum-wage-store`에서 주입(2026년 10,320원), `calcDailyWage`, `calcWeeklyHolidayAllowance`, `DailyShift`/`WageBreakdown` 타입. 8시간 초과 1.5배, 야간(22~6시) 0.5배 가산, 주 15h 이상 주휴수당. |
 
 ### `shared/ui/` (Toss 톤으로 재구성됨)
 | 파일 | 현재 상태 |

@@ -8,7 +8,7 @@ import { persistStorage } from "./zustand-storage";
  * - 호출처는 `useMinimumWageStore.getState().minimumWage` 또는 selector로 읽음.
  * - 폴백 값(2030 / 현재 연도)은 백엔드 응답 전·실패 시에만 보이는 임시 값.
  */
-const FALLBACK_WAGE = 10_030;
+const FALLBACK_WAGE = 10_320;
 
 interface MinimumWageState {
   minimumWage: number;

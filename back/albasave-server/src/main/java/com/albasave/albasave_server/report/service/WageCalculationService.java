@@ -17,8 +17,8 @@ public class WageCalculationService {
 
     private final WorkingRepository workingRepository;
 
-    /** 2026년 최저시급 (원) */
-    public static final int MINIMUM_WAGE_2026 = 10030;
+    /** 2026년 최저시급 (원) — 2026-01-01 적용 고시값 */
+    public static final int MINIMUM_WAGE_2026 = 10320;
 
     /**
      * 특정 알바에 대해 실제 받아야 할 총 임금을 계산
