@@ -11,7 +11,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
 import { useReportStore } from "@/features/report-submit";
-import { fetchReportDetail, withdrawReport } from "@/entities/report";
+import {
+  fetchReportDetail,
+  withdrawReport,
+  updateReportProgress,
+} from "@/entities/report";
 import { usePaymentStore } from "@/features/payment";
 import { PAYMENT_DISTRIBUTION } from "@/shared/lib/payment";
 import { useAuthStore } from "@/entities/user/model/auth-store";
@@ -195,6 +199,10 @@ export function ReportDetailView({
   const handleSettleUnresolved = async (): Promise<void> => {
     if (reportCase === undefined) return;
     updateCaseStatus(reportCase.id, "UNRESOLVED");
+    // 서버 동기화 — 재진입 시 상태가 회귀하지 않도록 (실패해도 로컬 진행 유지)
+    void updateReportProgress(reportCase.id, { status: "UNRESOLVED" }).catch(
+      () => {},
+    );
     const relatedPayment = usePaymentStore
       .getState()
       .records.find(

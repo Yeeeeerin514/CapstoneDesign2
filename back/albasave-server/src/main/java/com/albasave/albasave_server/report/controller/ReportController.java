@@ -7,6 +7,7 @@ import com.albasave.albasave_server.report.dto.GenerateComplaintDraftRequest;
 import com.albasave.albasave_server.report.dto.PutEvidenceRequest;
 import com.albasave.albasave_server.report.dto.ReportDetailResponse;
 import com.albasave.albasave_server.report.dto.ReportSummaryResponse;
+import com.albasave.albasave_server.report.dto.UpdateProgressRequest;
 import com.albasave.albasave_server.report.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -83,6 +84,19 @@ public class ReportController {
             @AuthenticationPrincipal Long userId,
             @PathVariable Long caseId) {
         reportService.withdrawReport(userId, caseId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * 진행 단계/상태 동기화 — 프론트 화면 전환(노동청 제출 확인·해결 확인)을 서버에 반영.
+     * step은 역행이 무시되고, status는 정의된 전이만 적용된다(멱등).
+     */
+    @PatchMapping("/{caseId}/progress")
+    public ResponseEntity<Void> updateProgress(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long caseId,
+            @RequestBody(required = false) UpdateProgressRequest req) {
+        reportService.updateProgress(userId, caseId, req);
         return ResponseEntity.noContent().build();
     }
 }

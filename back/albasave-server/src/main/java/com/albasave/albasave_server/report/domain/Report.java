@@ -147,4 +147,35 @@ public class Report {
             this.currentStep = CaseStep.COMPLAINT_DRAFT;
         }
     }
+
+    /** 진행 단계 전진 — 앞으로만 이동하고 역행 요청은 무시한다(멱등). */
+    public void moveStepForwardTo(CaseStep target) {
+        if (target != null && target.ordinal() > this.currentStep.ordinal()) {
+            this.currentStep = target;
+        }
+    }
+
+    /**
+     * 상태 전이 — 정의된 전이만 적용하고 그 외 요청은 무시한다(멱등).
+     * PENDING에서 RESOLVED/UNRESOLVED 직행 허용: 구버전(서버 동기화 이전)에
+     * 만들어진 사건은 제출 동기화 없이 해결 확인으로 직행할 수 있다.
+     */
+    public void transitionStatusTo(ReportStatus target) {
+        if (target == null || target == this.status) return;
+        boolean allowed = switch (this.status) {
+            case PENDING -> target == ReportStatus.INSPECTING
+                    || target == ReportStatus.RESOLVED
+                    || target == ReportStatus.UNRESOLVED;
+            case INSPECTING -> target == ReportStatus.CORRECTION_ORDERED
+                    || target == ReportStatus.RESOLVED
+                    || target == ReportStatus.UNRESOLVED;
+            case CORRECTION_ORDERED -> target == ReportStatus.RESOLVED
+                    || target == ReportStatus.UNRESOLVED;
+            case UNRESOLVED -> target == ReportStatus.RESOLVED;
+            case RESOLVED -> false;
+        };
+        if (allowed) {
+            this.status = target;
+        }
+    }
 }

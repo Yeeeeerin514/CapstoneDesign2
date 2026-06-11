@@ -57,6 +57,7 @@ export {
   fetchMyReports,
   fetchReportDetail,
   withdrawReport,
+  updateReportProgress,
 } from "./api/fetch-my-reports";
 export { fetchWageCalc } from "./api/wage-calc";
 export type { WageBreakdown } from "./api/wage-calc";

@@ -23,7 +23,7 @@ import type {
   DamageTypeEnum,
   ReportCase,
 } from "@/entities/report";
-import { generateReportDraft } from "@/entities/report";
+import { generateReportDraft, updateReportProgress } from "@/entities/report";
 import type { NegotiationStatus } from "@/features/report-submit/lib/buildComplaintHtml";
 import {
   buildComplaintDoc,
@@ -209,6 +209,11 @@ export function ReportDraftWizardView({
     setCurrentStepAction(reportCase.id, "investigation");
     updateCaseStatus(reportCase.id, "INSPECTING");
     setSubmittedAt(reportCase.id, new Date().toISOString());
+    // 서버 동기화 — 재진입 시 단계/상태가 회귀하지 않도록 (실패해도 로컬 진행 유지)
+    void updateReportProgress(reportCase.id, {
+      step: "investigation",
+      status: "INSPECTING",
+    }).catch(() => {});
     setReturnedFromBrowser(false);
     setBrowserOpened(false);
     if (onSubmitted !== undefined) onSubmitted();

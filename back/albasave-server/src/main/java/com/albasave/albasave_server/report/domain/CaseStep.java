@@ -18,4 +18,15 @@ public enum CaseStep {
 
     @JsonValue
     private final String json;
+
+    /** 프론트 lower_snake 표기(또는 상수명)를 CaseStep으로 변환. 미일치 시 null. */
+    public static CaseStep fromJson(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        for (CaseStep s : values()) {
+            if (s.json.equalsIgnoreCase(raw.trim()) || s.name().equalsIgnoreCase(raw.trim())) {
+                return s;
+            }
+        }
+        return null;
+    }
 }

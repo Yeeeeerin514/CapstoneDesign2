@@ -5,6 +5,7 @@ import { ScreenHeader } from "@/shared/ui";
 import { useReportStore } from "@/features/report-submit";
 import { usePaymentStore } from "@/features/payment";
 import { PAYMENT_DISTRIBUTION } from "@/shared/lib/payment";
+import { updateReportProgress } from "@/entities/report";
 
 interface ResolveConfirmViewProps {
   caseId: string;
@@ -30,6 +31,8 @@ export function ResolveConfirmView({
   const handleConfirmResolved = async (): Promise<void> => {
     // 1. 사건 상태 RESOLVED로 변경 (resolvedAt 자동 채움)
     updateCaseStatus(caseId, "RESOLVED");
+    // 서버 동기화 — 재진입 시 상태가 회귀하지 않도록 (실패해도 로컬 진행 유지)
+    void updateReportProgress(caseId, { status: "RESOLVED" }).catch(() => {});
 
     // 2. 이 사건에 연결된 결제 기록 찾기
     const payments = usePaymentStore.getState().records;

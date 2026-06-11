@@ -1,8 +1,10 @@
 package com.albasave.albasave_server.report.service;
 
 import com.albasave.albasave_server.report.domain.BusinessSnapshot;
+import com.albasave.albasave_server.report.domain.CaseStep;
 import com.albasave.albasave_server.report.domain.ComplaintFacts;
 import com.albasave.albasave_server.report.domain.Report;
+import com.albasave.albasave_server.report.domain.ReportStatus;
 import com.albasave.albasave_server.report.domain.RespondentInfo;
 import com.albasave.albasave_server.report.domain.damageTypeCode;
 import com.albasave.albasave_server.report.dto.AiDraftContext;
@@ -14,6 +16,7 @@ import com.albasave.albasave_server.report.dto.PutEvidenceRequest;
 import com.albasave.albasave_server.report.dto.ReportDetailResponse;
 import com.albasave.albasave_server.report.dto.ReportDraftSpec;
 import com.albasave.albasave_server.report.dto.ReportSummaryResponse;
+import com.albasave.albasave_server.report.dto.UpdateProgressRequest;
 import com.albasave.albasave_server.report.exception.ReportAccessDeniedException;
 import com.albasave.albasave_server.report.repository.ReportRepository;
 import com.albasave.albasave_server.userinfo.domain.User;
@@ -84,6 +87,34 @@ public class ReportService {
         // 신고 정보가 채워졌으면 단계도 '진정서 작성'으로 전진 — 재진입 시 1/4 회귀 방지.
         report.advanceToComplaintDraftIfEvidenceComplete();
         // @Transactional 영속성 컨텍스트 dirty checking으로 저장됨.
+    }
+
+    /**
+     * 진행 단계/상태 동기화 — 본인 소유 사건만.
+     * 프론트 화면 전환(노동청 제출 확인·해결 확인)을 서버에 반영해
+     * 재진입 시 단계/상태가 회귀하지 않게 한다.
+     * step은 앞으로만 이동(역행 무시), status는 정의된 전이만 적용 — 재호출에 안전(멱등).
+     */
+    public void updateProgress(Long userId, Long caseId, UpdateProgressRequest req) {
+        Report report = reportRepository.findById(caseId)
+                .orElseThrow(() -> new IllegalArgumentException("신고 사건을 찾을 수 없습니다: " + caseId));
+
+        if (!report.isOwnedBy(userId)) {
+            throw new ReportAccessDeniedException("본인 소유의 신고만 수정할 수 있습니다.");
+        }
+        if (req == null) return;
+
+        report.moveStepForwardTo(CaseStep.fromJson(req.step()));
+        report.transitionStatusTo(parseStatus(req.status()));
+    }
+
+    private ReportStatus parseStatus(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return ReportStatus.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     /** 인증 사용자가 신고한 전체 사건 목록(최신순). */

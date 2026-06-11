@@ -133,3 +133,15 @@ export async function fetchReportDetail(caseId: string): Promise<ReportCase> {
 export async function withdrawReport(caseId: string): Promise<void> {
   await apiClient.delete(`/reports/${caseId}`);
 }
+
+/**
+ * 진행 단계/상태 서버 동기화 — 노동청 제출 확인·해결 확인 등 화면 전환 시 호출.
+ * 서버에서 step 역행은 무시되고 status는 정의된 전이만 적용된다(멱등).
+ * 실패해도 로컬 진행은 유지되므로 호출처는 fire-and-forget으로 쓴다.
+ */
+export async function updateReportProgress(
+  caseId: string,
+  progress: { step?: CaseStep; status?: ReportStatus },
+): Promise<void> {
+  await apiClient.patch(`/reports/${caseId}/progress`, progress);
+}
