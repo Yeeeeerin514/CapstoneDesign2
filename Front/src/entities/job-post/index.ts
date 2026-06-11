@@ -22,7 +22,11 @@ export {
   MOCK_CONTRACT_ANALYSIS,
   MOCK_FAVORITE_WORKPLACES,
 } from "./model/mock-data";
-export { analyzeJobPost, analyzeContract } from "./api/analyze-job-post";
+export {
+  analyzeJobPost,
+  analyzeContract,
+  fetchJobPostingAnalysis,
+} from "./api/analyze-job-post";
 export {
   fetchContractDetail,
   fetchContractFactSheet,

@@ -16,6 +16,8 @@ export interface FavoriteWorkplace {
   contractId?: number;
   /** 백엔드 part_time_job.id — BSSID 등록 시 자동 채워짐. 출퇴근 API에서 사용. */
   partTimeJobId?: number;
+  /** 이 관심업장을 만든 공고문 분석 ID — "공고 분석 보기" 재조회에 사용. */
+  jobPostingAnalysisId?: number;
   createdAt: string;
   /** 사용자가 업로드한 계약서 이미지 local URI. */
   contractImageUri?: string;
@@ -212,6 +214,8 @@ export const useFavoriteWorkplaceStore = create<FavoriteWorkplaceState>()(
               id: local?.id ?? `pt-${it.partTimeJobId}`,
               name: it.businessName ?? local?.name ?? `알바 ${it.partTimeJobId}`,
               partTimeJobId: it.partTimeJobId,
+              jobPostingAnalysisId:
+                it.jobPostingAnalysisId ?? local?.jobPostingAnalysisId,
               registrationStatus:
                 it.status === "REGISTERED" ? "registered" : "none",
               bssid: it.bssid ?? local?.bssid,

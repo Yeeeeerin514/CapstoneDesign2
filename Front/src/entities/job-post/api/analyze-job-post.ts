@@ -62,6 +62,20 @@ export async function analyzeJobPost(
 }
 
 /**
+ * 공고문 분석 단건 재조회.
+ * GET /api/job-postings/analyses/{analysisId}
+ * 관심업장 카드의 "공고 분석 보기" — 등록 당시 분석 결과를 다시 보여준다.
+ */
+export async function fetchJobPostingAnalysis(
+  analysisId: number,
+): Promise<JobPostAnalysisResult> {
+  const { data } = await apiClient.get<ApiJobPostingAnalysisResponse>(
+    `/job-postings/analyses/${analysisId}`,
+  );
+  return mapJobPostingApiResponse(data);
+}
+
+/**
  * 근로계약서 이미지 분석.
  * POST /api/contracts/analyze  (multipart/form-data, field=image)
  *

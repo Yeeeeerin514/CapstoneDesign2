@@ -83,7 +83,8 @@ type CardAction =
   | "upload-contract"  // 등록 후 계약서 추가 업로드
   | "edit-contract"    // 이미 업로드된 계약서 수정
   | "register-bssid"   // 계약서만 업로드된 상태에서 BSSID 등록만 진행
-  | "open-dashboard";  // 등록 완료 — 근무 대시보드로 이동
+  | "open-dashboard"   // 등록 완료 — 근무 대시보드로 이동
+  | "view-job-analysis"; // 등록 당시 공고문 분석 결과 재조회
 
 interface CardButtonState {
   variant: ButtonVariant;
@@ -710,6 +711,12 @@ export function WorkplaceView(): JSX.Element {
                       // 등록 완료 — 근무 대시보드 (work-record 탭)로 이동
                       router.push("/(tabs)/work-record");
                       return;
+                    case "view-job-analysis":
+                      // 등록 당시 공고문 분석 결과 재조회 (read-only 라우트)
+                      if (wp.jobPostingAnalysisId !== undefined) {
+                        router.push(`/job-analysis/${wp.jobPostingAnalysisId}`);
+                      }
+                      return;
                   }
                 }}
               />
@@ -792,6 +799,18 @@ function WorkplaceRow({
           )}
         </TouchableOpacity>
       </View>
+      {wp.jobPostingAnalysisId !== undefined ? (
+        <TouchableOpacity
+          onPress={() => onAction("view-job-analysis")}
+          activeOpacity={0.7}
+          hitSlop={4}
+          style={{ alignSelf: "flex-start", marginBottom: 10 }}
+        >
+          <Text style={{ fontSize: 12, color: "#2563EB", fontWeight: "600" }}>
+            📋 등록 당시 공고 분석 보기 →
+          </Text>
+        </TouchableOpacity>
+      ) : null}
       <View style={{ flexDirection: "row", gap: 8 }}>
         <ActionButton
           state={states.primary}
