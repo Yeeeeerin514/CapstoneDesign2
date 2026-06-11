@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader, colors, radius, spacing, typography } from "@/shared/ui";
+import { fetchMyReports } from "@/entities/report";
 import {
   BUSINESS_SIZE_LABEL,
   DAMAGE_AMOUNT_LABEL,
@@ -97,8 +98,35 @@ export function MentorRegisterView({ onBack, onSaved, verification }: Props): JS
   void setVerificationMethod;
   void setVerifiedCaseIds;
   void setEvidenceItems;
-  void setResolvedReports;
-  void setLoadingReports;
+
+  // RESOLVED_CASE 검증 선택 시, 서버에서 해결된(RESOLVED) 신고 사건 목록을 불러온다.
+  // 서버 DB가 진실의 원천 — store가 stale할 수 있어 직접 fetch한다.
+  useEffect(() => {
+    if (verificationMethod !== "RESOLVED_CASE") return;
+    let cancelled = false;
+    setLoadingReports(true);
+    void (async () => {
+      try {
+        const all = await fetchMyReports();
+        const resolved = all
+          .filter((c) => c.status === "RESOLVED")
+          .map((c) => ({
+            id: Number(c.id),
+            workplaceName: c.workplaceName,
+            createdAt: c.createdAt,
+          }))
+          .filter((r) => Number.isFinite(r.id) && r.id > 0);
+        if (!cancelled) setResolvedReports(resolved);
+      } catch {
+        if (!cancelled) setResolvedReports([]);
+      } finally {
+        if (!cancelled) setLoadingReports(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [verificationMethod]);
 
   const canSave =
     nickname.trim().length > 0 && damageTypes.length > 0;
