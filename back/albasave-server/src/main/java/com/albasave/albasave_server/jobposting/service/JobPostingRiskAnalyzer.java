@@ -5,6 +5,7 @@ import com.albasave.albasave_server.jobposting.dto.ConcernItem;
 import com.albasave.albasave_server.jobposting.dto.ExternalRiskCheck;
 import com.albasave.albasave_server.jobposting.dto.ExtractedJobPosting;
 import com.albasave.albasave_server.jobposting.dto.LlmConcern;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -12,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+@Slf4j
 @Component
 public class JobPostingRiskAnalyzer {
     // 단일 출처: WageCalculationService 상수 — 연도 갱신 시 한 곳만 수정.
@@ -110,6 +112,12 @@ public class JobPostingRiskAnalyzer {
     private void addLlmConcerns(ExtractedJobPosting posting, List<ConcernItem> concerns) {
         for (LlmConcern c : safeList(posting.llmConcerns())) {
             if (c == null || c.title() == null || c.description() == null) continue;
+            // LLM(1차 추출·RAG judge 폴백 모두)이 프롬프트 지시를 무시해도
+            // '무단결근 시 불이익' 같은 당연 조항은 코드에서 최종 차단한다.
+            if (isObviousGeneralNotice(c)) {
+                log.info("[공고 우려 필터] 일반 안내 조항 제외 — title='{}'", c.title());
+                continue;
+            }
             String type = "LLM_" + (c.category() == null ? "OTHER" : c.category());
             String severity = c.severity() == null ? "MEDIUM" : c.severity();
             concerns.add(new ConcernItem(
@@ -120,6 +128,24 @@ public class JobPostingRiskAnalyzer {
                     c.evidence()
             ));
         }
+    }
+
+    /**
+     * 당연한 일반 안내인지 판정 — 근태(무단결근/지각) 관련 언급이지만
+     * 임금 미지급·공제·배상 등 위법 소지 신호가 전혀 없으면 우려가 아니다.
+     * 예: "무단결근 시 불이익이 있을 수 있음" → 제외.
+     *     "무단결근 시 일급 차감" → 통과(공제 신호).
+     */
+    private boolean isObviousGeneralNotice(LlmConcern c) {
+        String text = (c.title() == null ? "" : c.title()) + " "
+                + (c.description() == null ? "" : c.description()) + " "
+                + (c.evidence() == null ? "" : c.evidence());
+        boolean aboutAttendance = containsAny(text, "무단결근", "무단 결근", "지각", "결근 시", "근태");
+        if (!aboutAttendance) return false;
+        boolean legalRiskSignal = containsAny(text,
+                "임금", "급여", "일급", "시급", "미지급", "공제", "차감",
+                "배상", "벌금", "위약금", "손해", "몰수", "반납");
+        return !legalRiskSignal;
     }
 
     private void addPostingConcerns(ExtractedJobPosting posting, List<ConcernItem> concerns) {
