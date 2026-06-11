@@ -45,8 +45,13 @@ export function installWebAlertPolyfill(): void {
     }
 
     const cancelBtn = buttons.find((b) => b.style === "cancel");
+    // 확인 액션 = cancel이 아니면서 onPress가 있는 첫 버튼.
+    // style 없는 취소성 버튼({ text: "아니오" })이 onPress 없이 앞에 오는 패턴에서
+    // 죽은 버튼이 선택되어 확인을 눌러도 아무 일도 안 생기는 문제 방지.
     const confirmBtn =
-      buttons.find((b) => b.style !== "cancel") ?? buttons[buttons.length - 1];
+      buttons.find((b) => b.style !== "cancel" && b.onPress !== undefined) ??
+      buttons.find((b) => b.style !== "cancel") ??
+      buttons[buttons.length - 1];
 
     const accepted = w.confirm?.(heading) ?? false;
     if (accepted) {

@@ -392,7 +392,7 @@ export function ReportDetailView({
       "외부 사이트 이동",
       "고용24(work24.go.kr)로 이동하시겠어요?",
       [
-        { text: "취소" },
+        { text: "취소", style: "cancel" },
         {
           text: "이동",
           onPress: () => {
@@ -434,7 +434,7 @@ export function ReportDetailView({
       "신고 취하",
       "정말 신고를 취하하시겠습니까? 이미 노동청에 제출된 신고는 별도 절차가 필요합니다.",
       [
-        { text: "아니오" },
+        { text: "아니오", style: "cancel" },
         {
           text: "신고 취하",
           style: "destructive",
