@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
+import { Alert } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { useReportStore } from "@/features/report-submit";
-import { fetchMyReports } from "@/entities/report";
+import { createReportDraft, fetchMyReports } from "@/entities/report";
 import { useReviewStore } from "@/entities/review";
 import { usePaymentStore } from "@/features/payment";
 import type { BusinessSearchResult } from "@/entities/business";
@@ -35,7 +36,7 @@ export function ReportView(): JSX.Element {
     useState<PendingManualInput | null>(null);
   const [confirmCandidate, setConfirmCandidate] =
     useState<BusinessSearchResult | null>(null);
-  const startReport = useReportStore((s) => s.startReport);
+  const createDraft = useReportStore((s) => s.createReportDraft);
   const cases = useReportStore((s) => s.cases);
 
   useFocusEffect(
@@ -134,17 +135,33 @@ export function ReportView(): JSX.Element {
           setCurrentScreen("workplace-select");
         }}
         onSubmit={({ workplaceName, region, businessRegistrationNumber }) => {
-          const caseId = startReport({
-            workplaceName,
-            businessRegistrationNumber,
-            industry: "카페·음식점",
-            region,
-            damageTypes: ["임금체불"],
-            initialEvidence: pending.hasContract ? { contracts: 1 } : {},
-          });
-          setPendingManualInput(null);
-          setSelectedCaseId(caseId);
-          setCurrentScreen("detail");
+          void (async () => {
+            try {
+              // 백엔드에 manual draft 생성 → 정수형 caseId 확보.
+              // 이게 있어야 이후 AI 진정 내용 생성(POST /reports/{caseId}/complaint-draft)이 가능.
+              const res = await createReportDraft({
+                source: "manual",
+                businessName: workplaceName,
+                businessRegistrationNumber,
+                businessAddress: region,
+              });
+              const caseId = String(res.caseId);
+              createDraft({
+                caseId,
+                source: "manual",
+                business: res.business,
+                region,
+              });
+              setPendingManualInput(null);
+              setSelectedCaseId(caseId);
+              setCurrentScreen("detail");
+            } catch (err) {
+              Alert.alert(
+                "신고 생성 실패",
+                err instanceof Error ? err.message : "다시 시도해주세요.",
+              );
+            }
+          })();
         }}
       />
     );
