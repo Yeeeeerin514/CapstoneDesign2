@@ -15,7 +15,7 @@ import java.util.List;
 /**
  * 해결 후기 API.
  * <pre>
- *   GET    /api/reviews?industry=&region=    후기 목록 (최신순, 업종/지역 옵션 필터)
+ *   GET    /api/reviews?industry=&region=&damageType=  후기 목록 (최신순, 업종/지역/피해유형 옵션 필터)
  *   GET    /api/reviews/{id}                 단건 후기 조회
  *   POST   /api/reviews                       후기 작성
  *   POST   /api/reviews/{id}/helpful          "도움됐어요" +1
@@ -33,8 +33,9 @@ public class ReviewController {
     @GetMapping
     public ResponseEntity<List<ReviewResponse>> list(
             @RequestParam(value = "industry", required = false) String industry,
-            @RequestParam(value = "region", required = false) String region) {
-        return ResponseEntity.ok(reviewService.list(industry, region));
+            @RequestParam(value = "region", required = false) String region,
+            @RequestParam(value = "damageType", required = false) String damageType) {
+        return ResponseEntity.ok(reviewService.list(industry, region, damageType));
     }
 
     @GetMapping("/{id}")

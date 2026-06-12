@@ -3,20 +3,24 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
-import { useReviewStore } from "@/entities/review";
+import {
+  useReviewStore,
+  INDUSTRY_OPTIONS,
+  REGION_OPTIONS,
+  DAMAGE_OPTIONS,
+} from "@/entities/review";
 import { ReviewDetailView } from "./ReviewDetailView";
 
 interface ReviewListViewProps {
   onBack: () => void;
-  /** HomeView "맞춤 해결 사례 보기" 진입 시 초기 필터 — INDUSTRY_FILTERS 중 하나. */
-  initialIndustry?: "전체" | "카페·음식점" | "편의점" | "배달";
+  /** HomeView "맞춤 해결 사례 보기" 진입 시 초기 업종 필터 ("전체" 또는 업종 라벨). */
+  initialIndustry?: string;
 }
 
-const INDUSTRY_FILTERS = ["전체", "카페·음식점", "편의점", "배달"] as const;
-const REGION_FILTERS = ["전체", "서울", "경기", "기타"] as const;
-
-type IndustryFilter = (typeof INDUSTRY_FILTERS)[number];
-type RegionFilter = (typeof REGION_FILTERS)[number];
+/** 필터 칩 — 앞에 "전체"를 붙인 업종/지역/피해유형 목록. */
+const INDUSTRY_FILTERS = ["전체", ...INDUSTRY_OPTIONS] as const;
+const REGION_FILTERS = ["전체", ...REGION_OPTIONS] as const;
+const DAMAGE_FILTERS = ["전체", ...DAMAGE_OPTIONS] as const;
 
 export function ReviewListView({
   onBack,
@@ -25,23 +29,25 @@ export function ReviewListView({
   const reviews = useReviewStore((s) => s.reviews);
   const markHelpful = useReviewStore((s) => s.markHelpful);
 
-  const [industry, setIndustry] = useState<IndustryFilter>(
-    initialIndustry ?? "전체",
-  );
-  const [region, setRegion] = useState<RegionFilter>("전체");
+  const [industry, setIndustry] = useState<string>(initialIndustry ?? "전체");
+  const [region, setRegion] = useState<string>("전체");
+  const [damageType, setDamageType] = useState<string>("전체");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const filteredReviews = useMemo(() => {
     return reviews.filter((r) => {
       if (industry !== "전체" && r.industry !== industry) return false;
-      if (region === "기타") {
-        if (r.region === "서울" || r.region === "경기") return false;
-      } else if (region !== "전체" && r.region !== region) {
+      if (region !== "전체" && r.region !== region) return false;
+      // 피해 유형: 선택한 유형이 후기의 damageTypes에 "포함"되면 통과.
+      if (
+        damageType !== "전체" &&
+        !(r.damageTypes as string[]).includes(damageType)
+      ) {
         return false;
       }
       return true;
     });
-  }, [reviews, industry, region]);
+  }, [reviews, industry, region, damageType]);
 
   if (selectedId !== null) {
     return (
@@ -143,6 +149,51 @@ export function ReviewListView({
               <Pressable
                 key={opt}
                 onPress={() => setRegion(opt)}
+                style={{
+                  backgroundColor: isActive ? "#3182F6" : "#F1F5F9",
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 14,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: "500",
+                    color: isActive ? "#FFFFFF" : "#475569",
+                  }}
+                >
+                  {opt}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* 필터 칩 — 피해 유형 (선택 시 해당 유형이 포함된 후기만) */}
+      <View style={{ paddingHorizontal: 16, marginBottom: 10 }}>
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: "600",
+            color: "#94A3B8",
+            marginBottom: 6,
+          }}
+        >
+          피해 유형
+        </Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 6, paddingBottom: 4 }}
+        >
+          {DAMAGE_FILTERS.map((opt) => {
+            const isActive = damageType === opt;
+            return (
+              <Pressable
+                key={opt}
+                onPress={() => setDamageType(opt)}
                 style={{
                   backgroundColor: isActive ? "#3182F6" : "#F1F5F9",
                   paddingHorizontal: 12,

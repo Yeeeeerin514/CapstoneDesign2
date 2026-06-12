@@ -48,7 +48,9 @@ export function ResolveReviewCard({
           <Text
             style={{ fontSize: 11, color: "#B91C1C", fontWeight: "700" }}
           >
-            {r.damageType}
+            {r.damageTypes.length > 1
+              ? `${r.damageTypes[0]} 외 ${r.damageTypes.length - 1}건`
+              : (r.damageTypes[0] ?? "")}
           </Text>
         </View>
       </View>

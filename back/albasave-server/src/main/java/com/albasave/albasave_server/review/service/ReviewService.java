@@ -10,31 +10,58 @@ import com.albasave.albasave_server.review.repository.ReviewCommentRepository;
 import com.albasave.albasave_server.review.repository.ReviewRepository;
 import com.albasave.albasave_server.userinfo.domain.User;
 import com.albasave.albasave_server.userinfo.repository.UserRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Set;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReviewService {
 
-    /** 지역 필터 "기타" = 아래 광역지역에 속하지 않는 모든 후기. */
-    private static final Set<String> NAMED_REGIONS = Set.of("서울", "경기");
-
     private final ReviewRepository reviewRepository;
     private final ReviewCommentRepository reviewCommentRepository;
     private final UserRepository userRepository;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    /**
+     * 앱 시작 시 1회 마이그레이션 — 단일 컬럼(damage_type)으로 저장돼 있던 기존 후기를
+     * 신규 복수 컬럼(damage_types)으로 백필. 비어 있는 행만 옛 값을 그대로 복사한다.
+     * (구버전에 옛 컬럼이 없던 환경에서는 SQL이 실패할 수 있어 조용히 무시.)
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    @Order(0) // 시드보다 먼저 실행
+    @Transactional
+    public void backfillDamageTypes() {
+        try {
+            int updated = entityManager.createNativeQuery(
+                    "UPDATE resolve_review " +
+                    "SET damage_types = damage_type " +
+                    "WHERE (damage_types IS NULL OR damage_types = '') " +
+                    "AND damage_type IS NOT NULL AND damage_type <> ''"
+            ).executeUpdate();
+            if (updated > 0) {
+                log.info("[Review] 기존 후기 피해유형 백필 완료: {}건", updated);
+            }
+        } catch (Exception e) {
+            log.debug("[Review] 피해유형 백필 건너뜀 (옛 damage_type 컬럼 없음): {}", e.getMessage());
+        }
+    }
+
     /** 앱 시작 시 후기 테이블이 비어 있으면 데모 후기 2건 시드. */
     @EventListener(ApplicationReadyEvent.class)
+    @Order(1) // 백필 이후 실행
     @Transactional
     public void seedIfEmpty() {
         if (reviewRepository.count() > 0) return;
@@ -44,7 +71,7 @@ public class ReviewService {
                 .authorBadges("🛡 인증멘토,⚡ 빠른해결")
                 .industry("카페·음식점")
                 .region("서울")
-                .damageType("주휴수당 미지급")
+                .damageTypes("주휴수당 미지급,연장근로수당 미지급")
                 .resolutionMethod("노동청 진정")
                 .unpaidAmountRange("100만원대")
                 .resolveDays(18)
@@ -65,7 +92,7 @@ public class ReviewService {
                 .authorBadges("")
                 .industry("편의점")
                 .region("경기")
-                .damageType("임금(기본급) 미지급")
+                .damageTypes("임금(기본급) 미지급")
                 .resolutionMethod("노동청 진정")
                 .unpaidAmountRange("50만원대")
                 .resolveDays(21)
@@ -84,18 +111,20 @@ public class ReviewService {
     }
 
     /**
-     * 후기 목록(최신순) — 업종/지역 옵션 필터.
+     * 후기 목록(최신순) — 업종/지역/피해유형 옵션 필터.
      * <ul>
      *   <li>industry: null/빈값/"전체"이면 전체, 아니면 정확히 일치하는 업종만</li>
-     *   <li>region: null/빈값/"전체"이면 전체, "기타"이면 서울·경기가 <b>아닌</b> 후기,
-     *       그 외("서울"/"경기")는 정확히 일치하는 지역만</li>
+     *   <li>region: null/빈값/"전체"이면 전체, 아니면 정확히 일치하는 지역만("기타"도 일반 지역값으로 취급)</li>
+     *   <li>damageType: null/빈값/"전체"이면 전체, 아니면 해당 유형을 <b>포함</b>하는 후기만
+     *       (후기 damageTypes는 복수 — 하나만 골라도 그 유형이 들어간 모든 후기가 노출)</li>
      * </ul>
      */
     @Transactional(readOnly = true)
-    public List<ReviewResponse> list(String industry, String region) {
+    public List<ReviewResponse> list(String industry, String region, String damageType) {
         return reviewRepository.findAllByOrderByCreatedAtDesc().stream()
                 .filter(r -> matchesIndustry(r, industry))
                 .filter(r -> matchesRegion(r, region))
+                .filter(r -> matchesDamageType(r, damageType))
                 .map(ReviewResponse::from)
                 .toList();
     }
@@ -107,8 +136,18 @@ public class ReviewService {
 
     private boolean matchesRegion(Review r, String region) {
         if (region == null || region.isBlank() || "전체".equals(region)) return true;
-        if ("기타".equals(region)) return !NAMED_REGIONS.contains(r.getRegion());
         return region.equals(r.getRegion());
+    }
+
+    private boolean matchesDamageType(Review r, String damageType) {
+        if (damageType == null || damageType.isBlank() || "전체".equals(damageType)) return true;
+        String stored = r.getDamageTypes();
+        if (stored == null || stored.isBlank()) return false;
+        // 쉼표 join 저장값을 분해해 정확히 일치하는 항목이 있는지 확인.
+        for (String d : stored.split(",")) {
+            if (damageType.equals(d.trim())) return true;
+        }
+        return false;
     }
 
     /** 단건 후기 조회. */
@@ -169,7 +208,7 @@ public class ReviewService {
                 .authorBadges(req.authorBadges() == null ? "" : String.join(",", req.authorBadges()))
                 .industry(req.industry())
                 .region(req.region())
-                .damageType(req.damageType())
+                .damageTypes(req.damageTypes() == null ? "" : String.join(",", req.damageTypes()))
                 .resolutionMethod(req.resolutionMethod())
                 .unpaidAmountRange(req.unpaidAmountRange())
                 .resolveDays(req.resolveDays())

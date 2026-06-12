@@ -164,7 +164,7 @@ export function ReviewDetailView({
             사건 요약
           </Text>
           {[
-            { label: "피해 유형", value: review.damageType },
+            { label: "피해 유형", value: review.damageTypes.join(", ") },
             { label: "피해 금액", value: review.unpaidAmountRange },
             { label: "해결 기간", value: `${review.resolveDays}일` },
           ].map((row) => (

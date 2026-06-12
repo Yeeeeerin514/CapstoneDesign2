@@ -14,6 +14,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader } from "@/shared/ui";
 import {
   useReviewStore,
+  INDUSTRY_OPTIONS,
+  REGION_OPTIONS,
+  DAMAGE_OPTIONS,
   type DamageTypeLabel,
   type ResolutionMethodLabel,
 } from "@/entities/review";
@@ -47,14 +50,6 @@ const MAX_TITLE = 30;
 const MAX_CONTENT = 500;
 const MAX_TIP = 200;
 
-const DAMAGE_OPTIONS: DamageTypeLabel[] = [
-  "임금(기본급) 미지급",
-  "주휴수당 미지급",
-  "연장근로수당 미지급",
-  "야간근로수당 미지급",
-  "퇴직금 미지급",
-];
-
 const AMOUNT_RANGE_OPTIONS = [
   "50만원 미만",
   "50만원대",
@@ -69,24 +64,6 @@ const RESOLUTION_OPTIONS: ResolutionMethodLabel[] = [
   "지급명령",
   "민사 소송",
   "노무사 상담",
-];
-
-const INDUSTRY_OPTIONS = [
-  "카페·음식점",
-  "편의점",
-  "배달",
-  "학원",
-  "PC방",
-  "기타",
-];
-
-const REGION_OPTIONS = [
-  "서울",
-  "경기",
-  "인천",
-  "부산",
-  "대구",
-  "기타",
 ];
 
 // ──────────────────────────────────────
@@ -109,6 +86,17 @@ const REGION_ENUM_MAP: Record<string, Region> = {
   "인천": "INCHEON",
   "부산": "BUSAN",
   "대구": "DAEGU",
+  "울산": "ULSAN",
+  "광주": "GWANGJU",
+  "대전": "DAEJEON",
+  "세종": "SEJONG",
+  "경남": "GYEONGNAM",
+  "경북": "GYEONGBUK",
+  "전북": "JEONBUK",
+  "전남": "JEONNAM",
+  "충남": "CHUNGNAM",
+  "충북": "CHUNGBUK",
+  "제주": "JEJU",
   "기타": "OTHER",
 };
 
@@ -136,9 +124,13 @@ const AMOUNT_RANGE_ENUM_MAP: Record<string, DamageAmountRange> = {
   "500만원 이상": "OVER_5M",
 };
 
-/** ReportCase.damageTypes 첫 값을 DamageTypeLabel로 매핑. */
-function mapDamageType(raw: string | undefined): DamageTypeLabel {
-  return DAMAGE_OPTIONS.find((l) => l === raw) ?? "임금(기본급) 미지급";
+/** ReportCase.damageTypes(문자열 배열) → 유효한 DamageTypeLabel 배열로 매핑(중복 제거). */
+function mapDamageTypes(raw: string[] | undefined): DamageTypeLabel[] {
+  if (raw === undefined) return [];
+  const matched = raw.filter((r): r is DamageTypeLabel =>
+    DAMAGE_OPTIONS.some((l) => l === r),
+  );
+  return Array.from(new Set(matched));
 }
 
 export function ReviewWriteView({
@@ -158,9 +150,15 @@ export function ReviewWriteView({
     resolvedCase?.industry ?? "",
   );
   const [region, setRegion] = useState<string>(resolvedCase?.region ?? "");
-  const [damageType, setDamageType] = useState<DamageTypeLabel>(
-    mapDamageType(resolvedCase?.damageTypes[0]),
+  const [damageTypes, setDamageTypes] = useState<DamageTypeLabel[]>(
+    mapDamageTypes(resolvedCase?.damageTypes),
   );
+
+  const toggleDamageType = (opt: DamageTypeLabel): void => {
+    setDamageTypes((prev) =>
+      prev.includes(opt) ? prev.filter((d) => d !== opt) : [...prev, opt],
+    );
+  };
   const [amountRange, setAmountRange] = useState<string>(
     resolvedCase !== undefined
       ? getAmountRange(resolvedCase.calculatedUnpaid ?? 0)
@@ -196,6 +194,7 @@ export function ReviewWriteView({
     trimmedContent.length > 0 &&
     industry.length > 0 &&
     region.length > 0 &&
+    damageTypes.length > 0 &&
     amountRange.length > 0 &&
     Number.isFinite(resolveDays) &&
     resolveDays > 0;
@@ -238,7 +237,7 @@ export function ReviewWriteView({
       authorBadges: registerAsMentor ? ["🛡 인증멘토"] : [],
       industry,
       region,
-      damageType,
+      damageTypes,
       resolutionMethod,
       unpaidAmountRange: amountRange,
       resolveDays,
@@ -273,7 +272,7 @@ export function ReviewWriteView({
         reviewCount: 1,
         resolvedDays: resolveDays,
         industry,
-        damageTypes: [damageType],
+        damageTypes: [...damageTypes],
         consultingFee: 10000,
         badges: [],
         bio: trimmedTitle,
@@ -304,7 +303,9 @@ export function ReviewWriteView({
       await registerMentor({
         nickname,
         industry: INDUSTRY_ENUM_MAP[industry] ?? "OTHER",
-        damageTypes: [DAMAGE_TYPE_ENUM_MAP[damageType] ?? "OTHER"],
+        damageTypes: Array.from(
+          new Set(damageTypes.map((d) => DAMAGE_TYPE_ENUM_MAP[d] ?? "OTHER")),
+        ),
         employmentType: "OTHER",
         businessSize: "UNKNOWN",
         region: REGION_ENUM_MAP[region] ?? "OTHER",
@@ -413,11 +414,11 @@ export function ReviewWriteView({
             options={REGION_OPTIONS}
             onChange={setRegion}
           />
-          <RadioGroup
-            label="피해 유형"
-            value={damageType}
+          <CheckGroup
+            label="피해 유형 (중복 선택 가능)"
+            values={damageTypes}
             options={DAMAGE_OPTIONS}
-            onChange={(v) => setDamageType(v as DamageTypeLabel)}
+            onToggle={(v) => toggleDamageType(v as DamageTypeLabel)}
           />
           <RadioGroup
             label="미지급 금액"
@@ -655,6 +656,69 @@ function RadioGroup({
                 borderColor: active ? "#3182F6" : "#E2E8F0",
               }}
             >
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: "600",
+                  color: active ? "#FFFFFF" : "#475569",
+                }}
+              >
+                {opt}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/** 다중 선택 칩 그룹 — 피해 유형 중복 선택용. */
+function CheckGroup({
+  label,
+  values,
+  options,
+  onToggle,
+}: {
+  label: string;
+  values: readonly string[];
+  options: readonly string[];
+  onToggle: (v: string) => void;
+}): JSX.Element {
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Text
+        style={{
+          fontSize: 12,
+          color: "#475569",
+          fontWeight: "600",
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {options.map((opt) => {
+          const active = values.includes(opt);
+          return (
+            <Pressable
+              key={opt}
+              onPress={() => onToggle(opt)}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                borderRadius: 999,
+                backgroundColor: active ? "#3182F6" : "#F8FAFC",
+                borderWidth: 1,
+                borderColor: active ? "#3182F6" : "#E2E8F0",
+              }}
+            >
+              {active ? (
+                <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+              ) : null}
               <Text
                 style={{
                   fontSize: 12,

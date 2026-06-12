@@ -26,8 +26,8 @@ export interface ResolveReview {
   authorBadges: string[];
   industry: string;
   region: string;
-  /** 세부 유형 라벨 — 카드 배지/필터에 그대로 표시. */
-  damageType: DamageTypeLabel;
+  /** 세부 유형 라벨(중복 선택) — 카드 배지/필터에 그대로 표시. */
+  damageTypes: DamageTypeLabel[];
   /** 해결 방법 — 카드에 "노동청 진정 · N일 만에 해결" 형태로 노출. */
   resolutionMethod: ResolutionMethodLabel;
   /** 피해 금액 구간 표시 (예: "100만원대"). */

@@ -10,7 +10,7 @@ public record ReviewCreateRequest(
         List<String> authorBadges,
         String industry,
         String region,
-        String damageType,
+        List<String> damageTypes,
         String resolutionMethod,
         String unpaidAmountRange,
         int resolveDays,

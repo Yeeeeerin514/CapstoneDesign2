@@ -112,7 +112,7 @@ public class DevSeedController {
                           String mentorUserId, int createdDaysAgo) {
         return Review.builder()
                 .authorNickname(nick).authorBadges(badges).industry(industry).region(region)
-                .damageType(damageType).resolutionMethod(method).unpaidAmountRange(amount)
+                .damageTypes(damageType).resolutionMethod(method).unpaidAmountRange(amount)
                 .resolveDays(days).rating(rating).title(title).content(content)
                 .tipComplaint(tipC).tipInvestigation(tipI).tipNegotiation(tipN)
                 .helpfulCount(helpful).isMentor(isMentor).mentorUserId(mentorUserId)

@@ -15,7 +15,7 @@ public record ReviewResponse(
         List<String> authorBadges,
         String industry,
         String region,
-        String damageType,
+        List<String> damageTypes,
         String resolutionMethod,
         String unpaidAmountRange,
         int resolveDays,
@@ -34,10 +34,10 @@ public record ReviewResponse(
         return new ReviewResponse(
                 String.valueOf(r.getId()),
                 r.getAuthorNickname(),
-                splitBadges(r.getAuthorBadges()),
+                splitCsv(r.getAuthorBadges()),
                 r.getIndustry(),
                 r.getRegion(),
-                r.getDamageType(),
+                splitCsv(r.getDamageTypes()),
                 r.getResolutionMethod(),
                 r.getUnpaidAmountRange(),
                 r.getResolveDays() != null ? r.getResolveDays() : 0,
@@ -52,7 +52,8 @@ public record ReviewResponse(
         );
     }
 
-    private static List<String> splitBadges(String joined) {
+    /** 쉼표(,)로 join된 문자열을 trim·빈값 제거 후 리스트로. (배지/피해유형 공용) */
+    private static List<String> splitCsv(String joined) {
         if (joined == null || joined.isBlank()) return List.of();
         return Arrays.stream(joined.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
     }

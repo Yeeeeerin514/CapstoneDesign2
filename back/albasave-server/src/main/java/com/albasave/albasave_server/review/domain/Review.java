@@ -33,7 +33,10 @@ public class Review {
 
     private String industry;
     private String region;
-    private String damageType;
+    /** 피해 유형 목록 — 쉼표(,)로 join 저장. 예: "주휴수당 미지급,연장근로수당 미지급" */
+    @Column(length = 500)
+    private String damageTypes;
+
     private String resolutionMethod;
     private String unpaidAmountRange;
 

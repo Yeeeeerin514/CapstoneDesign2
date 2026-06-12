@@ -12,7 +12,7 @@ interface ApiReview {
   authorBadges: string[];
   industry: string;
   region: string;
-  damageType: string;
+  damageTypes: string[];
   resolutionMethod: string;
   unpaidAmountRange: string;
   resolveDays: number;
@@ -33,7 +33,7 @@ function toReview(a: ApiReview): ResolveReview {
     authorBadges: a.authorBadges ?? [],
     industry: a.industry,
     region: a.region,
-    damageType: a.damageType as ResolveReview["damageType"],
+    damageTypes: (a.damageTypes ?? []) as ResolveReview["damageTypes"],
     resolutionMethod: a.resolutionMethod as ResolveReview["resolutionMethod"],
     unpaidAmountRange: a.unpaidAmountRange,
     resolveDays: a.resolveDays,
@@ -61,7 +61,7 @@ export async function createReview(input: ReviewInput): Promise<ResolveReview> {
     authorBadges: input.authorBadges,
     industry: input.industry,
     region: input.region,
-    damageType: input.damageType,
+    damageTypes: input.damageTypes,
     resolutionMethod: input.resolutionMethod,
     unpaidAmountRange: input.unpaidAmountRange,
     resolveDays: input.resolveDays,
