@@ -24,6 +24,11 @@ import type {
   ReportCase,
 } from "@/entities/report";
 import { generateReportDraft, updateReportProgress } from "@/entities/report";
+import {
+  fetchJobPostingAnalysis,
+  type ExtractedPosting,
+} from "@/entities/job-post";
+import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
 import type { NegotiationStatus } from "@/features/report-submit/lib/buildComplaintHtml";
 import {
   buildComplaintDoc,
@@ -605,6 +610,58 @@ function ComplaintPreview({
       hydratedRef.current = true;
     }
   }, [applicant, aiContent, reportCase]);
+
+  /**
+   * 공고문 분석 prefill — 피진정인 칸(연락처/주소/사업장명/사업장 주소/사업장 전화)이
+   * 비어 있으면 이 업장을 만든 공고 추출값으로 채운다.
+   * respondent가 이미 저장된 기존 사건(빈 값 포함)도 미리보기에서 바로 채워지도록
+   * 위저드 레벨에서 수행. 빈 칸만 채우므로 사용자 입력·계약서 값을 덮지 않는다.
+   */
+  const jobPostingAnalysisId = useFavoriteWorkplaceStore(
+    (s) =>
+      s.workplaces.find((w) => w.name === reportCase.workplaceName)
+        ?.jobPostingAnalysisId,
+  );
+  const [postingExtract, setPostingExtract] =
+    useState<ExtractedPosting | null>(null);
+
+  useEffect(() => {
+    if (jobPostingAnalysisId === undefined) return;
+    void fetchJobPostingAnalysis(jobPostingAnalysisId)
+      .then((posting) => setPostingExtract(posting.extracted))
+      .catch(() => {
+        /* 공고 조회 실패 — 사용자 입력 fallback */
+      });
+  }, [jobPostingAnalysisId]);
+
+  // 폼 재구축(위 effect) 이후에도 다시 적용되도록 같은 deps로 실행 — 빈 칸만 채워 멱등.
+  useEffect(() => {
+    if (postingExtract === null) return;
+    const ex = postingExtract;
+    setForm((prev) => ({
+      ...prev,
+      respondentPhone:
+        prev.respondentPhone.length > 0
+          ? prev.respondentPhone
+          : (ex.phone ?? ""),
+      respondentAddress:
+        prev.respondentAddress.length > 0
+          ? prev.respondentAddress
+          : (ex.address ?? ""),
+      workplaceName:
+        prev.workplaceName.length > 0
+          ? prev.workplaceName
+          : (ex.businessName ?? ""),
+      workplaceAddress:
+        prev.workplaceAddress.length > 0
+          ? prev.workplaceAddress
+          : (ex.address ?? ""),
+      workplacePhone:
+        prev.workplacePhone.length > 0
+          ? prev.workplacePhone
+          : (ex.phone ?? ""),
+    }));
+  }, [postingExtract, applicant, aiContent, reportCase]);
 
   const setField = <K extends keyof ComplaintFormData>(
     key: K,
