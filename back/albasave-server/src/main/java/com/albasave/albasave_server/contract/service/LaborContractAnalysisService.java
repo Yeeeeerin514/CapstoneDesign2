@@ -76,8 +76,9 @@ public class LaborContractAnalysisService {
         String extractJson = cleanJson(extractRaw);
         ExtractedContractInfo extractedInfo = parseExtractedInfo(extractJson);
 
-        // 2-B. 시급 미명시 시 월급/일급에서 역산
+        // 2-B. 시급/일급 오분류 보정(3만원 미만 일급 → 시급) 후, 시급 미명시 시 월급/일급에서 역산
         if (extractedInfo != null) {
+            extractedInfo.normalizeImplausibleDailyWage();
             applyWageCalculation(extractedInfo);
         }
 
@@ -616,9 +617,15 @@ public class LaborContractAnalysisService {
                 5. employerName: 이미지에서 실제로 읽은 상호·이름만 반환. 임의로 변경·완성 금지.
 
                 추출 규칙:
-                - hourlyWage: 계약서에 '시급'이 명시된 경우만 숫자 반환. 월급·일급제면 null.
-                - monthlyWage: 월 기준 기본 금액. 식대·가족수당 등 부가급여 제외.
-                - dailyWage: '일급' 명시된 경우만 숫자.
+                - 임금 분류(시급/일급/월급): 먼저 계약서의 라벨('시급'/'일급'/'월급')을 따른다.
+                  라벨이 흐릿하거나 모호하면 금액 규모로 판단한다. 분류 후 반드시 sanity check.
+                  · hourlyWage: '시급' 금액. 통상 9,000~30,000원대.
+                  · dailyWage: '일급' 금액. 1일치 임금이라 통상 60,000원 이상.
+                  · monthlyWage: 월 기본급(식대·가족수당 등 부가급여 제외). 통상 150만원 이상.
+                  ⚠️ 금액 규모 sanity check (오분류 방지 — 매우 중요):
+                    9,000~30,000원대 금액은 거의 항상 '시급'이다. 이 범위 금액을 절대 일급/월급으로
+                    분류하지 마라. (8시간 최저시급만 해도 일급은 8만원을 넘으므로, 1~3만원대를
+                    일급으로 보는 것은 명백한 오류) 라벨이 안 보여도 예: 11,000원 → hourlyWage.
                 - workingHoursPerDay: 1일 소정근로시간 (휴게시간 제외 실제 근로시간).
                   예: 9시~16시 중 휴게 12시~13시 1시간 → 소정근로시간 = 6시간.
                 - breakTimeMentioned: 계약서에 휴게 시간대가 명시적으로 기재되어 있으면 true.
