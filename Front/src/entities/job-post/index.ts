@@ -30,6 +30,7 @@ export {
 export {
   fetchContractDetail,
   fetchContractFactSheet,
+  fetchLatestContractByPartTimeJob,
 } from "./api/contracts-api";
 export type {
   ContractAnalysisResponse,

@@ -22,6 +22,8 @@ interface ContractEditViewProps {
   workplaceName: string;
   imageUri?: string;
   analysis?: ContractAnalysisResult;
+  /** 로컬 분석 캐시가 없어도 서버에서 최신 분석을 가져올 수 있는지 (partTimeJobId 보유). */
+  canFetchFromServer?: boolean;
   onBack: () => void;
   onViewAnalysisResult: () => void;
 }
@@ -31,6 +33,7 @@ export function ContractEditView({
   workplaceName,
   imageUri,
   analysis,
+  canFetchFromServer = false,
   onBack,
   onViewAnalysisResult,
 }: ContractEditViewProps): JSX.Element {
@@ -223,10 +226,10 @@ export function ContractEditView({
           <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
         </Pressable>
 
-        {/* 옵션 2: 분석 결과 다시 보기 */}
+        {/* 옵션 2: 분석 결과 다시 보기 — 로컬 캐시가 없어도 서버 폴백이 가능하면 활성화 */}
         <Pressable
           onPress={onViewAnalysisResult}
-          disabled={analysis === undefined}
+          disabled={analysis === undefined && !canFetchFromServer}
           style={{
             backgroundColor: "#FFFFFF",
             borderRadius: 12,
@@ -234,7 +237,7 @@ export function ContractEditView({
             flexDirection: "row",
             alignItems: "center",
             gap: 12,
-            opacity: analysis !== undefined ? 1 : 0.5,
+            opacity: analysis !== undefined || canFetchFromServer ? 1 : 0.5,
           }}
         >
           <View

@@ -334,6 +334,19 @@ public class LaborContractAnalysisService {
         return toResponse(contract);
     }
 
+    /**
+     * 특정 알바(관심업장)의 가장 최근 계약서 분석 — 없으면 Optional.empty().
+     * 프론트 로컬 캐시(contractAnalysis) 유실 시 "분석 결과 다시 보기" 폴백 조회용.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Optional<ContractAnalysisResponse> getLatestForPartTimeJob(
+            Long userId, Long partTimeJobId) {
+        if (userId == null || partTimeJobId == null) return java.util.Optional.empty();
+        return contractRepository
+                .findFirstByUserIdAndPartTimeJobIdOrderByCreatedAtDesc(userId, partTimeJobId)
+                .map(this::toResponse);
+    }
+
     // ─────────────────────────────────────────────────────────────────
     //  Level 2 RAG: 의미 검색 쿼리 빌드 + 2차 위반 판단 + 헬퍼
     // ─────────────────────────────────────────────────────────────────

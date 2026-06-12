@@ -54,6 +54,20 @@ public class LaborContractController {
     }
 
     /**
+     * 특정 알바(관심업장)의 가장 최근 계약서 분석 조회.
+     * GET /api/contracts/latest?partTimeJobId=N
+     * 프론트 로컬 캐시(contractAnalysis) 유실 시 "분석 결과 다시 보기"의 서버 폴백 — 없으면 404.
+     */
+    @GetMapping("/latest")
+    public ResponseEntity<ContractAnalysisResponse> getLatestForPartTimeJob(
+            @AuthenticationPrincipal Long userId,
+            @RequestParam("partTimeJobId") Long partTimeJobId) {
+        return contractService.getLatestForPartTimeJob(userId, partTimeJobId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /**
      * 특정 근로계약서 분석 결과 조회
      * GET /api/contracts/{contractId}
      */

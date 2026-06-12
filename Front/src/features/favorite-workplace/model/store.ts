@@ -194,12 +194,14 @@ export const useFavoriteWorkplaceStore = create<FavoriteWorkplaceState>()(
               ),
           );
 
-          // 로컬 항목 인덱싱: partTimeJobId 우선, 없으면 업장명으로 매칭
+          // 로컬 항목 인덱싱: partTimeJobId 우선, 미스 시 업장명으로 매칭.
+          // ptId가 있어도 이름 인덱스에 함께 넣는다 — 등록 과정에서 서버 행이
+          // 새로 생성돼 id가 바뀐 경우에도 계약서 캐시 등 로컬 부가상태를 보존.
           const byPtId = new Map<number, FavoriteWorkplace>();
           const byName = new Map<string, FavoriteWorkplace>();
           for (const w of state.workplaces) {
             if (w.partTimeJobId !== undefined) byPtId.set(w.partTimeJobId, w);
-            else byName.set(w.name, w);
+            byName.set(w.name, w);
           }
           // "HH:mm:ss" → "HH:mm"
           const trimTime = (t: string | null): string | undefined =>

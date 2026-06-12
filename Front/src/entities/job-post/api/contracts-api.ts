@@ -1,3 +1,4 @@
+import { isAxiosError } from "axios";
 import { apiClient } from "@/shared/api/axios-instance";
 import type { ApiContractAnalysisResponse } from "../model/types";
 
@@ -46,6 +47,26 @@ export async function fetchContractDetail(
     `/contracts/${contractId}`,
   );
   return data;
+}
+
+/**
+ * 특정 알바(관심업장)의 가장 최근 계약서 분석 조회.
+ * 로컬 캐시(contractAnalysis)가 유실됐을 때 "분석 결과 다시 보기"의 서버 폴백.
+ * 분석 기록이 없으면 null.
+ */
+export async function fetchLatestContractByPartTimeJob(
+  partTimeJobId: number,
+): Promise<ContractAnalysisResponse | null> {
+  try {
+    const { data } = await apiClient.get<ContractAnalysisResponse>(
+      "/contracts/latest",
+      { params: { partTimeJobId } },
+    );
+    return data;
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.status === 404) return null;
+    throw err;
+  }
 }
 
 /**

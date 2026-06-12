@@ -14,6 +14,8 @@ import { isAxiosError } from "axios";
 import {
   saveContractPending,
   clearContractPending,
+  fetchLatestContractByPartTimeJob,
+  mapContractApiResponse,
   type ContractAnalysisResult,
 } from "@/entities/job-post";
 import {
@@ -202,6 +204,7 @@ export function WorkplaceView(): JSX.Element {
     workplaces,
     removeWorkplace,
     markContractUploaded,
+    updateContractAnalysis,
     updateContractStatus,
     setContractId,
     setPartTimeJobId,
@@ -261,6 +264,48 @@ export function WorkplaceView(): JSX.Element {
   >("gate-skip");
 
   const selectedWorkplace = workplaces.find((w) => w.id === selectedWorkplaceId);
+
+  /**
+   * 계약서 수정 화면의 "분석 결과 다시 보기".
+   * 로컬 캐시(contractAnalysis)가 있으면 바로 표시하고, 유실된 경우
+   * (새로고침·목록 재동기화 등) 서버에서 이 업장의 최신 분석을 받아
+   * 캐시를 복구한 뒤 표시한다.
+   */
+  const handleViewAnalysisFromEdit = async (): Promise<void> => {
+    const wp = selectedWorkplace;
+    if (wp === undefined) return;
+    if (wp.contractAnalysis !== undefined) {
+      setCurrentScreen("analysis");
+      return;
+    }
+    if (wp.partTimeJobId === undefined) {
+      Alert.alert(
+        "분석 결과 없음",
+        "저장된 계약서 분석을 찾지 못했어요. 계약서를 다시 분석해주세요.",
+      );
+      return;
+    }
+    try {
+      const api = await fetchLatestContractByPartTimeJob(wp.partTimeJobId);
+      if (api === null) {
+        Alert.alert(
+          "분석 결과 없음",
+          "서버에 저장된 계약서 분석 기록이 없어요. 계약서를 다시 분석해주세요.",
+        );
+        return;
+      }
+      const result = mapContractApiResponse(api);
+      if (result.workplaceName.length === 0) result.workplaceName = wp.name;
+      // 캐시 복구 — 다음부터는 서버 조회 없이 즉시 표시.
+      updateContractAnalysis(wp.id, result);
+      setCurrentScreen("analysis");
+    } catch {
+      Alert.alert(
+        "불러오기 실패",
+        "분석 결과를 불러오지 못했어요. 잠시 후 다시 시도해주세요.",
+      );
+    }
+  };
 
   /**
    * 관심업장 삭제 — 백엔드 part_time_job 동시 정리.
@@ -444,8 +489,9 @@ export function WorkplaceView(): JSX.Element {
         workplaceName={selectedWorkplace.name}
         imageUri={selectedWorkplace.contractImageUri}
         analysis={selectedWorkplace.contractAnalysis}
+        canFetchFromServer={selectedWorkplace.partTimeJobId !== undefined}
         onBack={() => setCurrentScreen("list")}
-        onViewAnalysisResult={() => setCurrentScreen("analysis")}
+        onViewAnalysisResult={() => void handleViewAnalysisFromEdit()}
       />
     );
   }
