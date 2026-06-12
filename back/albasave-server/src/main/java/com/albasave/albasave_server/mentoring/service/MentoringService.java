@@ -3,6 +3,8 @@ package com.albasave.albasave_server.mentoring.service;
 import com.albasave.albasave_server.mentoring.domain.*;
 import com.albasave.albasave_server.mentoring.dto.*;
 import com.albasave.albasave_server.mentoring.repository.*;
+import com.albasave.albasave_server.userinfo.domain.User;
+import com.albasave.albasave_server.userinfo.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +29,7 @@ import java.util.stream.Collectors;
 public class MentoringService {
 
     private final MentorProfileRepository mentorRepository;
+    private final UserRepository userRepository;
     private final MenteeMatchRequestRepository requestRepository;
     private final MentorshipMatchRepository matchRepository;
     private final MatchingFeedbackRepository feedbackRepository;
@@ -117,7 +120,21 @@ public class MentoringService {
         profile.setUpdatedAt(LocalDateTime.now());
         if (existing == null) profile.setCreatedAt(LocalDateTime.now());
 
-        return mentorRepository.save(profile);
+        MentorProfile saved = mentorRepository.save(profile);
+
+        // 검증을 통과한 멘토는 User.role(isMentor)도 true로 승격.
+        // 후기 작성 시 "🛡 인증멘토" 뱃지·멘토 권한 판단의 단일 진실원천.
+        if (saved.isVerified()) {
+            userRepository.findById(userId).ifPresent(user -> {
+                if (!user.isMentor()) {
+                    user.setMentor(true);
+                    userRepository.save(user);
+                    log.info("[Mentor] User {} → role=멘토 승격", userId);
+                }
+            });
+        }
+
+        return saved;
     }
 
     @Transactional(readOnly = true)

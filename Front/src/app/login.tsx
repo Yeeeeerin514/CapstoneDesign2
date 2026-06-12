@@ -20,6 +20,7 @@ interface ParsedAuth {
   userId: number | null;
   name: string;
   email: string;
+  isMentor: boolean;
 }
 
 /**
@@ -41,6 +42,8 @@ function parseAuthResponse(data: unknown): ParsedAuth {
     userId: userId !== null && Number.isFinite(userId) ? userId : null,
     name: (d.name as string) ?? (d.username as string) ?? (d.userName as string) ?? "",
     email: (d.email as string) ?? (d.emailAddress as string) ?? "",
+    // 백엔드가 boolean getter를 "mentor"로 직렬화할 수 있어 두 키 모두 허용.
+    isMentor: Boolean(d.isMentor ?? d.mentor ?? false),
   };
   if (result.token === null || result.userId === null) {
     console.error("[Auth] 응답 필드 누락:", data);
@@ -97,11 +100,17 @@ export default function LoginScreen() {
         );
         return;
       }
-      setAuth(parsed.token, parsed.userId, parsed.name, parsed.email);
+      setAuth(parsed.token, parsed.userId, parsed.name, parsed.email, parsed.isMentor);
       // FCM 토큰 백그라운드 동기화 — 실패해도 로그인 플로우 블로킹 없음
       void syncFcmToken();
       router.replace("/(tabs)");
     } catch (e) {
+      // 개발 모드: 백엔드 연결 실패 시 목업 계정으로 우회 로그인.
+      if (__DEV__) {
+        setAuth("dev-token", 1, name || email.split("@")[0], email);
+        router.replace("/(tabs)");
+        return;
+      }
       const msg =
         e instanceof Error ? e.message : "오류가 발생했습니다.";
       Alert.alert("실패", msg);

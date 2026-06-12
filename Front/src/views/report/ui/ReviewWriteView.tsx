@@ -142,6 +142,8 @@ export function ReviewWriteView({
   const cases = useReportStore((s) => s.cases);
   const nickname = useAuthStore((s) => s.nickname);
   const userId = useAuthStore((s) => s.userIdString);
+  const isMentor = useAuthStore((s) => s.isMentor);
+  const setMentor = useAuthStore((s) => s.setMentor);
 
   const isFreeMode = resolvedCase === undefined;
 
@@ -232,9 +234,11 @@ export function ReviewWriteView({
     if (resolvedCase !== undefined) {
       setHasWrittenReview(resolvedCase.id, true);
     }
+    // 인증멘토 뱃지는 실제 멘토 상태로 결정 — 이미 인증된 멘토이거나, 지금 멘토 등록을 함께 진행하는 경우.
+    const showMentorBadge = isMentor || registerAsMentor;
     addReview({
       authorNickname: nickname,
-      authorBadges: registerAsMentor ? ["🛡 인증멘토"] : [],
+      authorBadges: showMentorBadge ? ["🛡 인증멘토"] : [],
       industry,
       region,
       damageTypes,
@@ -249,8 +253,8 @@ export function ReviewWriteView({
         investigation: tipInvestigation.trim(),
         negotiation: tipNegotiation.trim(),
       },
-      isMentor: registerAsMentor,
-      mentorUserId: registerAsMentor ? userId : null,
+      isMentor: showMentorBadge,
+      mentorUserId: showMentorBadge ? userId : null,
     });
 
     if (!registerAsMentor) {
@@ -318,6 +322,8 @@ export function ReviewWriteView({
         verificationMethod: "RESOLVED_CASE",
         verifiedCaseIds: verifiedCaseIds.length > 0 ? verifiedCaseIds : [0],
       });
+      // 멘토 승격 즉시 반영 — 이후 작성하는 후기에도 자동으로 인증멘토 뱃지.
+      setMentor(true);
       Alert.alert(
         "등록 완료",
         "후기가 등록되었습니다. 멘토 등록도 함께 완료되었어요!",

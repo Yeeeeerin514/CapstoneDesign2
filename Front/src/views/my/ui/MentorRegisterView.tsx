@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenHeader, colors, radius, spacing, typography } from "@/shared/ui";
 import { fetchMyReports } from "@/entities/report";
+import { useAuthStore } from "@/entities/user/model/auth-store";
 import {
   BUSINESS_SIZE_LABEL,
   DAMAGE_AMOUNT_LABEL,
@@ -61,6 +62,7 @@ function toggleArray<T>(
 }
 
 export function MentorRegisterView({ onBack, onSaved, verification }: Props): JSX.Element {
+  const setMentor = useAuthStore((s) => s.setMentor);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -193,6 +195,8 @@ export function MentorRegisterView({ onBack, onSaved, verification }: Props): JS
         evidenceUrls:
           verificationMethod === "EVIDENCE_UPLOAD" ? evidenceUrls : undefined,
       });
+      // 등록 성공 → 즉시 멘토로 승격(재로그인 없이 "🛡 인증멘토" 뱃지 반영).
+      setMentor(true);
       Alert.alert("등록 완료", "멘토 프로필이 저장되었습니다.");
       onSaved?.();
       onBack();

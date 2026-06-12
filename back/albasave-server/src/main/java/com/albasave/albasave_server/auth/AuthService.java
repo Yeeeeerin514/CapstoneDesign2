@@ -30,7 +30,7 @@ public class AuthService {
                 .build();
         User saved = userRepository.save(user);
         String token = jwtProvider.generateToken(saved.getId(), saved.getEmail());
-        return new AuthResponse(token, saved.getId(), saved.getName(), saved.getEmail());
+        return new AuthResponse(token, saved.getId(), saved.getName(), saved.getEmail(), saved.isMentor());
     }
 
     @Transactional(readOnly = true)
@@ -41,7 +41,7 @@ public class AuthService {
             throw new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다.");
         }
         String token = jwtProvider.generateToken(user.getId(), user.getEmail());
-        return new AuthResponse(token, user.getId(), user.getName(), user.getEmail());
+        return new AuthResponse(token, user.getId(), user.getName(), user.getEmail(), user.isMentor());
     }
 
     @Transactional
@@ -55,6 +55,6 @@ public class AuthService {
     public AuthResponse getMe(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
-        return new AuthResponse(null, user.getId(), user.getName(), user.getEmail());
+        return new AuthResponse(null, user.getId(), user.getName(), user.getEmail(), user.isMentor());
     }
 }

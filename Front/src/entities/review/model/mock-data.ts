@@ -4,7 +4,7 @@ export const MOCK_REVIEWS: ResolveReview[] = [
   {
     id: "review-001",
     authorNickname: "닉네임A",
-    authorBadges: ["🛡 인증멘토", "⚡ 빠른해결"],
+    authorBadges: ["🛡 인증멘토"],
     industry: "카페·음식점",
     region: "서울",
     damageTypes: ["주휴수당 미지급", "연장근로수당 미지급"],

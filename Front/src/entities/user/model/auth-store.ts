@@ -21,7 +21,18 @@ interface AuthState {
   nickname: string;
   isLoggedIn: boolean;
 
-  setAuth: (token: string, userId: number, name: string, email: string) => void;
+  /** 멘토 인증 여부(백엔드 User.role). "🛡 인증멘토" 뱃지 표시 기준. */
+  isMentor: boolean;
+
+  setAuth: (
+    token: string,
+    userId: number,
+    name: string,
+    email: string,
+    isMentor?: boolean,
+  ) => void;
+  /** 멘토 등록 성공 시 즉시 승격(재로그인 없이 뱃지 반영). */
+  setMentor: (isMentor: boolean) => void;
   clearAuth: () => void;
 
   /** Phase A mock 로그인 — userIdString/nickname/isLoggedIn 갱신. */
@@ -41,8 +52,9 @@ export const useAuthStore = create<AuthState>()(
       userIdString: "current-user-mock",
       nickname: "나",
       isLoggedIn: true,
+      isMentor: false,
 
-      setAuth: (token, userId, name, email) =>
+      setAuth: (token, userId, name, email, isMentor = false) =>
         set({
           token,
           userId,
@@ -52,7 +64,10 @@ export const useAuthStore = create<AuthState>()(
           userIdString: String(userId),
           nickname: name ?? "",
           isLoggedIn: true,
+          isMentor,
         }),
+
+      setMentor: (isMentor) => set({ isMentor }),
 
       clearAuth: () =>
         set({
@@ -61,6 +76,7 @@ export const useAuthStore = create<AuthState>()(
           name: null,
           email: null,
           isLoggedIn: false,
+          isMentor: false,
         }),
 
       login: (userIdString, nickname) =>
@@ -75,6 +91,7 @@ export const useAuthStore = create<AuthState>()(
           userIdString: "",
           nickname: "",
           isLoggedIn: false,
+          isMentor: false,
         }),
     }),
     {
