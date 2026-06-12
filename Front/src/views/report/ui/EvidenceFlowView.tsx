@@ -23,7 +23,9 @@ import {
 } from "@/entities/report";
 import {
   fetchContractFactSheet,
+  fetchJobPostingAnalysis,
   type ContractFactSheet,
+  type JobPostAnalysisResult,
 } from "@/entities/job-post";
 import { useFavoriteWorkplaceStore } from "@/features/favorite-workplace";
 import {
@@ -90,6 +92,8 @@ export function EvidenceFlowView({
   const cachedExtracted = workplace?.contractAnalysis?.extracted;
   const hasContract =
     contractId !== undefined || cachedExtracted !== undefined;
+  /** 이 업장을 만든 공고문 분석 — 계약서가 없을 때의 피진정인 prefill 소스. */
+  const jobPostingAnalysisId = workplace?.jobPostingAnalysisId;
 
   const [subStep, setSubStep] = useState<SubStep>("damage");
   const subStepIdx = SUB_STEP_ORDER.indexOf(subStep);
@@ -141,8 +145,10 @@ export function EvidenceFlowView({
    * 1) ApplicantInfo (AsyncStorage) → 진정인 정보
    * 2) 캐시된 ExtractedContract → 사업주/입사일/임금지급일/업무내용/근무장소 즉시 채움
    * 3) ContractFactSheet (서버) → 캐시보다 최신값이 있으면 덮어쓰기
+   * 4) 공고문 분석 (서버) → 계약서로 못 채운 피진정인 칸(사업장명/전화/주소)을 공고 추출값으로
    *
-   * 모든 단계는 실패해도 사용자 입력 fallback이 있으므로 reject는 무시.
+   * 모든 prefill은 빈 칸만 채우므로(prev ?? 신규) 계약서 > 공고문 > 직접 입력 우선순위.
+   * 어느 단계가 실패해도 사용자 입력 fallback이 있으므로 reject는 무시.
    */
   useEffect(() => {
     void (async () => {
@@ -157,14 +163,25 @@ export function EvidenceFlowView({
     if (cachedExtracted !== undefined) {
       applyExtractedPrefill(cachedExtracted);
     }
-    // 서버 factsheet — 최신값으로 덮어쓰기 (실패해도 캐시 prefill은 유지)
-    if (contractId !== undefined) {
-      void fetchContractFactSheet(contractId)
-        .then(applyFactsheetPrefill)
-        .catch(() => {
+    // 서버 factsheet → 공고문 분석 순서로 직렬 실행 — 계약서 값이 공고보다 우선하도록.
+    void (async () => {
+      if (contractId !== undefined) {
+        try {
+          applyFactsheetPrefill(await fetchContractFactSheet(contractId));
+        } catch {
           /* factsheet 실패 — 캐시 prefill 또는 사용자 입력 fallback */
-        });
-    }
+        }
+      }
+      if (jobPostingAnalysisId !== undefined) {
+        try {
+          applyPostingPrefill(
+            await fetchJobPostingAnalysis(jobPostingAnalysisId),
+          );
+        } catch {
+          /* 공고 분석 조회 실패 — 다른 소스/사용자 입력 fallback */
+        }
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -209,6 +226,24 @@ export function EvidenceFlowView({
       ...prev,
       employmentStartDate: prev.employmentStartDate ?? fs.employmentStartDate,
       wagePaymentDate: prev.wagePaymentDate ?? fs.wagePaymentDate,
+    }));
+  };
+
+  /**
+   * 공고문 분석 추출값 → 피진정인 prefill.
+   * 계약서 prefill이 못 채운 빈 칸만 채운다 (사업장명·전화·주소 — 공고에 대표자 성명은 없음).
+   */
+  const applyPostingPrefill = (posting: JobPostAnalysisResult): void => {
+    const ex = posting.extracted;
+    setRespondent((prev) => ({
+      ...prev,
+      phone: prev.phone ?? ex.phone ?? null,
+      address: prev.address ?? ex.address ?? null,
+      workplaceName:
+        prev.workplaceName.length > 0
+          ? prev.workplaceName
+          : (ex.businessName ?? reportCase.workplaceName),
+      workplacePhone: prev.workplacePhone ?? ex.phone ?? null,
     }));
   };
 
