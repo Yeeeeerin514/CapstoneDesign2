@@ -30,6 +30,18 @@ public class ExtractedContractInfo {
         return hourlyWage != null ? hourlyWage : calculatedHourlyWage;
     }
 
+    /**
+     * 금액 규모 sanity 보정 — LLM이 시급/일급 라벨을 헷갈린 경우의 결정적 안전망.
+     * '일급'으로 추출됐지만 1일치 임금으로 불가능하게 작은 값(3만원 미만)은
+     * 시급 오분류로 보고 시급으로 옮긴다. (한국 최저시급 기준 3시간만 일해도 일급은 3만원 초과)
+     */
+    public void normalizeImplausibleDailyWage() {
+        if (hourlyWage == null && dailyWage != null && dailyWage < 30000) {
+            hourlyWage = dailyWage;
+            dailyWage = null;
+        }
+    }
+
     /** 1일 소정근로시간 (휴게시간 제외 실제 근로시간) */
     private Double workingHoursPerDay;
 
